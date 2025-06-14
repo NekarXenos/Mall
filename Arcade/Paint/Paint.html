@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bristle Brush Simulation</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="controls">
+        <label for="colorPicker">Color:</label>
+        <input type="color" id="colorPicker" value="#000000">
+        <label for="brushSize">Size:</label>
+        <input type="range" id="brushSize" min="1" max="50" value="10">
+        <span id="brushSizeValue">10</span>
+        <label for="bristleCount">Bristles:</label>
+        <input type="range" id="bristleCount" min="1" max="50" value="15">
+        <span id="bristleCountValue">15</span>
+         <label for="damping">Lag:</label>
+        <input type="range" id="damping" min="1" max="50" value="20">
+        <span id="dampingValue">0.20</span>
+        <button id="clearButton">Clear</button>
+    </div>
+    <canvas id="paintCanvas"></canvas>
+
+    <script src="script.js"></script>
+</body>
+</html>

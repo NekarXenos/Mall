@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flying Painter 3D</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: sans-serif;
+            text-shadow: 1px 1px 2px black;
+            z-index: 10;
+        }
+         #paintStatus {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-family: sans-serif;
+            text-shadow: 1px 1px 2px black;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        Controls:<br>
+        Arrow Up/Down: Pitch<br>
+        Arrow Left/Right: Roll<br>
+        W/S: Throttle (Speed)<br>
+        A/D: Yaw<br>
+        F: Toggle Paint<br>
+        1-0: Change Color<br>
+        P: Take Snapshot
+    </div>
+    <div id="paintStatus">Paint: OFF</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let plane;
+        let clock = new THREE.Clock();
+
+        // Plane physics/movement variables
+        let speed = 0;
+        const maxSpeed = 10;
+        const acceleration = 0.05;
+        const deceleration = 0.02;
+        const pitchSpeed = 0.02;
+        const rollSpeed = 0.03;
+        const yawSpeed = 0.01;
+        const damping = 0.98; // For rotation damping
+
+        let keys = {
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false,
+            w: false,
+            s: false,
+            a: false,
+            d: false
+        };
+
+        let paintParticles = []; // Renamed from smokeParticles
+        const paintSpawnRate = 0.05; // seconds between particles
+        let lastPaintSpawnTime = 0;
+
+        // Local offsets for paint emitters relative to the plane's center (Tetrahedron)
+        // Adjust these values based on your desired visual placement relative to the tetrahedron
+        const mainPaintOffset = new THREE.Vector3(0, 0, 1); // Main emitter behind the plane
+        const leftWingtipOffset = new THREE.Vector3(-1.5, 0, 0); // Outer left 
+        const rightWingtipOffset = new THREE.Vector3(1.5, 0, 0); // Outer right 
+        const leftInnerStabilizerOffset = new THREE.Vector3(-0.8, 0, 0); // Inner left
+        const rightInnerStabilizerOffset = new THREE.Vector3(0.8, 0, 0); // Inner right
+
+        // Painting variables
+        let paintOn = false; // Paint starts OFF
+        let currentColor = new THREE.Color(0xff0000); // Default color: Red
+        const paintColors = { // Map number keys to colors
+            '1': new THREE.Color(0xff0000), // Red
+            '2': new THREE.Color(0xffa500), // Orange
+            '3': new THREE.Color(0xffff00), // Yellow
+            '4': new THREE.Color(0x008000), // Green
+            '5': new THREE.Color(0x00ffff), // Cyan
+            '6': new THREE.Color(0x0000ff), // Blue
+            '7': new THREE.Color(0xee82ee), // Magenta (using Violet)
+            '8': new THREE.Color(0x000000), // Black
+            '9': new THREE.Color(0xffffff), // White
+            '0': new THREE.Color(0x808080)  // Grey
+        };
+
+        // Function to generate simple noise texture (kept for ground)
+        function generateNoiseTexture(width, height) {
+            const size = width * height;
+            const data = new Uint8Array(3 * size);
+            const perlin = new PerlinNoise(); // Simple Perlin noise implementation
+
+            let i = 0;
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const value = Math.abs(perlin.noise2D(x * 0.1, y * 0.1)) * 255; // Adjust scale and amplitude
+                    data[i] = value;     // Red
+                    data[i + 1] = value; // Green
+                    data[i + 2] = value; // Blue
+                    i += 3;
+                }
+            }
+
+            const texture = new THREE.DataTexture(data, width, height, THREE.RGBFormat);
+            texture.needsUpdate = true;
+            return texture;
+        }
+
+        // Simple Perlin Noise implementation (for ground texture)
+        // Source: https://gist.github.com/banksean/321500
+        class PerlinNoise {
+            constructor() {
+                this.p = new Uint8Array(512);
+                this.permutation = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) {
+                    this.permutation[i] = i;
+                }
+                for (let i = 0; i < 256; i++) {
+                    const j = Math.floor(Math.random() * (256 - i)) + i;
+                    [this.permutation[i], this.permutation[j]] = [this.permutation[j], this.permutation[i]];
+                }
+                for (let i = 0; i < 512; i++) {
+                    this.p[i] = this.permutation[i & 255];
+                }
+            }
+
+            fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+
+            lerp(t, a, b) {
+                return a + t * (b - a);
+            }
+
+            grad(hash, x, y) {
+                const h = hash & 15;
+                const u = h < 8 ? x : y;
+                const v = h < 4 ? y : (h == 12 || h == 14 ? x : 0);
+                return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+            }
+
+            noise2D(x, y) {
+                let X = Math.floor(x) & 255;
+                let Y = Math.floor(y) & 255;
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+                let u = this.fade(x);
+                let v = this.fade(y);
+
+                let A = this.p[X] + Y;
+                let B = this.p[X + 1] + Y;
+
+                return this.lerp(v, this.lerp(u, this.grad(this.p[A], x, y),
+                                          this.grad(this.p[B], x - 1, y)),
+                              this.lerp(u, this.grad(this.p[A + 1], x, y - 1),
+                                          this.grad(this.p[B + 1], x - 1, y - 1)));
+            }
+        }
+
+
+        function init() {
+            try {
+                // Scene
+                scene = new THREE.Scene();
+
+                // Sky Gradient (using a large sphere)
+                const skyGeometry = new THREE.SphereGeometry(5000, 32, 15);
+                const skyMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        topColor: { value: new THREE.Color(0x87CEEB) }, // Sky Blue
+                        bottomColor: { value: new THREE.Color(0xFFFFFF) }, // White
+                        // Adjusted offset and exponent for potentially better visibility
+                        offset: { value: 10 },
+                        exponent: { value: 1.0 } // Linear gradient
+                    },
+                    vertexShader: `
+                        varying vec3 vWorldPosition;
+                        void main() {
+                            vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
+                            vWorldPosition = worldPosition.xyz;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform vec3 topColor;
+                        uniform vec3 bottomColor;
+                        uniform float offset;
+                        uniform float exponent;
+                        varying vec3 vWorldPosition;
+                        void main() {
+                            // Calculate height based on normalized world position + offset
+                            float h = normalize( vWorldPosition + vec3(0.0, offset, 0.0) ).y;
+                            // Mix colors based on scaled height, clamped to [0, 1] and raised to exponent
+                            gl_FragColor = vec4( mix( bottomColor, topColor, max( pow( max( h, 0.0 ), exponent ), 0.0 ) ), 1.0 ); // Corrected: Removed 'new'
+                        }
+                    `,
+                    side: THREE.BackSide // Render inside the sphere
+                });
+                const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+                scene.add(sky);
+
+
+                // Camera
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+                camera.position.set(0, 5, 10); // Initial camera position relative to origin
+                 // Camera will look at the plane's position in the updateCamera function
+                // camera.lookAt(0, 0, 0); // No longer needed, updateCamera handles this
+
+                // Renderer
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                document.body.appendChild(renderer.domElement);
+
+                // Ground Plane with Noise Texture
+                const groundGeometry = new THREE.PlaneGeometry(2000, 2000, 100, 100);
+                const noiseTexture = generateNoiseTexture(256, 256); // Generate 256x256 noise texture
+                const groundMaterial = new THREE.MeshStandardMaterial({
+                     map: noiseTexture,
+                     side: THREE.DoubleSide // Render both sides
+                });
+                const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+                ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+                scene.add(ground);
+
+                // Plane Model (Tetrahedron)
+                const planeGeometry = new THREE.TetrahedronGeometry(1); // Size 1
+                const planeMaterial = new THREE.MeshPhongMaterial({ color: 0x0077ff, flatShading: true }); // Blue color
+                plane = new THREE.Mesh(planeGeometry, planeMaterial);
+                //plane.rotation.set(0, 0, 45 * Math.PI / 180 ); // Initial rotation
+                plane.position.set(0, 10, 0); // Start slightly above ground
+                scene.add(plane);
+
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0x404040); // Soft white light
+                scene.add(ambientLight);
+
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(1, 1, 1).normalize();
+                scene.add(directionalLight);
+
+                // Event Listeners
+                window.addEventListener('resize', onWindowResize);
+                window.addEventListener('keydown', onKeyDown);
+                window.addEventListener('keyup', onKeyUp);
+
+                // Start animation loop
+                animate();
+                console.log("Three.js init completed successfully."); // Log success
+            } catch (error) {
+                console.error("Error during Three.js initialization:", error); // Log any errors
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onKeyDown(event) {
+            // Use the original event.key for arrow keys
+            const key = event.key;
+
+            if (keys.hasOwnProperty(key)) {
+                keys[key] = true;
+            } else if (keys.hasOwnProperty(key.toLowerCase())) { // Check lowercase for other keys (w,s,a,d,f,p)
+                keys[key.toLowerCase()] = true;
+            }
+
+
+            // Toggle paint on/off
+            if (key.toLowerCase() === 'f') {
+                paintOn = !paintOn;
+                document.getElementById('paintStatus').innerText = 'Paint: ' + (paintOn ? 'ON' : 'OFF');
+            }
+
+            // Change paint color with number keys
+            if (paintColors.hasOwnProperty(key)) { // Check original event.key for number
+                currentColor = paintColors[key];
+            }
+
+            // Take snapshot
+            if (key.toLowerCase() === 'p') {
+                takeSnapshot();
+            }
+        }
+
+        function onKeyUp(event) {
+            // Use the original event.key for arrow keys
+            const key = event.key;
+
+             if (keys.hasOwnProperty(key)) {
+                keys[key] = false;
+            } else if (keys.hasOwnProperty(key.toLowerCase())) { // Check lowercase for other keys (w,s,a,d)
+                keys[key.toLowerCase()] = false;
+            }
+        }
+
+        function updatePlane(deltaTime) {
+            // Update speed based on throttle
+            if (keys['w']) {
+                speed += acceleration * deltaTime * 60; // Scale by delta time
+                speed = Math.min(speed, maxSpeed);
+            } else if (keys['s']) {
+                speed -= deceleration * deltaTime * 60; // Scale by delta time
+                speed = Math.max(speed, 0);
+            }
+
+            // Apply pitch, roll, yaw based on input
+            const rotationMatrix = new THREE.Matrix4();
+            let pitch = 0, roll = 0, yaw = 0;
+
+            // Use the correct key names from the keys object
+            if (keys['ArrowUp']) pitch -= pitchSpeed * deltaTime * 60;
+            if (keys['ArrowDown']) pitch += pitchSpeed * deltaTime * 60;
+            if (keys['ArrowLeft']) roll += rollSpeed * deltaTime * 60;
+            if (keys['ArrowRight']) roll -= rollSpeed * deltaTime * 60;
+            if (keys['a']) yaw += yawSpeed * deltaTime * 60;
+            if (keys['d']) yaw -= yawSpeed * deltaTime * 60;
+
+            // Apply rotations in local space (important for flight)
+            // Use Quaternion for rotation updates for better stability
+            const deltaRotation = new THREE.Quaternion();
+            deltaRotation.setFromEuler(new THREE.Euler(pitch, yaw, roll, 'YXZ')); // Apply rotations in a specific order (Yaw then Pitch then Roll)
+            plane.quaternion.multiply(deltaRotation); // Apply the rotation
+
+            // Apply damping to rotations (optional, makes it feel less twitchy)
+            // plane.rotation.x *= damping;
+            // plane.rotation.y *= damping;
+            // plane.rotation.z *= damping;
+
+
+            // Move the plane forward based on its current orientation and speed
+            const forwardVector = new THREE.Vector3(0, 0, -1); // Plane's forward direction is typically -Z in its local space
+            forwardVector.applyQuaternion(plane.quaternion); // Rotate the vector by the plane's current rotation
+            plane.position.addScaledVector(forwardVector, speed * deltaTime); // Move based on speed and time
+
+            // Simple "gravity" effect (optional, makes it feel more like flying)
+            // plane.position.y -= 0.01; // Constant downward pull
+        }
+
+        function updateCamera() {
+            // Third-person camera position relative to the plane
+            const cameraOffset = new THREE.Vector3(0, 5, 15); // Offset behind and above the plane
+            // Apply the plane's current rotation to the camera offset
+            const rotatedOffset = cameraOffset.clone().applyQuaternion(plane.quaternion);
+
+            // Set camera position relative to the plane's position
+            camera.position.copy(plane.position).add(rotatedOffset);
+
+            // Make the camera look slightly ahead of the plane
+            const lookAtOffset = new THREE.Vector3(0, 0, -20); // Point to look at relative to plane
+            const rotatedLookAtOffset = lookAtOffset.clone().applyQuaternion(plane.quaternion);
+            const lookAtPosition = plane.position.clone().add(rotatedLookAtOffset);
+
+            camera.lookAt(lookAtPosition);
+        }
+
+        // Create a paint particle (solid sphere)
+        function createPaintParticle(position) {
+            // Calculate particle size based on speed (smaller when slower)
+            const maxParticleSize = 0.6; // Maximum size
+            const minParticleSize = 0.3; // Minimum size
+            // Scale size inversely with speed, clamped between min and max
+            const particleSize = THREE.MathUtils.clamp(
+                maxParticleSize - (speed / maxSpeed) * (maxParticleSize - minParticleSize),
+                minParticleSize,
+                maxParticleSize
+            );
+
+            const paintGeometry = new THREE.SphereGeometry(particleSize, 8, 8); // Sphere size based on speed
+            // Use MeshPhongMaterial for solid color, no transparency needed
+            const paintMaterial = new THREE.MeshPhongMaterial({ color: currentColor });
+            const paint = new THREE.Mesh(paintGeometry, paintMaterial);
+
+            // Set the particle's position
+            paint.position.copy(position);
+
+            scene.add(paint);
+            paintParticles.push(paint); // Add to the list of paint particles
+        }
+
+        // Update paint particles (no fading or removal)
+        function updatePaintParticles(deltaTime) {
+            const currentTime = clock.getElapsedTime();
+
+            // Spawn new paint particles only if paint is ON and moving
+            if (paintOn && currentTime - lastPaintSpawnTime > paintSpawnRate && speed > 1) {
+                 // Calculate world position for the main paint trail
+                const mainPaintWorldPosition = mainPaintOffset.clone().applyMatrix4(plane.matrixWorld);
+                createPaintParticle(mainPaintWorldPosition);
+
+                // Calculate world position for left wingtip paint
+                const leftWingtipWorldPosition = leftWingtipOffset.clone().applyMatrix4(plane.matrixWorld);
+                createPaintParticle(leftWingtipWorldPosition);
+
+                // Calculate world position for right wingtip paint
+                const rightWingtipWorldPosition = rightWingtipOffset.clone().applyMatrix4(plane.matrixWorld);
+                createPaintParticle(rightWingtipWorldPosition);
+
+                // Calculate world position for left inner stabilizer paint
+                const leftInnerStabilizerWorldPosition = leftInnerStabilizerOffset.clone().applyMatrix4(plane.matrixWorld);
+                createPaintParticle(leftInnerStabilizerWorldPosition);
+
+                // Calculate world position for right inner stabilizer paint
+                const rightInnerStabilizerWorldPosition = rightInnerStabilizerOffset.clone().applyMatrix4(plane.matrixWorld);
+                createPaintParticle(rightInnerStabilizerWorldPosition);
+
+                lastPaintSpawnTime = currentTime;
+            }
+
+            // Paint particles are now permanent, so no update or removal logic here.
+            // They will persist in the scene.
+        }
+
+        // Function to take a snapshot
+        function takeSnapshot() {
+            // Render the scene from the current camera perspective
+            renderer.render(scene, camera);
+
+            // Get the image data from the renderer's canvas
+            const dataURL = renderer.domElement.toDataURL('image/png');
+
+            // Create a temporary link element to trigger the download
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = 'flying_painter_snapshot.png'; // File name
+            link.click(); // Simulate a click to download
+        }
+
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const deltaTime = clock.getDelta(); // Get time elapsed since last frame
+
+            updatePlane(deltaTime);
+            updateCamera();
+            updatePaintParticles(deltaTime); // Now creates particles if paintOn is true
+
+            renderer.render(scene, camera);
+        }
+
+        // Initialize the game when the window loads
+        window.onload = init;
+
+    </script>
+</body>
+</html>

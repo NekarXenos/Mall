@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=no">
+    <title>Three.D PacMan - TEMP</title>
+    <style>
+        /* Remove grab/grabbing cursor styles */
+        body { margin: 0; overflow: hidden; background-color: #111; color: #eee; font-family: sans-serif; }
+        canvas#gameCanvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px; width: 100%; text-align: center;
+            z-index: 100; display: block; color: white;
+            background-color: rgba(0,0,0,0.5); padding: 5px;
+        }
+        #minimapContainer {
+            position: absolute; top: 10px; left: 10px; /* Keep minimap */
+            width: 150px; height: 150px; border: 1px solid #555;
+            background-color: rgba(0, 0, 0, 0.7); z-index: 90;
+        }
+        #minimapCanvas { display: block; width: 100%; height: 100%; }
+        #mobileControls { /* Styling unchanged */
+            position: absolute; bottom: 20px; left: 20px; width: 120px; height: 120px;
+            display: none; z-index: 110; user-select: none; -webkit-user-select: none;
+            -moz-user-select: none; -ms-user-select: none;
+        }
+        #mobileControls .control-button { /* Styling unchanged */
+            position: absolute; width: 40px; height: 40px;
+            background-color: rgba(200, 200, 200, 0.5); border: 1px solid rgba(255, 255, 255, 0.7);
+            border-radius: 5px; display: flex; justify-content: center; align-items: center;
+            font-weight: bold; color: white;
+        }
+        #moveForwardBtn { top: 0; left: 40px; } #moveBackwardBtn { bottom: 0; left: 40px; }
+        #moveLeftBtn { top: 40px; left: 0; } #moveRightBtn { top: 40px; right: 0; }
+        #scoreDisplay {
+            position: absolute;
+            top: 50px;
+            left: 10px;
+            font-size: 20px;
+            color: white;
+            z-index: 100;
+        }
+        #cherryCountdown {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 50px;
+            color: red;
+            font-weight: bold;
+            z-index: 200;
+        }
+        /* Styling for the new status display */
+        #statusDisplay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            text-align: right;
+            z-index: 100;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        #statusDisplay div {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Use WASD/Arrows/Buttons to move the ball. Camera follows automatically.</div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="minimapContainer">
+        <canvas id="minimapCanvas"></canvas>
+    </div>
+    <div id="mobileControls">
+        <div id="moveForwardBtn" class="control-button">▲</div>
+        <div id="moveBackwardBtn" class="control-button">▼</div>
+        <div id="moveLeftBtn" class="control-button">◀</div>
+        <div id="moveRightBtn" class="control-button">▶</div>
+    </div>
+    <!-- Add a new container for score, level, and lives -->
+    <div id="statusDisplay">
+        <div id="levelDisplay">Level: 1</div>
+        <div id="livesDisplay">Lives: 3</div>
+        <div id="scoreDisplay">Score: 0</div>
+    </div>
+    <div id="cherryCountdown" style="display: none;">10</div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.163.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.163.0/examples/jsm/" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // Vertex Shader
+        const vertexShader = `
+            varying vec2 vUv;
+
+            void main() {
+                vUv = uv; // Pass UV coordinates to the fragment shader
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        // Fragment Shader
+        const fragmentShader = `
+            uniform float time;
+            varying vec2 vUv;
+
+            void main() {
+                // Center the UV coordinates
+                vec2 uv = vUv - 0.5;
+
+                // Create a swirling effect
+                float angle = atan(uv.y, uv.x) + time * 2.0; // Rotate based on time
+                float radius = length(uv);
+                uv.x = cos(angle) * radius;
+                uv.y = sin(angle) * radius;
+
+                // Generate a color based on the modified UV coordinates
+                float intensity = 0.5 + 0.5 * sin(10.0 * radius - time * 5.0);
+                vec3 color = mix(vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 1.0), intensity);
+
+                gl_FragColor = vec4(color, 0.5); // Semi-transparent
+            }
+        `;
+
+        // --- 1. Maze Generation Code (Unchanged) ---
+        const MAZE_CELLS = 7; const GRID_SIZE = MAZE_CELLS * 2 + 1; function createCell() { return { N: true, S: true, E: true, W: true }; } const mid = Math.floor(MAZE_CELLS / 2); function generateQuadrantMaze() { const qWidth = mid + 1; const qHeight = mid + 1; const quadrant = Array.from({ length: qHeight }, () => Array(qWidth).fill(null).map(() => createCell())); const visited = Array.from({ length: qHeight }, () => Array(qWidth).fill(false)); function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; } function carve(x, y) { visited[y][x] = true; const directions = shuffle(['N', 'S', 'E', 'W']); for (const dir of directions) { let nx = x, ny = y; switch (dir) { case 'N': ny--; break; case 'S': ny++; break; case 'E': nx++; break; case 'W': nx--; break; } if (nx >= 0 && nx < qWidth && ny >= 0 && ny < qHeight && !visited[ny][nx]) { quadrant[y][x][dir] = false; const opposite = { N: 'S', S: 'N', E: 'W' }; quadrant[ny][nx][opposite[dir]] = false; carve(nx, ny); } } } const startX = Math.floor(Math.random() * qWidth); const startY = Math.floor(Math.random() * qHeight); carve(startX, startY); return quadrant; }
+        function mirrorMaze(quadrant) { const fullMaze = []; for (let y = 0; y < MAZE_CELLS; y++) { fullMaze[y] = []; for (let x = 0; x < MAZE_CELLS; x++) { let qx = (x <= mid) ? x : MAZE_CELLS - 1 - x; let qy = (y <= mid) ? y : MAZE_CELLS - 1 - y; let cell = Object.assign({}, quadrant[qy][qx]); if (x > mid) { [cell.E, cell.W] = [cell.W, cell.E]; } if (y > mid) { [cell.N, cell.S] = [cell.S, cell.N]; } fullMaze[y][x] = cell; } } return fullMaze; }
+        function mazeCellsToGrid(cellMaze) { const grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(1)); for (let y = 0; y < MAZE_CELLS; y++) { for (let x = 0; x < MAZE_CELLS; x++) { const gx = 2 * x + 1; const gy = 2 * y + 1; grid[gy][gx] = 0; if (!cellMaze[y][x].E && x < MAZE_CELLS - 1) grid[gy][gx + 1] = 0; if (!cellMaze[y][x].S && y < MAZE_CELLS - 1) grid[gy + 1][gx] = 0; if (!cellMaze[y][x].N && y > 0) grid[gy - 1][gx] = 0; if (!cellMaze[y][x].W && x > 0) grid[gy][gx - 1] = 0; } } return grid; }
+        function generateSymmetricMaze() { const quadrant = generateQuadrantMaze(); const cellMaze = mirrorMaze(quadrant); const grid = mazeCellsToGrid(cellMaze); const centerRow = Math.floor(GRID_SIZE / 2); const centerCol = Math.floor(GRID_SIZE / 2); grid[centerRow][0] = 0; grid[centerRow][GRID_SIZE - 1] = 0; grid[0][centerCol] = 0; grid[GRID_SIZE - 1][centerCol] = 0; return { grid, wrapPoints: { centerRow, centerCol } }; }
+        // --- End Maze Generation Code ---
+        let justWrapped = false; // Flag to track if the player has just wrapped
+
+        // --- 2. Three.js Setup ---
+        let scene, camera, renderer;
+        let playerBall;
+        let minimapCanvas, minimapCtx;
+        const clock = new THREE.Clock();
+        const raycaster = new THREE.Raycaster(); // Reusable raycaster
+
+        // Movement variables
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        const velocity = new THREE.Vector3();
+        const force = new THREE.Vector3();
+        const moveDirection = new THREE.Vector3(); // Direction based on camera for applying force
+
+        // Maze/World constants
+        const MAZE_SCALE_3D = 5;
+        const WALL_HEIGHT = MAZE_SCALE_3D;
+        const PLAYER_RADIUS = MAZE_SCALE_3D * 0.2; // *** Ball radius halved ***
+        const PLAYER_MASS = 1.0;
+        let MOVEMENT_FORCE = PLAYER_MASS * 50.0; // Slightly increased force maybe
+        const DAMPING = 0.97;
+        let BOUNCE_DAMPING = 0.2;
+        const GRID_CENTER_OFFSET = (GRID_SIZE - 1) / 2;
+        const MAZE_HALF_WIDTH_3D = (GRID_SIZE / 2) * MAZE_SCALE_3D;
+
+        // Camera constants
+        const CAMERA_HEIGHT = WALL_HEIGHT * 0.7; // Camera height inside corridor
+        const CAMERA_FOLLOW_DISTANCE = MAZE_SCALE_3D * 1.8; // How far behind the ball
+        const CAMERA_LERP_FACTOR = 0.08; // Smoothing factor (adjust as needed)
+        const MIN_VELOCITY_THRESHOLD_SQ = 0.01; // Square of minimum speed to consider moving
+
+        let mazeData;
+        const wallMeshes = []; // Array to hold wall Mesh objects for raycasting
+        let lastMoveDirection = new THREE.Vector3(0, 0, -1); // Remember last direction for when stopped
+
+        let pellets = [];
+        let score = 0;
+
+        let cherryEffectActive = false;
+        let cherryEffectTimeout;
+        let cherryCountdownInterval;
+
+        // Add ghost variables
+        let ghost;
+        const ghostPosition = { x: 0, z: 0 }; // Initial ghost position in world coordinates
+        const GHOST_RADIUS = PLAYER_RADIUS * 0.9; // Slightly smaller than the player
+        const GHOST_HEIGHT = GHOST_RADIUS ; // Capsule height
+
+        // Update ghost variables
+        let ghostVelocity = new THREE.Vector3(1, 0, 1); // Initial velocity for the ghost
+        const GHOST_SPEED_LIMIT = MOVEMENT_FORCE / PLAYER_MASS; // Match player's max speed
+
+        function flipNormals(geometry) {
+            const normals = geometry.attributes.normal.array;
+            for (let i = 0; i < normals.length; i += 3) {
+                normals[i] *= -1;
+                normals[i + 1] *= -1;
+                normals[i + 2] *= -1;
+            }
+            geometry.attributes.normal.needsUpdate = true;
+        }
+
+        function createBlueSphereMaterial() {
+            const material = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: {
+                    time: { value: 0.0 } // Uniform to pass time for animation
+                },
+                transparent: true // Enable transparency
+            });
+
+            return material;
+        }
+
+        function createPellets() {
+            const centerRow = mazeData.wrapPoints.centerRow;
+            const centerCol = mazeData.wrapPoints.centerCol;
+            const blueSpherePositions = [
+                { x: 0, y: centerRow },                // Left
+                { x: GRID_SIZE - 1, y: centerRow },    // Right
+                { x: centerCol, y: 0 },                // Top
+                { x: centerCol, y: GRID_SIZE - 1 }     // Bottom
+            ];
+
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    if (mazeData.grid[y][x] === 0) {
+                        const isBlueSphere = blueSpherePositions.some(pos => pos.x === x && pos.y === y);
+                        const radius = isBlueSphere ? PLAYER_RADIUS * 2.5 : PLAYER_RADIUS * 0.3;
+                        const geometry = new THREE.SphereGeometry(radius, 16, 8);
+
+                        const material = isBlueSphere
+                            ? createBlueSphereMaterial() // Use the custom shader for blue spheres
+                            : new THREE.MeshStandardMaterial({
+                                color: 0xffff00, // Yellow for pellets
+                                side: THREE.FrontSide
+                            });
+
+                        const pellet = new THREE.Mesh(geometry, material);
+                        const worldPos = gridToWorld(x, y);
+                        pellet.position.set(worldPos.x, radius, worldPos.z); // y = radius to touch floor
+                        scene.add(pellet);
+                        pellets.push({ mesh: pellet, gridX: x, gridY: y, isBlueSphere: isBlueSphere });
+                    }
+                }
+            }
+
+            // Replace a random regular pellet with the cherry
+            const regularPellets = pellets.filter(p => !p.isBlueSphere);
+            if (regularPellets.length > 0) {
+                const cherryIndex = Math.floor(Math.random() * regularPellets.length);
+                const cherry = regularPellets[cherryIndex];
+                const cherryRadius = PLAYER_RADIUS * 0.5;
+                const cherryGeometry = new THREE.SphereGeometry(cherryRadius, 16, 8);
+                const cherryMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+                const cherryMesh = new THREE.Mesh(cherryGeometry, cherryMaterial);
+                cherryMesh.position.set(cherry.mesh.position.x, cherryRadius, cherry.mesh.position.z);
+                scene.remove(cherry.mesh);
+                scene.add(cherryMesh);
+                const originalIndex = pellets.findIndex(p => p === cherry);
+                pellets[originalIndex] = {
+                    mesh: cherryMesh,
+                    gridX: cherry.gridX,
+                    gridY: cherry.gridY,
+                    isCherry: true
+                };
+            }
+        }
+
+        function checkPelletCollision() {
+            const playerGrid = worldToGrid(playerBall.position.x, playerBall.position.z);
+
+            for (let i = pellets.length - 1; i >= 0; i--) {
+                const pellet = pellets[i];
+                if (pellet.gridX === playerGrid.x && pellet.gridY === playerGrid.y) {
+                    if (!pellet.isBlueSphere) {
+                        // Remove pellet from scene and array
+                        scene.remove(pellet.mesh);
+                        pellets.splice(i, 1);
+
+                        // Update score
+                        if (pellet.isCherry) {
+                            score += 50; // Cherry gives more points
+                            activateCherryEffect(); // Activate cherry effect
+                        } else {
+                            score += 10;
+                        }
+                        document.getElementById('scoreDisplay').innerText = `Score: ${score}`;
+                    }
+                }
+            }
+
+            // Check if all pellets are collected
+            if (pellets.length === 0) {
+                nextLevel(); // Progress to the next level
+            }
+        }
+
+        function activateCherryEffect() {
+            if (cherryEffectActive) {
+                clearTimeout(cherryEffectTimeout);
+                clearInterval(cherryCountdownInterval);
+            }
+
+            cherryEffectActive = true;
+            MOVEMENT_FORCE *= 1.75; // Increase movement speed by 1.5x
+            BOUNCE_DAMPING = 0.9; // Increase bounce damping during cherry effect
+
+            const countdownElement = document.getElementById('cherryCountdown');
+            countdownElement.style.display = 'block';
+            let countdown = 10;
+            countdownElement.innerText = countdown;
+
+            cherryCountdownInterval = setInterval(() => {
+                countdown -= 1;
+                countdownElement.innerText = countdown;
+
+                if (countdown <= 0) {
+                    clearInterval(cherryCountdownInterval);
+                    countdownElement.style.display = 'none';
+                }
+            }, 1000);
+
+            cherryEffectTimeout = setTimeout(() => {
+                MOVEMENT_FORCE /= 1.5; // Reset movement speed
+                BOUNCE_DAMPING = 0.2; // Reset bounce damping
+                cherryEffectActive = false;
+            }, 10000); // 10 seconds
+        }
+
+        function createGhost() {
+            const ghostMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff, // White
+                transparent: true,
+                opacity: 0.5,
+                blending: THREE.AdditiveBlending, // Additive transparency
+            });
+
+            // Create the cylinder (body)
+            const cylinderGeometry = new THREE.CylinderGeometry(GHOST_RADIUS, GHOST_RADIUS, GHOST_HEIGHT, 16);
+            const cylinder = new THREE.Mesh(cylinderGeometry, ghostMaterial);
+
+            // Create the sphere (head)
+            const sphereGeometry = new THREE.SphereGeometry(GHOST_RADIUS, 16, 8);
+            const sphere = new THREE.Mesh(sphereGeometry, ghostMaterial);
+            sphere.position.y = GHOST_HEIGHT / 2; // Position the sphere on top of the cylinder
+
+            // Combine the cylinder and sphere into one group
+            ghost = new THREE.Group();
+            ghost.add(cylinder);
+            ghost.add(sphere);
+
+            // Set initial position
+            ghost.position.set(ghostPosition.x, GHOST_RADIUS, ghostPosition.z);
+
+            scene.add(ghost);
+        }
+
+        let lives = 3; // Player starts with 3 lives
+        let ghostActive = true; // Track if the ghost is active
+        let level = 1; // Track the current level
+        let ghostTargetingChance = 0.3; // Initial chance for the ghost to target the player
+
+        function spawnAtRandomPosition() {
+            let randomPosition;
+            do {
+                const randomX = Math.floor(Math.random() * GRID_SIZE);
+                const randomY = Math.floor(Math.random() * GRID_SIZE);
+                if (mazeData.grid[randomY][randomX] === 0) {
+                    randomPosition = gridToWorld(randomX, randomY);
+                }
+            } while (!randomPosition);
+            return randomPosition;
+        }
+
+        function respawnPlayer() {
+            const randomPosition = spawnAtRandomPosition();
+            playerBall.position.set(randomPosition.x, PLAYER_RADIUS, randomPosition.z);
+            velocity.set(0, 0, 0); // Reset velocity
+        }
+
+        function respawnGhost() {
+            const randomPosition = spawnAtRandomPosition();
+            ghost.position.set(randomPosition.x, GHOST_RADIUS, randomPosition.z);
+            ghostVelocity.set(1, 0, 1).normalize().multiplyScalar(GHOST_SPEED_LIMIT * 0.5); // Reset ghost velocity
+            ghostActive = true;
+        }
+
+        function updateGhostPosition(delta) {
+            if (!ghostActive) return;
+
+            // Randomly decide whether to target the player or move randomly
+            const shouldTargetPlayer = Math.random() < ghostTargetingChance;
+
+            let directionToPlayer;
+            if (shouldTargetPlayer) {
+                directionToPlayer = playerBall.position.clone().sub(ghost.position).normalize();
+            } else {
+                directionToPlayer = new THREE.Vector3(
+                    Math.random() - 0.5,
+                    0,
+                    Math.random() - 0.5
+                ).normalize();
+            }
+
+            ghostVelocity.copy(directionToPlayer).multiplyScalar(GHOST_SPEED_LIMIT * 0.8); // Move ghost
+
+            const intendedPosition = ghost.position.clone().addScaledVector(ghostVelocity, delta);
+
+            // Check for collisions with walls
+            const collisionInfo = checkCollision(intendedPosition, GHOST_RADIUS);
+            if (collisionInfo) {
+                ghostVelocity.reflect(collisionInfo.normal);
+                ghostVelocity.multiplyScalar(BOUNCE_DAMPING);
+                ghost.position.addScaledVector(collisionInfo.normal, collisionInfo.depth * 1.01);
+            } else {
+                ghost.position.copy(intendedPosition);
+            }
+
+            // Check if ghost reaches the player
+            const distanceToPlayer = ghost.position.distanceTo(playerBall.position);
+            if (distanceToPlayer < PLAYER_RADIUS + GHOST_RADIUS) {
+                handleGhostCollision();
+            }
+        }
+
+        function handleGhostCollision() {
+            if (cherryEffectActive) {
+                // Player catches the ghost
+                score += 100; // Bonus points for catching the ghost
+                lives += 1; // Add an extra life
+                ghostActive = false; // Deactivate the ghost
+                scene.remove(ghost); // Temporarily remove the ghost
+                setTimeout(respawnGhost, 10000); // Respawn ghost after cherry effect ends
+            } else {
+                // Ghost catches the player
+                lives -= 1;
+                displayMessage(`Lives: ${lives} | Score: ${score}`, 1000);
+
+                if (lives <= 0) {
+                    displayMessage("GAME OVER", 3000, true);
+                    setTimeout(() => location.reload(), 3000); // Reload the game after 3 seconds
+                } else {
+                    respawnPlayer();
+                }
+            }
+        }
+
+        function displayMessage(message, duration, isGameOver = false) {
+            const messageElement = document.createElement("div");
+            messageElement.style.position = "absolute";
+            messageElement.style.top = "50%";
+            messageElement.style.left = "50%";
+            messageElement.style.transform = "translate(-50%, -50%)";
+            messageElement.style.fontSize = isGameOver ? "50px" : "30px";
+            messageElement.style.color = isGameOver ? "red" : "white";
+            messageElement.style.fontWeight = "bold";
+            messageElement.style.zIndex = "300";
+            messageElement.style.textAlign = "center";
+            messageElement.innerText = message;
+            document.body.appendChild(messageElement);
+
+            setTimeout(() => {
+                document.body.removeChild(messageElement);
+            }, duration);
+        }
+
+        function nextLevel() {
+            level++;
+            ghostTargetingChance = Math.min(0.3 + level * 0.05, 0.8); // Increase targeting chance with level
+            document.getElementById('levelDisplay').innerText = `Level: ${level}`;
+            respawnGhost(); // Reset ghost position for the new level
+        }
+
+        function init() {
+            mazeData = generateSymmetricMaze();
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x112233);
+            scene.fog = new THREE.Fog(0x112233, MAZE_SCALE_3D * 3, MAZE_SCALE_3D * GRID_SIZE * 0.6); // Adjust fog
+
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, MAZE_SCALE_3D * GRID_SIZE * 1.5);
+
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+
+            const ambientLight = new THREE.AmbientLight(0x707090); // Slightly brighter ambient
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(0.7, 1, 0.5).normalize();
+            scene.add(directionalLight);
+
+            // Player Ball (ensure correct Y position)
+            const playerGeometry = new THREE.SphereGeometry(PLAYER_RADIUS, 24, 12); // Slightly fewer segments okay
+            const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xffaa00, roughness: 0.4, metalness: 0.1 });
+            playerBall = new THREE.Mesh(playerGeometry, playerMaterial);
+            scene.add(playerBall);
+
+            createMazeGeometry(); // Populates wallMeshes
+            createPellets(); // Add pellets to the maze
+            createGhost(); // Add the ghost to the scene
+
+            respawnPlayer(); // Spawn player at random position
+            respawnGhost(); // Spawn ghost at random position
+
+            minimapCanvas = document.getElementById('minimapCanvas');
+            minimapCtx = minimapCanvas.getContext('2d');
+            minimapCanvas.width = 150;
+            minimapCanvas.height = 150;
+
+            setupControls(); // Setup listeners for movement ONLY
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        // findStartPosition, gridToWorld, worldToGrid (Unchanged)
+        function findStartPosition() { const centerGridX = GRID_CENTER_OFFSET +1; const centerGridY = GRID_CENTER_OFFSET +1; if (mazeData.grid[centerGridY][centerGridX] === 0) { return gridToWorld(centerGridX, centerGridY); } for (let r = 1; r < GRID_SIZE / 2; r++) { for (let dy = -r; dy <= r; dy++) { for (let dx = -r; dx <= r; dx++) { if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue; let gx = centerGridX + dx; let gy = centerGridY + dy; if (gx >= 0 && gx < GRID_SIZE && gy >= 0 && gy < GRID_SIZE && mazeData.grid[gy][gx] === 0) { return gridToWorld(gx, gy); } } } } console.warn("Could not find a starting passage!"); return { x: 0, y: PLAYER_RADIUS, z: 0 }; }
+        function gridToWorld(gridX, gridY) { return { x: (gridX - GRID_CENTER_OFFSET) * MAZE_SCALE_3D, z: (gridY - GRID_CENTER_OFFSET) * MAZE_SCALE_3D }; }
+        function worldToGrid(worldX, worldZ) { return { x: Math.round((worldX / MAZE_SCALE_3D) + GRID_CENTER_OFFSET), y: Math.round((worldZ / MAZE_SCALE_3D) + GRID_CENTER_OFFSET) }; }
+
+        function setupControls() {
+            const mobileControlsUI = document.getElementById('mobileControls');
+            const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+            // Movement Keys
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+
+            // Mobile Movement Buttons
+            if (isTouchDevice) {
+                mobileControlsUI.style.display = 'block';
+                const buttons = { 'moveForwardBtn': 'forward', 'moveBackwardBtn': 'backward', 'moveLeftBtn': 'left', 'moveRightBtn': 'right' };
+                for (const [id, direction] of Object.entries(buttons)) {
+                    const btn = document.getElementById(id);
+                    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); setMove(direction, true); }, { passive: false });
+                    btn.addEventListener('pointerup', (e) => { e.preventDefault(); setMove(direction, false); }, { passive: false });
+                    btn.addEventListener('pointerleave', (e) => { setMove(direction, false); });
+                 }
+            }
+
+             // NO Camera Orbit listeners needed anymore
+             // canvas.addEventListener('pointerdown', onPointerDown); // REMOVED
+             // canvas.addEventListener('pointermove', onPointerMove); // REMOVED
+             // canvas.addEventListener('pointerup', onPointerUp);     // REMOVED
+             // canvas.addEventListener('pointerout', onPointerUp);    // REMOVED
+             // canvas.addEventListener('wheel', onMouseWheel, { passive: false }); // REMOVED
+        }
+
+        function setMove(direction, value) { /* ... (same as before) ... */ switch(direction) { case 'forward': moveForward = value; break; case 'backward': moveBackward = value; break; case 'left': moveLeft = value; break; case 'right': moveRight = value; break; } }
+        function onKeyDown(event) { /* ... (same as before) ... */ switch (event.code) { case 'ArrowUp': case 'KeyW': moveForward = true; break; case 'ArrowLeft': case 'KeyA': moveLeft = true; break; case 'ArrowDown': case 'KeyS': moveBackward = true; break; case 'ArrowRight': case 'KeyD': moveRight = true; break; } }
+        function onKeyUp(event) { /* ... (same as before) ... */ switch (event.code) { case 'ArrowUp': case 'KeyW': moveForward = false; break; case 'ArrowLeft': case 'KeyA': moveLeft = false; break; case 'ArrowDown': case 'KeyS': moveBackward = false; break; case 'ArrowRight': case 'KeyD': moveRight = false; break; } }
+
+        function createMazeGeometry() {
+            // Ensure wallMeshes is cleared if regenerating maze
+            // wallMeshes.length = 0; // If maze could be regenerated
+            const wallGeometry = new THREE.BoxGeometry(MAZE_SCALE_3D, WALL_HEIGHT, MAZE_SCALE_3D);
+            const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x888899, roughness: 0.8, metalness: 0.2 });
+            const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x556655, roughness: 0.9, metalness: 0.1 });
+
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    if (mazeData.grid[y][x] === 1) {
+                        const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+                        const worldPos = gridToWorld(x, y);
+                        wall.position.set(worldPos.x, WALL_HEIGHT / 2, worldPos.z);
+                        scene.add(wall);
+                        wallMeshes.push(wall); // *** Add wall mesh to array for raycasting ***
+                    }
+                }
+            }
+            const floorGeometry = new THREE.PlaneGeometry(GRID_SIZE * MAZE_SCALE_3D, GRID_SIZE * MAZE_SCALE_3D);
+            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.rotation.x = -Math.PI / 2; floor.position.y = 0;
+            scene.add(floor);
+        }
+
+        function onWindowResize() { /* ... (same as before) ... */ camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            // Update the time uniform for all blue spheres
+            for (const pellet of pellets) {
+                if (pellet.isBlueSphere) {
+                    pellet.mesh.material.uniforms.time.value += delta;
+                }
+            }
+
+            updateMovement(delta);
+            handleToroidalWrap();
+            checkPelletCollision();
+            updateGhostPosition(delta);
+            updateCamera(delta);
+
+            renderer.render(scene, camera);
+            drawMinimap();
+        }
+
+        function updateMovement(delta) { /* ... (physics and collision response logic largely unchanged) ... */ force.set(0, 0, 0); const cameraDirection = new THREE.Vector3(); camera.getWorldDirection(cameraDirection); cameraDirection.y = 0; cameraDirection.normalize(); const rightDirection = new THREE.Vector3().crossVectors(camera.up, cameraDirection).normalize(); if (moveForward) force.add(cameraDirection); if (moveBackward) force.sub(cameraDirection); if (moveLeft) force.add(rightDirection); if (moveRight) force.sub(rightDirection); force.normalize().multiplyScalar(MOVEMENT_FORCE); const acceleration = force.divideScalar(PLAYER_MASS); velocity.addScaledVector(acceleration, delta); velocity.multiplyScalar(Math.pow(DAMPING, delta * 60)); const deltaPosition = velocity.clone().multiplyScalar(delta); const intendedPosition = playerBall.position.clone().add(deltaPosition); const collisionInfo = checkCollision(intendedPosition); if (collisionInfo) { const n = collisionInfo.normal; velocity.reflect(n); velocity.multiplyScalar(BOUNCE_DAMPING); playerBall.position.addScaledVector(n, collisionInfo.depth * 1.01); const correctedDeltaPos = velocity.clone().multiplyScalar(delta * (1 - collisionInfo.timeFraction || 1)); playerBall.position.add(correctedDeltaPos); } else { playerBall.position.copy(intendedPosition); } playerBall.position.y = PLAYER_RADIUS; }
+        function checkCollision(newPosition) {
+            // Use smaller angle increments for smoother turning
+            const checkAngles = [];
+            for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 16) { // Reduced step size
+                checkAngles.push(angle);
+            }
+
+            let deepestCollision = null;
+            for (const angle of checkAngles) {
+                const checkOffsetX = Math.cos(angle) * PLAYER_RADIUS;
+                const checkOffsetZ = Math.sin(angle) * PLAYER_RADIUS;
+                const checkPoint = new THREE.Vector3(newPosition.x + checkOffsetX, newPosition.y, newPosition.z + checkOffsetZ);
+                const currentGridPos = worldToGrid(checkPoint.x, checkPoint.z);
+
+                for (let yOffset = -0; yOffset <= 0; yOffset++) {
+                    for (let xOffset = -0; xOffset <= 0; xOffset++) {
+                        const checkGridX = currentGridPos.x + xOffset;
+                        const checkGridY = currentGridPos.y + yOffset;
+
+                        if (checkGridX < 0 || checkGridX >= GRID_SIZE || checkGridY < 0 || checkGridY >= GRID_SIZE) {
+                            continue;
+                        }
+
+                        if (mazeData.grid[checkGridY][checkGridX] === 1) {
+                            const wallWorldPos = gridToWorld(checkGridX, checkGridY);
+                            const wallMinX = wallWorldPos.x - MAZE_SCALE_3D / 2;
+                            const wallMaxX = wallWorldPos.x + MAZE_SCALE_3D / 2;
+                            const wallMinZ = wallWorldPos.z - MAZE_SCALE_3D / 2;
+                            const wallMaxZ = wallWorldPos.z + MAZE_SCALE_3D / 2;
+
+                            const playerMinX = newPosition.x - PLAYER_RADIUS;
+                            const playerMaxX = newPosition.x + PLAYER_RADIUS;
+                            const playerMinZ = newPosition.z - PLAYER_RADIUS;
+                            const playerMaxZ = newPosition.z + PLAYER_RADIUS;
+
+                            if (playerMaxX > wallMinX && playerMinX < wallMaxX && playerMaxZ > wallMinZ && playerMinZ < wallMaxZ) {
+                                const wallCenter = new THREE.Vector3(wallWorldPos.x, PLAYER_RADIUS, wallWorldPos.z);
+                                const delta = newPosition.clone().sub(wallCenter);
+
+                                const overlapX = (PLAYER_RADIUS + MAZE_SCALE_3D / 2) - Math.abs(delta.x);
+                                const overlapZ = (PLAYER_RADIUS + MAZE_SCALE_3D / 2) - Math.abs(delta.z);
+
+                                let normal = new THREE.Vector3();
+                                let penetrationDepth = 0;
+
+                                if (overlapX < overlapZ) {
+                                    normal.set(Math.sign(delta.x), 0, 0);
+                                    penetrationDepth = overlapX;
+                                } else {
+                                    normal.set(0, 0, Math.sign(delta.z));
+                                    penetrationDepth = overlapZ;
+                                }
+
+                                if (!deepestCollision || penetrationDepth > deepestCollision.depth) {
+                                    deepestCollision = { normal: normal.clone(), depth: penetrationDepth };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return deepestCollision;
+        }
+        function handleToroidalWrap() {
+            const playerPos = playerBall.position;
+            const wrapRowWorldZ = (mazeData.wrapPoints.centerRow - GRID_CENTER_OFFSET) * MAZE_SCALE_3D;
+            const wrapColWorldX = (mazeData.wrapPoints.centerCol - GRID_CENTER_OFFSET) * MAZE_SCALE_3D;
+            const wrapThreshold = MAZE_SCALE_3D * 0.8;
+            const edgeBoundary = MAZE_HALF_WIDTH_3D - MAZE_SCALE_3D * 0.1;
+            const teleportOffset = PLAYER_RADIUS * 1.1;
+
+            // Prevent immediate re-wrap
+            if (justWrapped) {
+                justWrapped = false; // Reset the flag after one frame
+                return;
+            }
+
+            let didWrap = false;
+
+            // Check Left/Right Wraps
+            if (Math.abs(playerPos.z - wrapRowWorldZ) < wrapThreshold) {
+                if (playerPos.x < -edgeBoundary) {
+                    playerPos.x = edgeBoundary - teleportOffset;
+                    didWrap = true;
+                } else if (playerPos.x > edgeBoundary) {
+                    playerPos.x = -edgeBoundary + teleportOffset;
+                    didWrap = true;
+                }
+            }
+
+            // Check Top/Bottom Wraps
+            if (Math.abs(playerPos.x - wrapColWorldX) < wrapThreshold) {
+                if (playerPos.z < -edgeBoundary) {
+                    playerPos.z = edgeBoundary - teleportOffset;
+                    didWrap = true;
+                } else if (playerPos.z > edgeBoundary) {
+                    playerPos.z = -edgeBoundary + teleportOffset;
+                    didWrap = true;
+                }
+            }
+
+            if (didWrap) {
+                justWrapped = true; // Set the flag to prevent immediate re-wrap
+
+                // Immediately reposition the camera to follow the ball at the new position
+                const followDirection = new THREE.Vector3(0, 0, -1); // Default direction
+                const backwardOffset = followDirection.multiplyScalar(-CAMERA_FOLLOW_DISTANCE);
+                const newCameraPosition = playerPos.clone().add(backwardOffset);
+                newCameraPosition.y = CAMERA_HEIGHT;
+
+                // Update camera position directly
+                camera.position.copy(newCameraPosition);
+
+                // Ensure the camera looks at the ball
+                camera.lookAt(playerPos);
+            }
+        }
+
+        // --- Updated Camera Logic ---
+        function updateCamera(delta) {
+            const ballPosition = playerBall.position;
+            let followDirection = new THREE.Vector3();
+
+            // Determine the direction the camera should be behind
+            if (velocity.lengthSq() > MIN_VELOCITY_THRESHOLD_SQ) {
+                followDirection.copy(velocity).normalize();
+                lastMoveDirection.copy(followDirection); // Remember this direction
+            } else {
+                followDirection.copy(lastMoveDirection);
+            }
+
+            // Calculate the raw desired camera position
+            const backwardOffset = followDirection.clone().multiplyScalar(-CAMERA_FOLLOW_DISTANCE);
+            const rawDesiredPosition = ballPosition.clone().add(backwardOffset);
+            rawDesiredPosition.y = CAMERA_HEIGHT;
+
+            // Raycast for obstructions
+            let finalTargetPosition = rawDesiredPosition.clone();
+            const rayDirection = rawDesiredPosition.clone().sub(ballPosition).normalize();
+            raycaster.set(ballPosition, rayDirection);
+            raycaster.far = rawDesiredPosition.clone().sub(ballPosition).length();
+
+            const intersects = raycaster.intersectObjects(wallMeshes, false);
+            if (intersects.length > 0) {
+                const hitDistance = intersects[0].distance;
+                const adjustedDistance = Math.max(hitDistance * 0.9, PLAYER_RADIUS * 2);
+                finalTargetPosition = ballPosition.clone().addScaledVector(rayDirection, adjustedDistance);
+                finalTargetPosition.y = CAMERA_HEIGHT;
+            }
+
+            // Smoothly interpolate camera position
+            camera.position.lerp(finalTargetPosition, CAMERA_LERP_FACTOR);
+
+            // Always look at the ball
+            camera.lookAt(ballPosition);
+        }
+        // --- End Updated Camera Logic ---
+
+        function drawMinimap() {
+            const mmWidth = minimapCanvas.width;
+            const mmHeight = minimapCanvas.height;
+            const mmCellSize = mmWidth / GRID_SIZE;
+
+            // Clear the minimap
+            minimapCtx.fillStyle = 'rgba(10, 10, 10, 0.8)';
+            minimapCtx.fillRect(0, 0, mmWidth, mmHeight);
+
+            // Draw the maze
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    if (mazeData.grid[y][x] === 1) {
+                        minimapCtx.fillStyle = '#aaa'; // Walls
+                    } else {
+                        const isWrapHorizontal = (x === 0 || x === GRID_SIZE - 1) && y === mazeData.wrapPoints.centerRow;
+                        const isWrapVertical = (y === 0 || y === GRID_SIZE - 1) && x === mazeData.wrapPoints.centerCol;
+                        if (isWrapHorizontal || isWrapVertical) {
+                            minimapCtx.fillStyle = 'red'; // Wrap points
+                        } else {
+                            minimapCtx.fillStyle = '#444'; // Passages
+                        }
+                    }
+                    minimapCtx.fillRect(
+                        Math.floor(x * mmCellSize),
+                        Math.floor(y * mmCellSize),
+                        Math.ceil(mmCellSize),
+                        Math.ceil(mmCellSize)
+                    );
+                }
+            }
+
+            // Draw the pellets
+            // Draw the pellets
+            for (const pellet of pellets) {
+                if (pellet.isCherry) {
+                    minimapCtx.fillStyle = 'red';
+                } else if (pellet.isBlueSphere) {
+                    minimapCtx.fillStyle = 'blue';
+                } else {
+                    minimapCtx.fillStyle = 'yellow';
+                }
+                const pelletMmX = pellet.gridX * mmCellSize + mmCellSize / 2;
+                const pelletMmY = pellet.gridY * mmCellSize + mmCellSize / 2;
+                minimapCtx.beginPath();
+                minimapCtx.arc(pelletMmX, pelletMmY, Math.max(2, mmCellSize * 0.2), 0, Math.PI * 2);
+                minimapCtx.fill();
+            }
+
+            // Draw the ghost
+            //const ghostGrid = worldToGrid(ghostPosition.x, ghostPosition.z);
+            const ghostGrid = worldToGrid(ghost.position.x, ghost.position.z);
+            const ghostMmX = ghostGrid.x * mmCellSize + mmCellSize / 2;
+            const ghostMmY = ghostGrid.y * mmCellSize + mmCellSize / 2;
+            minimapCtx.fillStyle = 'purple'; // Ghost color
+            minimapCtx.beginPath();
+            minimapCtx.arc(ghostMmX, ghostMmY, Math.max(3, mmCellSize * 0.3), 0, Math.PI * 2);
+            minimapCtx.fill();
+
+            // Draw the player
+            const playerPos = playerBall.position;
+            const playerGrid = worldToGrid(playerPos.x, playerPos.z);
+            const playerMmX = playerGrid.x * mmCellSize + mmCellSize / 2;
+            const playerMmY = playerGrid.y * mmCellSize + mmCellSize / 2;
+            minimapCtx.fillStyle = 'lime'; // Player color
+            minimapCtx.beginPath();
+            minimapCtx.arc(playerMmX, playerMmY, Math.max(2, mmCellSize * 0.4), 0, Math.PI * 2);
+            minimapCtx.fill();
+
+            // Draw the player's look direction
+            const lookDirection = new THREE.Vector3();
+            camera.getWorldDirection(lookDirection);
+            const angle = Math.atan2(lookDirection.x, lookDirection.z);
+            minimapCtx.strokeStyle = 'yellow';
+            minimapCtx.lineWidth = Math.max(1, mmCellSize * 0.1);
+            minimapCtx.beginPath();
+            minimapCtx.moveTo(playerMmX, playerMmY);
+            minimapCtx.lineTo(
+                playerMmX + Math.sin(angle) * mmCellSize * 0.8,
+                playerMmY + Math.cos(angle) * mmCellSize * 0.8
+            );
+            minimapCtx.stroke();
+        }
+
+        // --- Start the application ---
+        init();
+
+    </script>
+</body>
+</html>

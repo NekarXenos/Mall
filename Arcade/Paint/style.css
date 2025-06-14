@@ -1,0 +1,44 @@
+body {
+    margin: 0;
+    overflow: hidden; /* Prevent scrollbars */
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background-color: #f0f0f0;
+    font-family: sans-serif;
+}
+
+.controls {
+    background-color: #ddd;
+    padding: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Spacing between controls */
+    flex-wrap: wrap; /* Allow controls to wrap on smaller screens */
+}
+
+.controls label {
+    font-weight: bold;
+}
+
+.controls input[type="range"] {
+    vertical-align: middle;
+}
+
+.controls span {
+    min-width: 25px; /* Ensure space for value display */
+    display: inline-block;
+    text-align: right;
+    font-family: monospace;
+}
+
+
+#paintCanvas {
+    display: block; /* Remove potential extra space below canvas */
+    background-color: #ffffff;
+    cursor: crosshair;
+    flex-grow: 1; /* Allow canvas to fill remaining space */
+    width: 100%; /* Take full width */
+}

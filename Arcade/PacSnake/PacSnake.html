@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pac-Snake</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        canvas { border: 1px solid black; }
+        .d-pad {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+            touch-action: none;
+        }
+        .arrow {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .arrow:active {
+            background: rgba(255, 255, 255, 0.8);
+        }
+        .up { grid-column: 2; grid-row: 1; }
+        .down { grid-column: 2; grid-row: 3; }
+        .left { grid-column: 1; grid-row: 2; }
+        .right { grid-column: 3; grid-row: 2; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="400" height="400"></canvas>
+    <div class="d-pad">
+        <div class="arrow up" ontouchstart="handleDirectionChange('up')">↑</div>
+        <div class="arrow down" ontouchstart="handleDirectionChange('down')">↓</div>
+        <div class="arrow left" ontouchstart="handleDirectionChange('left')">←</div>
+        <div class="arrow right" ontouchstart="handleDirectionChange('right')">→</div>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const GRID_SIZE = 20;
+        const CELL_SIZE = canvas.width / GRID_SIZE;
+        
+        let snake = [{x: 10, y: 10}];
+        let direction = null;
+        let nextDirection = null;
+        let pellets = [];
+        let pelletCount = 0;
+        let maze = [];
+        
+        function initGame() {
+            generateMaze();
+            generatePellets();
+            document.addEventListener('keydown', handleKeyPress);
+            draw();
+        }
+
+        function generateMaze() {
+            maze = Array(GRID_SIZE).fill().map(() => 
+                Array(GRID_SIZE).fill().map(() => Math.random() < 0.2 ? 1 : 0)
+            );
+            maze[10][10] = 0;
+        }
+
+        function generatePellets() {
+            pellets = [];
+            for(let y = 0; y < GRID_SIZE; y++) {
+                for(let x = 0; x < GRID_SIZE; x++) {
+                    if(maze[y][x] === 0 && !snake.some(s => s.x === x && s.y === y)) {
+                        pellets.push({x, y});
+                    }
+                }
+            }
+        }
+
+        function handleKeyPress(e) {
+            switch(e.key) {
+                case 'ArrowUp': handleDirectionChange('up'); break;
+                case 'ArrowDown': handleDirectionChange('down'); break;
+                case 'ArrowLeft': handleDirectionChange('left'); break;
+                case 'ArrowRight': handleDirectionChange('right'); break;
+            }
+        }
+
+        function handleDirectionChange(newDirection) {
+            if ((newDirection === 'up' && direction !== 'down') ||
+                (newDirection === 'down' && direction !== 'up') ||
+                (newDirection === 'left' && direction !== 'right') ||
+                (newDirection === 'right' && direction !== 'left')) {
+                nextDirection = newDirection;
+                direction = nextDirection;
+                moveSnake();
+                nextDirection = null;
+            }
+        }
+
+        function moveSnake() {
+            if (!direction) return;
+
+            const head = {...snake[0]};
+            
+            switch(direction) {
+                case 'up': head.y = (head.y - 1 + GRID_SIZE) % GRID_SIZE; break;
+                case 'down': head.y = (head.y + 1) % GRID_SIZE; break;
+                case 'left': head.x = (head.x - 1 + GRID_SIZE) % GRID_SIZE; break;
+                case 'right': head.x = (head.x + 1) % GRID_SIZE; break;
+            }
+
+            if(maze[head.y][head.x] === 1) return;
+            if(snake.some(s => s.x === head.x && s.y === head.y)) return gameOver();
+
+            const pelletIndex = pellets.findIndex(p => p.x === head.x && p.y === head.y);
+            let shouldGrow = false;
+
+            if(pelletIndex > -1) {
+                pellets.splice(pelletIndex, 1);
+                pelletCount++;
+                shouldGrow = pelletCount % 5 === 0;
+            }
+
+            snake.unshift(head);
+            
+            // Only pop tail if not growing
+            if (!shouldGrow) {
+                snake.pop();
+            }
+
+            if(pellets.length === 0) generatePellets();
+            draw();
+        }
+
+        function gameOver() {
+            alert('Game Over!');
+            snake = [{x: 10, y: 10}];
+            direction = null;
+            pelletCount = 0;
+            generatePellets();
+            draw();
+        }
+
+        function draw() {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#000080';
+            for(let y = 0; y < GRID_SIZE; y++) {
+                for(let x = 0; x < GRID_SIZE; x++) {
+                    if(maze[y][x] === 1) {
+                        ctx.fillRect(x*CELL_SIZE, y*CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    }
+                }
+            }
+            
+            ctx.fillStyle = 'white';
+            pellets.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x*CELL_SIZE+CELL_SIZE/2, p.y*CELL_SIZE+CELL_SIZE/2, 3, 0, Math.PI*2);
+                ctx.fill();
+            });
+            
+            snake.forEach((seg, i) => {
+                ctx.fillStyle = i === 0 ? 'yellow' : '#00FF00';
+                ctx.fillRect(seg.x*CELL_SIZE+1, seg.y*CELL_SIZE+1, CELL_SIZE-2, CELL_SIZE-2);
+            });
+        }
+
+        initGame();
+    </script>
+</body>
+</html>

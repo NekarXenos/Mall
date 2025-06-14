@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flying Tracks</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: sans-serif;
+            text-shadow: 1px 1px 2px black;
+            z-index: 10;
+        }
+        #paintStatus {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-family: sans-serif;
+            text-shadow: 1px 1px 2px black;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        Controls:<br>
+        Arrow Up/Down: Pitch<br>
+        Arrow Left/Right: Roll<br>
+        W/S: Throttle (Speed)<br>
+        A/D: Yaw<br>
+        F: Toggle Track Printing<br>
+        T: Toggle Flat/Tube Track<br>
+        P: Take Snapshot
+    </div>
+    <div id="paintStatus">Track: OFF | Mode: Flat</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let plane;
+        let clock = new THREE.Clock();
+
+        // Plane physics/movement variables
+        let speed = 0;
+        const maxSpeed = 10;
+        const acceleration = 0.05;
+        const deceleration = 0.02;
+        const pitchSpeed = 0.02;
+        const rollSpeed = 0.03;
+        const yawSpeed = 0.01;
+        const damping = 0.98;
+
+        let keys = {
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false,
+            w: false,
+            s: false,
+            a: false,
+            d: false
+        };
+
+        // Track variables
+        let trackOn = false;
+        let isTubeTrack = false;
+        let pathPoints = []; // Array of {position, quaternion}
+        let trackGeometry, trackMesh, tubeGeometry, tubeMesh;
+        const trackWidth = 5; // Wider track for cars
+        const tubeRadius = 2.5;
+        const trackSpawnDistance = 1; // Distance between points
+        let lastPosition = new THREE.Vector3();
+
+        // Generate simple noise texture (for ground)
+        function generateNoiseTexture(width, height) {
+            const size = width * height;
+            const data = new Uint8Array(3 * size);
+            const perlin = new PerlinNoise();
+
+            let i = 0;
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const value = Math.abs(perlin.noise2D(x * 0.1, y * 0.1)) * 255;
+                    data[i] = value;
+                    data[i + 1] = value;
+                    data[i + 2] = value;
+                    i += 3;
+                }
+            }
+            const texture = new THREE.DataTexture(data, width, height, THREE.RGBFormat);
+            texture.needsUpdate = true;
+            return texture;
+        }
+
+        class PerlinNoise {
+            constructor() {
+                this.p = new Uint8Array(512);
+                this.permutation = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) this.permutation[i] = i;
+                for (let i = 0; i < 256; i++) {
+                    const j = Math.floor(Math.random() * (256 - i)) + i;
+                    [this.permutation[i], this.permutation[j]] = [this.permutation[j], this.permutation[i]];
+                }
+                for (let i = 0; i < 512; i++) this.p[i] = this.permutation[i & 255];
+            }
+            fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+            lerp(t, a, b) { return a + t * (b - a); }
+            grad(hash, x, y) {
+                const h = hash & 15;
+                const u = h < 8 ? x : y;
+                const v = h < 4 ? y : (h == 12 || h == 14 ? x : 0);
+                return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+            }
+            noise2D(x, y) {
+                let X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
+                x -= Math.floor(x); y -= Math.floor(y);
+                let u = this.fade(x), v = this.fade(y);
+                let A = this.p[X] + Y, B = this.p[X + 1] + Y;
+                return this.lerp(v, this.lerp(u, this.grad(this.p[A], x, y), this.grad(this.p[B], x - 1, y)),
+                                    this.lerp(u, this.grad(this.p[A + 1], x, y - 1), this.grad(this.p[B + 1], x - 1, y - 1)));
+            }
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+
+            // Sky Gradient
+            const skyGeometry = new THREE.SphereGeometry(5000, 32, 15);
+            const skyMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    topColor: { value: new THREE.Color(0x87CEEB) },
+                    bottomColor: { value: new THREE.Color(0xFFFFFF) },
+                    offset: { value: 10 },
+                    exponent: { value: 1.0 }
+                },
+                vertexShader: `
+                    varying vec3 vWorldPosition;
+                    void main() {
+                        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                        vWorldPosition = worldPosition.xyz;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 topColor;
+                    uniform vec3 bottomColor;
+                    uniform float offset;
+                    uniform float exponent;
+                    varying vec3 vWorldPosition;
+                    void main() {
+                        float h = normalize(vWorldPosition + vec3(0.0, offset, 0.0)).y;
+                        gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+                    }
+                `,
+                side: THREE.BackSide
+            });
+            const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+            scene.add(sky);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+            camera.position.set(0, 5, 10);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Ground Plane
+            const groundGeometry = new THREE.PlaneGeometry(2000, 2000, 100, 100);
+            const noiseTexture = generateNoiseTexture(256, 256);
+            const groundMaterial = new THREE.MeshStandardMaterial({ map: noiseTexture, side: THREE.DoubleSide });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            scene.add(ground);
+
+            // Plane (Tetrahedron)
+            const planeGeometry = new THREE.TetrahedronGeometry(1);
+            const planeMaterial = new THREE.MeshPhongMaterial({ color: 0x0077ff, flatShading: true });
+            plane = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane.position.set(0, 10, 0);
+            scene.add(plane);
+            lastPosition.copy(plane.position);
+
+            // Track Setup
+            trackGeometry = new THREE.BufferGeometry();
+            const trackMaterial = new THREE.MeshPhongMaterial({
+                color: 0x404040,
+                specular: 0x222222,
+                shininess: 50,
+                side: THREE.DoubleSide // Keep double side for safety
+            });
+            trackMesh = new THREE.Mesh(trackGeometry, trackMaterial);
+            scene.add(trackMesh);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1).normalize();
+            scene.add(directionalLight);
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', onKeyDown);
+            window.addEventListener('keyup', onKeyUp);
+
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onKeyDown(event) {
+            const key = event.key;
+            if (keys.hasOwnProperty(key)) keys[key] = true;
+            else if (keys.hasOwnProperty(key.toLowerCase())) keys[key.toLowerCase()] = true;
+
+            if (key.toLowerCase() === 'f') {
+                trackOn = !trackOn;
+                updateStatus();
+            }
+            if (key.toLowerCase() === 't') {
+                isTubeTrack = !isTubeTrack;
+                toggleTrackMode();
+                updateStatus();
+            }
+            if (key.toLowerCase() === 'p') takeSnapshot();
+        }
+
+        function onKeyUp(event) {
+            const key = event.key;
+            if (keys.hasOwnProperty(key)) keys[key] = false;
+            else if (keys.hasOwnProperty(key.toLowerCase())) keys[key.toLowerCase()] = false;
+        }
+
+        function updatePlane(deltaTime) {
+            if (keys['w']) speed = Math.min(speed + acceleration * deltaTime * 60, maxSpeed);
+            else if (keys['s']) speed = Math.max(speed - deceleration * deltaTime * 60, 0);
+
+            let pitch = 0, roll = 0, yaw = 0;
+            if (keys['ArrowUp']) pitch -= pitchSpeed * deltaTime * 60;
+            if (keys['ArrowDown']) pitch += pitchSpeed * deltaTime * 60;
+            if (keys['ArrowLeft']) roll += rollSpeed * deltaTime * 60;
+            if (keys['ArrowRight']) roll -= rollSpeed * deltaTime * 60;
+            if (keys['a']) yaw += yawSpeed * deltaTime * 60;
+            if (keys['d']) yaw -= yawSpeed * deltaTime * 60;
+
+            // Restrict roll to prevent upside-down tracks (except loops)
+            if (!isTubeTrack) {
+                const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quaternion);
+                if (upVector.y < 0) {
+                    const euler = new THREE.Euler().setFromQuaternion(plane.quaternion, 'YXZ');
+                    euler.z = THREE.MathUtils.clamp(euler.z, -Math.PI / 2, Math.PI / 2);
+                    plane.quaternion.setFromEuler(euler);
+                    roll = 0;
+                }
+            }
+
+            const deltaRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, roll, 'YXZ'));
+            plane.quaternion.multiply(deltaRotation);
+
+            const forwardVector = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quaternion);
+            plane.position.addScaledVector(forwardVector, speed * deltaTime);
+        }
+
+        function updateCamera() {
+            const cameraOffset = new THREE.Vector3(0, 5, 15).applyQuaternion(plane.quaternion);
+            camera.position.copy(plane.position).add(cameraOffset);
+            const lookAtOffset = new THREE.Vector3(0, 0, -20).applyQuaternion(plane.quaternion);
+            camera.lookAt(plane.position.clone().add(lookAtOffset));
+        }
+
+        function addTrackSegment() {
+            if (!trackOn || speed < 1) return;
+
+            const distance = plane.position.distanceTo(lastPosition);
+            if (distance < trackSpawnDistance) return;
+
+            pathPoints.push({ position: plane.position.clone(), quaternion: plane.quaternion.clone() });
+            lastPosition.copy(plane.position);
+
+            if (!isTubeTrack && pathPoints.length >= 2) {
+                const p1 = pathPoints[pathPoints.length - 2];
+                const p2 = pathPoints[pathPoints.length - 1];
+                const positions = trackGeometry.attributes.position ? trackGeometry.attributes.position.array : [];
+                const indices = trackGeometry.index ? trackGeometry.index.array : [];
+
+                const right1 = new THREE.Vector3(1, 0, 0).applyQuaternion(p1.quaternion);
+                const right2 = new THREE.Vector3(1, 0, 0).applyQuaternion(p2.quaternion);
+
+                const v0 = p1.position.clone().add(right1.multiplyScalar(trackWidth / 2));
+                const v1 = p1.position.clone().sub(right1.multiplyScalar(trackWidth / 2));
+                const v2 = p2.position.clone().add(right2.multiplyScalar(trackWidth / 2));
+                const v3 = p2.position.clone().sub(right2.multiplyScalar(trackWidth / 2));
+
+                const indexOffset = positions.length / 3;
+                const newPositions = [
+                    ...positions,
+                    v0.x, v0.y, v0.z,
+                    v1.x, v1.y, v1.z,
+                    v2.x, v2.y, v2.z,
+                    v3.x, v3.y, v3.z
+                ];
+                const newIndices = [
+                    ...indices,
+                    indexOffset, indexOffset + 2, indexOffset + 1,
+                    indexOffset + 1, indexOffset + 2, indexOffset + 3
+                ];
+
+                trackGeometry.setAttribute('position', new THREE.Float32BufferAttribute(newPositions, 3));
+                trackGeometry.setIndex(newIndices);
+                trackGeometry.computeVertexNormals();
+            }
+        }
+
+        function updateTubeTrack() {
+            if (!isTubeTrack || pathPoints.length < 2) return;
+            if (tubeMesh) scene.remove(tubeMesh);
+
+            const points = pathPoints.map(p => p.position);
+            const curve = new THREE.CatmullRomCurve3(points);
+            tubeGeometry = new THREE.TubeGeometry(curve, points.length * 2, tubeRadius, 16, false);
+            const tubeMaterial = new THREE.MeshPhongMaterial({ color: 0x404040, side: THREE.BackSide });
+            tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+            scene.add(tubeMesh);
+        }
+
+        function toggleTrackMode() {
+            if (isTubeTrack) {
+                scene.remove(trackMesh);
+                trackGeometry = new THREE.BufferGeometry();
+                trackMesh = new THREE.Mesh(trackGeometry, trackMesh.material);
+                scene.add(trackMesh);
+                updateTubeTrack();
+            } else {
+                if (tubeMesh) scene.remove(tubeMesh);
+                tubeMesh = null;
+            }
+        }
+
+        function updateStatus() {
+            document.getElementById('paintStatus').innerText = `Track: ${trackOn ? 'ON' : 'OFF'} | Mode: ${isTubeTrack ? 'Tube' : 'Flat'}`;
+        }
+
+        function takeSnapshot() {
+            renderer.render(scene, camera);
+            const dataURL = renderer.domElement.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = 'flying_tracks_snapshot.png';
+            link.click();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const deltaTime = clock.getDelta();
+
+            updatePlane(deltaTime);
+            updateCamera();
+            addTrackSegment();
+            if (isTubeTrack) updateTubeTrack();
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
