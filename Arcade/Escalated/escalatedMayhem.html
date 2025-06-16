@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Escalated Mayhem</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="menu.css">
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
 </head>
 <body>
@@ -36,6 +37,16 @@
 
         <p id="pointedObject">Looking at: None</p>
     </div>
+
+        <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+    <div id="menu-container">
+        <div class="menu-title">Main Menu</div>
+        <div id="menu-columns-wrapper">
+            <!-- Columns will be dynamically generated here -->
+        </div>
+    </div>
+    <script src="menu.js"></script>
+    
     <canvas id="gameCanvas"></canvas>
 
     <script type="importmap">

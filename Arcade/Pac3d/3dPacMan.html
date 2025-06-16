@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Three.D PacMan - TEMP</title>
     <style>
         /* Remove grab/grabbing cursor styles */
@@ -506,6 +506,14 @@
             minimapCtx = minimapCanvas.getContext('2d');
             minimapCanvas.width = 150;
             minimapCanvas.height = 150;
+
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'm' || event.key === 'M' || event.key === 'Escape') {
+                    event.preventDefault();
+                    const currentGameUrl = window.location.pathname.replace(/^\//, '') + window.location.search + window.location.hash;
+                    window.location.href = '../../Menu.html?returnTo=' + encodeURIComponent(currentGameUrl);
+                }
+            });
 
             setupControls(); // Setup listeners for movement ONLY
 

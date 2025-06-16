@@ -1,0 +1,118 @@
+<menu>
+            <item name="The SciFi BookStore">
+                <item name="The Next Sun">
+                    <subtitle>Science Fiction - Pioneers reach the first planet from another solar system</subtitle>
+                </item>
+                <item name="CaveMan Abduction">
+                    <subtitle>Sci-Fi Comedy - A Flying Saucer crashes near a group of Cave-men</subtitle>
+                </item>
+                <item name="The AbductoTron Chronicals">
+                    <subtitle>Sci-Fi Comedy - A Grey gets bored and decides to change things up a bit</subtitle>
+                </item>
+                <item name="Abduction And Absurdity">
+                    <subtitle>Sci-Fi Comedy - A Compilation of Sci-Fi Comedies - Just for fun AI Experiments</subtitle>
+                </item>
+                <item name="The Bue-Harian Chronicals">
+                    <subtitle>A Science-Fiction Trilogy</subtitle>
+                    <item name = "MoonRise">
+                        <subtitle>Science Students trying to Simulate the Universe gone awry</subtitle>
+                    </item>
+                    <item name = "Bue-Har'ia">
+                        <subtitle>Life in the Simulation World</subtitle>
+                    </item>
+                    <item name = "Z3R0">
+                        <subtitle>A New Hero</subtitle>
+                    </item>
+                </item>
+            </item>
+            <item name="Art By Gerhard">
+                <item name = "Acrylics on Canvas">
+                    <item name ="Funk Duel">
+                        <subtitle>1.2m x 0.9m</subtitle>
+                    </item>
+                    <item name ="Jazz Trio">
+                        <subtitle>2m x 1.2m</subtitle>
+                    </item>
+                    <item name ="Buskers">
+                        <subtitle>1.2m x 1m</subtitle>
+                    </item>
+                    <item name ="Bassist">
+                        <subtitle>0.9m x 1.2m</subtitle>
+                    </item>
+                    <item name ="Saxophonist">
+                        <subtitle>0.9m x 1.2m</subtitle>
+                    </item>
+                    <item name ="Bass Blues">
+                        <subtitle>0.9m x 0.9m</subtitle>
+                    </item>
+                    <item name ="Sunny In The Shade">
+                        <subtitle>1.2m x 0.9m</subtitle>
+                    </item>
+                    <item name ="Blue Morpho">
+                        <subtitle>1.2m x 0.9m</subtitle>
+                    </item>
+                </item>
+        
+                <item name = "Pov-Ray 3d Renderings">
+                    <item name = "Funk Duel"/>
+                    <item name = "Bass Still"/>
+                    <item name = "Sunny In The Shade"/>
+                    <item name = "Buskers"/>
+                    <item name = "Jazz Trio"/>
+                    <item name = "Fusion Paint">
+                        <subtitle>I developed a script in PovRay that would create an impressionistic 3d painting of a 3d Scene</subtitle>
+                    </item>
+                    <item name = "3d Paint Experiments">
+                        <subtitle>I developed a script in PovRay that would create an impressionistic 3d painting of a 3d Scene</subtitle>
+                    </item>
+                </item>
+            </item>
+            <item name = "GO 3Design">
+                <item name = "Furai-Vision Concept">
+                    <subtitle>A Rotary Hyper-car Design inspired by the Mazda Furai and the Mazda RX-Vision - Designed in Rhino-3d and converted to Blender-3d</subtitle>
+                </item>
+                <item name = "Xaena Concept 3">
+                    <subtitle>Coming Soon TM</subtitle>
+                </item>
+                <item name = "Quick Concept"/>
+                <item name = "Concept Mockups"/>
+            </item>
+            <item name = "NX Dev">
+                <item name = "3d Vehicle Wrap Design">
+                    <subtitle>Vehicle Wrap design directly onto 3d models </subtitle>
+                </item>
+                <item name = "3d Paint">
+                    <subtitle>Concept similar to my Pov-Ray experiments</subtitle>
+                </item>
+                <item name = "3d + Vector + Raster Designer">
+                    <subtitle>3d + Vector + Image-Manipulation all-in-one Software. A Concept based on what I first did on the 48k ZX Spectrum</subtitle>
+                </item>
+            </item>
+            <item name = "X-Arcade">
+                <item name = "Pac-3d">
+                    <subtitle>A classic maze game in 3D</subtitle>
+                </item>
+                <item name = "Escalated Mayhem">
+                    <subtitle>Action game set in a high-rise elevator</subtitle>
+                </item>
+                <item name = "Pac-Snake">
+                    <subtitle>A mashup of Pac-Man and Snake</subtitle>
+                </item>
+                <item name = "Planet Miner">
+                    <subtitle>Explore and mine voxel planets</subtitle>
+                </item>
+                <item name = "Flying Art">
+                    <subtitle>Fly and Paint in a 3D environment</subtitle>
+                </item>
+                <item name = "Paint Sim">
+                    <subtitle>A Painting Simulation</subtitle>
+                </item>
+                <item name = "3d Road-Painter">
+                    <subtitle>Get behind the wheel and fly away, leaving a road trail</subtitle>
+                </item>
+            </item>
+            <item name = "Contact Me">
+                <item name = "Email: nekarx@gmail.com"/>
+                <item name = "GitHub: github.com/nekarxenos"/>
+            </item>
+        </menu>

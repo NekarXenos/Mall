@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Interactive Menu</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #1a202c; /* Dark background */
+            color: #00ffff; /* Light text */
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #menu-container {
+            position: absolute;
+            top: 10px; /* Adjust as needed for spacing from the top */
+            left: 10px; /* Adjust as needed for spacing from the left */
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+            display: flex; /* For title and columns-wrapper */
+            flex-direction: column; /* Title above, columns below */
+            /* Removed background, border, radius, padding, shadow, clip-path */
+        }
+        .menu-title {
+            font-size: 1.5rem; /* Doubled from 1.875rem */
+            font-weight: 600; /* font-semibold is often used with Inter */
+            margin-bottom: 1.5rem; /* mb-6 */
+            text-align: center;
+            color: #00aaaa; /* blue-300 */
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        .menu-item {
+            font-size: 1.5rem; /* Doubled from an assumed 1rem default */
+            padding: 0.25rem 0.5rem; /* Adjusted padding for text spacing */
+            margin-bottom: 0.25rem; /* Adjusted margin */
+            cursor: pointer;
+            transition: color 0.2s ease-in-out, font-weight 0.2s ease-in-out, transform 0.2s ease-in-out;
+            color: #00BBFF; /* Default menu text color */
+            font-weight: 500;
+            /* Removed background, border, radius, clip-path */
+        }
+        .menu-item:hover, .menu-item.current-level {
+            color: #00FFFF !important; /* Full Cyan on hover */
+            font-weight: 600;
+            transform: translateY(-2px);
+            /* Removed background, border, shadow */
+        }
+        /* Remove background from submenu column items by default */
+        #hover-submenu-column .menu-item {
+            /* Styles inherited from .menu-item, no specific box styles needed */
+        }
+        #hover-submenu-column .menu-item:hover, #hover-submenu-column .menu-item.current-level {
+            /* Styles inherited from .menu-item:hover, .menu-item.current_level */
+        }
+        .subtitle {
+            font-size: 1.3rem; /* Doubled from 0.875rem */
+            color: #00bbbb; /* was gray-400 */
+            margin-top: 0.25rem; /* mt-1 */
+            font-weight: 600;
+            font-style: italic;
+        }
+
+        #menu-columns-wrapper {
+            display: flex;
+            flex-direction: row;
+            align-items: stretch; /* Stretch columns to fill height */
+            flex-grow: 1; /* Take remaining vertical space */
+            overflow: hidden; /* Prevent this wrapper from scrolling, columns will scroll */
+            /* margin-top: 1rem; /* Optional space below title */
+        }
+
+        #menu-content {
+            flex-shrink: 0;
+            min-width: 280px; /* Adjusted min-width */
+            height: 100%;
+            overflow-y: auto;
+            padding-right: 0.5rem; /* Space before the next column's margin */
+        }
+
+        #hover-submenu-column {
+            flex-shrink: 0;
+            min-width: 280px; /* Adjusted min-width */
+            height: 100%;
+            overflow-y: auto;
+            margin-left: 0.5rem; /* Space after menu-content's padding */
+            /* Removed background, border-radius, padding, border */
+        }
+
+        /* Ensure menu items in hover column also look good */
+        #hover-submenu-column .menu-item {
+            /* This rule is removed to avoid setting a background. Inherits from .menu-item */
+        }
+
+        /* Matrix effect styles */
+        .matrix-text {
+            display: inline-block;
+            overflow: hidden;
+            vertical-align: bottom;
+            letter-spacing: 0.04em;
+        }
+        .matrix-letter {
+            color: #00BBFF; /* Default matrix letter color */
+            text-shadow: 0 0 8px #00BBFF, 0 0 2px #00AADD, 0 0 1px #0099CC; /* Adjusted shadow for default color */
+            display: inline-block;
+            transition: opacity 0.3s cubic-bezier(0.4,2,0.2,1), transform 0.3s cubic-bezier(0.4,2,0.2,1), color 0.2s ease-in-out, text-shadow 0.2s ease-in-out;
+            will-change: opacity, transform;
+        }
+        .menu-item:hover .matrix-letter {
+            color: #00FFFF !important; /* Matrix letter color on hover */
+            text-shadow: 0 0 8px #00ffff, 0 0 2px #00e0e0, 0 0 1px #0ff; /* Original cyan shadow for hover */
+        }
+    </style>
+</head>
+<body>
+    <div id="threejs-container"></div>
+    <div id="menu-container" style="display: none;"> <!-- Start hidden -->
+        <div class="menu-title">Main Menu</div>
+        <div id="menu-columns-wrapper">
+            <!-- Columns will be dynamically generated here -->
+        </div>
+    </div>
+
+    <script>
+        // Use __app_id and __firebase_config for Firebase if needed, but not for this specific example.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+
+        // Three.js setup
+        let scene, camera, renderer, letterI;
+        let raycaster, mouse;
+        let menuData = null;
+        let previousRenderedPath = null; // To track the path of the last render
+        let currentMenuLevel = []; // Array of item objects representing the path to the current level
+
+        // XML Menu Data (Replace with fetched content if dynamic loading is preferred)
+        const xmlString = `<menu>
+            <item name="The SciFi BookStore">
+                <item name="The Next Sun">
+                    <subtitle>Science Fiction - Pioneers reach the first planet from another solar system</subtitle>
+                </item>
+                <item name="CaveMan Abduction">
+                    <subtitle>Sci-Fi Comedy - A Flying Saucer crashes near a group of Cave-men</subtitle>
+                </item>
+                <item name="The AbductoTron Chronicals">
+                    <subtitle>Sci-Fi Comedy - A Grey gets bored and decides to change things up a bit</subtitle>
+                </item>
+                <item name="Abduction And Absurdity">
+                    <subtitle>Sci-Fi Comedy - A Compilation of Sci-Fi Comedies - Just for fun AI Experiments</subtitle>
+                </item>
+                <item name="The Bue-Harian Chronicals">
+                    <subtitle>A Science-Fiction Trilogy</subtitle>
+                    <item name = "MoonRise">
+                        <subtitle>Science Students trying to Simulate the Universe gone awry</subtitle>
+                    </item>
+                    <item name = "Bue-Har'ia">
+                        <subtitle>Life in the Simulation World</subtitle>
+                    </item>
+                    <item name = "Z3R0">
+                        <subtitle>A New Hero</subtitle>
+                    </item>
+                </item>
+            </item>
+            <item name="Art By Gerhard">
+                <item name = "Acrylics on Canvas">
+                    <item name ="Funk Duel">
+                        <subtitle>1.2m x 0.9m</subtitle>
+                    </item>
+                    <item name ="Jazz Trio">
+                        <subtitle>2m x 1.2m</subtitle>
+                    </item>
+                    <item name ="Buskers">
+                        <subtitle>1.2m x 1m</subtitle>
+                    </item>
+                    <item name ="Bassist">
+                        <subtitle>0.9m x 1.2m</subtitle>
+                    </item>
+                    <item name ="Saxophonist">
+                        <subtitle>0.9m x 1.2m</subtitle>
+                    </item>
+                    <item name ="Bass Blues">
+                        <subtitle>0.9m x 0.9m</subtitle>
+                    </item>
+                    <item name ="Sunny In The Shade">
+                        <subtitle>1.2m x 0.9m</subtitle>
+                    </item>
+                    <item name ="Blue Morpho">
+                        <subtitle>1.2m x 0.9m</subtitle>
+                    </item>
+                </item>
+        
+                <item name = "Pov-Ray 3d Renderings">
+                    <item name = "Funk Duel"/>
+                    <item name = "Bass Still"/>
+                    <item name = "Sunny In The Shade"/>
+                    <item name = "Buskers"/>
+                    <item name = "Jazz Trio"/>
+                    <item name = "Fusion Paint">
+                        <subtitle>I developed a script in PovRay that would create an impressionistic 3d painting of a 3d Scene</subtitle>
+                    </item>
+                    <item name = "3d Paint Experiments">
+                        <subtitle>I developed a script in PovRay that would create an impressionistic 3d painting of a 3d Scene</subtitle>
+                    </item>
+                </item>
+            </item>
+            <item name = "GO 3Design">
+                <item name = "Furai-Vision Concept">
+                    <subtitle>A Rotary Hyper-car Design inspired by the Mazda Furai and the Mazda RX-Vision - Designed in Rhino-3d and converted to Blender-3d</subtitle>
+                </item>
+                <item name = "Xaena Concept 3">
+                    <subtitle>Coming Soon TM</subtitle>
+                </item>
+                <item name = "Quick Concept"/>
+                <item name = "Concept Mockups"/>
+            </item>
+            <item name = "NX Dev">
+                <item name = "3d Vehicle Wrap Design">
+                    <subtitle>Vehicle Wrap design directly onto 3d models </subtitle>
+                </item>
+                <item name = "3d Paint">
+                    <subtitle>Concept similar to my Pov-Ray experiments</subtitle>
+                </item>
+                <item name = "3d + Vector + Raster Designer">
+                    <subtitle>3d + Vector + Image-Manipulation all-in-one Software. A Concept based on what I first did on the 48k ZX Spectrum</subtitle>
+                </item>
+            </item>
+            <item name = "X-Arcade">
+                <item name = "Pac-3d">
+                    <subtitle>A classic maze game in 3D</subtitle>
+                </item>
+                <item name = "Escalated Mayhem">
+                    <subtitle>Action game set in a high-rise elevator</subtitle>
+                </item>
+                <item name = "Pac-Snake">
+                    <subtitle>A mashup of Pac-Man and Snake</subtitle>
+                </item>
+                <item name = "Planet Miner">
+                    <subtitle>Explore and mine voxel planets</subtitle>
+                </item>
+                <item name = "Flying Art">
+                    <subtitle>Fly and Paint in a 3D environment</subtitle>
+                </item>
+                <item name = "Paint Sim">
+                    <subtitle>A Painting Simulation</subtitle>
+                </item>
+                <item name = "3d Road-Painter">
+                    <subtitle>Get behind the wheel and fly away, leaving a road trail</subtitle>
+                </item>
+            </item>
+            <item name = "Contact Me">
+                <item name = "Email: nekarx@gmail.com"/>
+                <item name = "GitHub: github.com/nekarxenos"/>
+            </item>
+        </menu>`;
+
+
+        /**
+         * Parses the XML string into a structured JavaScript object.
+         * @param {string} xmlString The XML string to parse.
+         * @returns {object} The parsed menu object.
+         */
+        function parseMenuXML(xmlString) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+            const menuElement = xmlDoc.querySelector('menu');
+
+            /**
+             * Recursively parses an XML item element into an object.
+             * @param {Element} element The XML item element.
+             * @returns {object} The parsed item object.
+             */
+            function parseItem(element) {
+                const item = {
+                    name: element.getAttribute('name'),
+                    subtitle: '',
+                    children: []
+                };
+
+                // Get subtitle directly from the item element's child
+                const subtitleElement = element.querySelector(':scope > subtitle');
+                if (subtitleElement) {
+                    item.subtitle = subtitleElement.textContent.trim();
+                }
+
+                // Get nested items
+                const childItemElements = element.querySelectorAll(':scope > item');
+                childItemElements.forEach(childElement => {
+                    item.children.push(parseItem(childElement));
+                });
+
+                return item;
+            }
+
+            const items = menuElement.querySelectorAll(':scope > item');
+            const parsedMenu = {
+                name: "Root", // A virtual root for the menu
+                subtitle: "",
+                children: []
+            };
+
+            items.forEach(itemElement => {
+                parsedMenu.children.push(parseItem(itemElement));
+            });
+
+            return parsedMenu;
+        }
+
+        /**
+         * Initializes the Three.js scene, camera, renderer, and letter 'i'.
+         */
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('threejs-container').appendChild(renderer.domElement);
+
+            // Set a dark background for the scene
+            scene.background = new THREE.Color(0x1a202c);
+
+            // Add a point light for better illumination
+            const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+            pointLight.position.set(0, 0, 5);
+            scene.add(pointLight);
+
+            // Add ambient light to brighten everything
+            const ambientLight = new THREE.AmbientLight(0x404040); // soft white light
+            scene.add(ambientLight);
+
+            camera.position.z = 5;
+
+            // Create the 3D letter 'i'
+            const fontLoader = new THREE.FontLoader();
+            fontLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/fonts/gentilis_bold.typeface.json', function (font) {
+                const geometry = new THREE.TextGeometry('i', {
+                    font: font,
+                    size: 2,
+                    height: 0.5,
+                    curveSegments: 12,
+                    bevelEnabled: true,
+                    bevelThickness: 0.1,
+                    bevelSize: 0.05,
+                    bevelOffset: 0,
+                    bevelSegments: 5
+                });
+                geometry.computeBoundingBox();
+                const centerOffset = -0.5 * (geometry.boundingBox.max.x - geometry.boundingBox.min.x);
+                geometry.translate(centerOffset, 0, 0); // Center the text geometry
+
+                const material = new THREE.MeshPhongMaterial({ color: 0x93c5fd }); // Blue-300 like color
+                letterI = new THREE.Mesh(geometry, material);
+                scene.add(letterI);
+            });
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            document.addEventListener('click', onClick, false);
+            document.addEventListener('contextmenu', onContextMenu, false); // Added for right-click
+        }
+
+        /**
+         * Handles window resizing, updates camera aspect and renderer size.
+         */
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        /**
+         * Updates mouse coordinates for raycasting.
+         * @param {MouseEvent} event The mouse move event.
+         */
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        /**
+         * Handles click events on the canvas to detect interaction with the letter 'i'.
+         * @param {MouseEvent} event The click event.
+         */
+        function onClick(event) {
+            const menuContainer = document.getElementById('menu-container');
+            const threeJsContainer = document.getElementById('threejs-container');
+
+            raycaster.setFromCamera(mouse, camera);
+            if (letterI) {
+                const intersects = raycaster.intersectObjects([letterI]);
+                if (intersects.length > 0) {
+                    toggleMenu();
+                    return; // Menu was toggled by 'i' click, so no further action.
+                }
+            }
+
+            // If menu is visible and click is outside menuContainer and not on threejs-container (where 'i' lives)
+            if (menuContainer.style.display !== 'none' && !menuContainer.contains(event.target) && event.target !== letterI && !threeJsContainer.contains(event.target)) {
+                // Check if the click was on the canvas but not on the letter 'i'
+                let clickedOnCanvasNotI = false;
+                if (threeJsContainer.contains(event.target) && letterI) {
+                    const intersects = raycaster.intersectObjects([letterI]);
+                    if (intersects.length === 0) clickedOnCanvasNotI = true;
+                }
+            }
+        }
+
+        /**
+         * Toggles the visibility of the menu container.
+         */
+        function toggleMenu() {
+            const menuContainer = document.getElementById('menu-container');
+            const isMenuVisible = menuContainer.style.display !== 'none' && menuContainer.style.display !== '';
+
+            if (!isMenuVisible) {
+                menuContainer.style.display = 'flex'; // Changed to flex as per new CSS
+                renderMenuColumns([]); // Start at root
+                document.querySelector('.menu-title').textContent = 'Main Menu';
+            } else {
+                menuContainer.style.display = 'none';
+                previousRenderedPath = null; // Reset when menu is closed
+            }
+        }
+
+        /**
+         * Handles context menu (right-click) events to toggle the menu.
+         * @param {MouseEvent} event The context menu event.
+         */
+        function onContextMenu(event) {
+            event.preventDefault(); // Prevent default browser context menu
+            const menuContainer = document.getElementById('menu-container');
+            // Show menu if it's hidden, or if it's visible, allow toggle (though typically right-click would just open)
+            // For simplicity, let's just toggle. If you want it to only *open* on right-click,
+            // you'd check if (menuContainer.style.display === 'none' || menuContainer.style.display === '')
+            // and then call toggleMenu().
+            toggleMenu();
+        }
+
+        /**
+         * Renders the menu columns for the current path.
+         * @param {Array<object>} path Array of menu items representing the path to the current level.
+         */
+        function renderMenuColumns(currentPath) {
+            const wrapper = document.getElementById('menu-columns-wrapper');
+            wrapper.innerHTML = '';
+
+            let pathEffectivelyChanged = true; // Assume change unless proven otherwise
+            if (previousRenderedPath && previousRenderedPath.length === currentPath.length) {
+                let same = true;
+                for (let i = 0; i < currentPath.length; i++) {
+                    if (currentPath[i] !== previousRenderedPath[i]) {
+                        same = false;
+                        break;
+                    }
+                }
+                if (same) {
+                    pathEffectivelyChanged = false;
+                }
+            } // If lengths are different or previousRenderedPath is null, pathEffectivelyChanged remains true.
+
+            let itemsForNextColumn = menuData.children; // Start with root items for the first column
+            let currentPathSegmentForListeners = []; // To build paths for event listeners
+
+            for (let columnIndex = 0; ; columnIndex++) {
+                if (!itemsForNextColumn || itemsForNextColumn.length === 0) {
+                    break;
+                }
+
+                const columnDiv = document.createElement('div');
+                columnDiv.className = 'menu-column';
+                // Apply column styles
+                columnDiv.style.width = 'max-content'; // Dynamically adjust width to content
+                columnDiv.style.minWidth = '250px';    // A sensible minimum width
+                columnDiv.style.maxWidth = '400px';    // A sensible maximum width to prevent overly wide columns
+                columnDiv.style.overflowY = 'auto';
+                columnDiv.style.overflowX = 'hidden'; // Prevent horizontal scrollbar on the column itself
+                columnDiv.style.marginRight = '0.5rem'; // Space between columns
+                // Removed background, borderRadius, padding, border for columnDiv
+                // columnDiv.style.position = 'relative'; // Not strictly needed for translateY
+
+                const itemsInThisColumn = itemsForNextColumn;
+                const itemElementsToAnimate = [];
+
+                itemsInThisColumn.forEach(item => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'menu-item flex flex-col items-start';
+                    itemDiv.dataset.name = item.name;
+                    // --- Matrix Effect: Split name into spans ---
+                    const nameSpan = document.createElement('span');
+                    nameSpan.classList.add('font-semibold', 'matrix-text');
+                    // Clear previous content
+                    nameSpan.innerHTML = '';
+                    // Split each letter into a span for animation
+                    Array.from(item.name).forEach((char, idx) => {
+                        const letterSpan = document.createElement('span');
+                        if (char === ' ') {
+                            letterSpan.innerHTML = '&nbsp;'; // Use non-breaking space for spaces
+                        } else {
+                            letterSpan.textContent = char;
+                        }
+                        letterSpan.className = 'matrix-letter';
+                        letterSpan.style.opacity = '0';
+                        letterSpan.style.transform = 'translateY(-40px)';
+                        letterSpan.style.transition = `opacity 0.3s cubic-bezier(0.4,2,0.2,1) ${idx * 60}ms, transform 0.3s cubic-bezier(0.4,2,0.2,1) ${idx * 60}ms`;
+                        nameSpan.appendChild(letterSpan);
+                    });
+                    itemDiv.appendChild(nameSpan);
+
+                    const isTargetColumn = (columnIndex === currentPath.length);
+                    const shouldAnimateItemsInThisColumn = isTargetColumn && pathEffectivelyChanged;
+                    if (shouldAnimateItemsInThisColumn) {
+                        itemDiv.style.opacity = '1';
+                        itemDiv.style.transform = 'none';
+                        // Animate each letter in sequence
+                        setTimeout(() => {
+                            nameSpan.querySelectorAll('.matrix-letter').forEach((span, idx) => {
+                                setTimeout(() => {
+                                    span.style.opacity = '1';
+                                    span.style.transform = 'translateY(0)';
+                                }, idx * 60);
+                            });
+                        }, 100);
+                    } else {
+                        nameSpan.querySelectorAll('.matrix-letter').forEach(span => {
+                            span.style.opacity = '1';
+                            span.style.transform = 'translateY(0)';
+                        });
+                    }
+
+                    if (item.subtitle) {
+                        const subtitleDiv = document.createElement('div');
+                        subtitleDiv.className = 'subtitle';
+                        subtitleDiv.textContent = item.subtitle;
+                        itemDiv.appendChild(subtitleDiv);
+                    }
+                    if (item.children && item.children.length > 0) {
+                        const arrowSpan = document.createElement('span');
+                        arrowSpan.textContent = ' \u25B6';
+                        arrowSpan.classList.add('ml-auto', 'text-cyan-300', 'self-center');
+                        nameSpan.appendChild(arrowSpan);
+                        itemDiv.addEventListener('mouseenter', () => {
+                            const newPath = currentPathSegmentForListeners.slice(0, columnIndex);
+                            newPath.push(item);
+                            renderMenuColumns(newPath);
+                            document.querySelector('.menu-title').textContent = item.name;
+                        });
+                        // Add mouseleave to items with children to close their submenu if hover is lost to empty space
+                        itemDiv.addEventListener('mouseleave', (e) => {
+                            if (itemDiv.contains(e.relatedTarget)) { // Avoid if moving to a child element within itemDiv
+                                return;
+                            }
+                            // Check if this item was responsible for extending the path beyond the clicked path (currentMenuLevel)
+                            if (previousRenderedPath &&
+                                columnIndex < previousRenderedPath.length &&
+                                item === previousRenderedPath[columnIndex] && // Was this item the one on the active path?
+                                columnIndex >= currentMenuLevel.length) {    // And is this path segment purely due to hover?
+
+                                const pathBeforeThisItemHover = previousRenderedPath.slice(0, columnIndex);
+                                renderMenuColumns(pathBeforeThisItemHover);
+
+                                // Update title based on the new path
+                                if (pathBeforeThisItemHover.length > 0) {
+                                    document.querySelector('.menu-title').textContent = pathBeforeThisItemHover[pathBeforeThisItemHover.length - 1].name;
+                                } else {
+                                    document.querySelector('.menu-title').textContent = 'Main Menu';
+                                }
+                            }
+                        });
+                    } else {
+                        itemDiv.addEventListener('mouseenter', () => {
+                            const newPath = currentPathSegmentForListeners.slice(0, columnIndex);
+                            renderMenuColumns(newPath);
+                            const parentOfThisColumnItem = currentPath[columnIndex - 1]; // currentPath is the argument to renderMenuColumns
+                            document.querySelector('.menu-title').textContent = parentOfThisColumnItem ? parentOfThisColumnItem.name : 'Main Menu';
+                        });
+                    }
+                    itemDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (item.children && item.children.length > 0) {
+                            const newPath = currentPathSegmentForListeners.slice(0, columnIndex);
+                            newPath.push(item);
+                            currentMenuLevel = newPath; // Optional: update global state if used elsewhere
+                            renderMenuColumns(newPath);
+                            document.querySelector('.menu-title').textContent = item.name;
+                        } else {
+                            alert(`You clicked on: ${item.name}` + (item.subtitle ? `\nSubtitle: ${item.subtitle}` : ''));
+                            previousRenderedPath = null; // Reset path before closing menu after action
+                            toggleMenu();
+                        }
+                    });
+                    columnDiv.appendChild(itemDiv);
+                    // itemElementsToAnimate is populated conditionally above
+                });
+
+                wrapper.appendChild(columnDiv);
+
+                // Trigger animations for items in the current column
+                itemElementsToAnimate.forEach((div, index) => {
+                    setTimeout(() => {
+                        div.style.opacity = '1';
+                        div.style.transform = 'translateY(0)';
+                    }, index * 75); // Stagger animation by 75ms per item
+                });
+
+                // Prepare for the next column
+                if (currentPath[columnIndex]) { // If the input currentPath defines a next level
+                    itemsForNextColumn = currentPath[columnIndex].children;
+                    currentPathSegmentForListeners.push(currentPath[columnIndex]); // Add the item that *led* to the next column
+                } else {
+                    // No more items in the predefined path, so we stop generating further columns.
+                    // Hover events will trigger new renders if needed.
+                    break;
+                }
+            }
+            previousRenderedPath = [...currentPath]; // Store a copy of the rendered path
+        }
+
+        /**
+         * The main animation loop for Three.js.
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (letterI) {
+                letterI.rotation.x += 0.005;
+                letterI.rotation.y += 0.005;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Custom alert function
+        function alert(message) {
+            const menuContainer = document.getElementById('menu-container');
+            const alertBox = document.createElement('div');
+            alertBox.className = 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-800 text-white p-6 rounded-lg shadow-xl z-50';
+            alertBox.style.width = 'fit-content';
+            alertBox.style.maxWidth = '80vw';
+            alertBox.style.textAlign = 'center';
+            alertBox.innerHTML = `<p class="mb-4">${message}</p><button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-200" onclick="this.parentNode.remove()">OK</button>`;
+            document.body.appendChild(alertBox);
+            
+            // If menu is open, ensure it's not re-shown by alert interaction
+            if (menuContainer.style.display !== 'none') {
+                 // No need to hide menuContainer, alert is on top.
+            }
+        }
+
+        // Initialize on window load
+        window.onload = function () {
+            menuData = parseMenuXML(xmlString);
+            initThreeJS(); // This also sets up some event listeners for Three.js
+            animate();
+
+            // Add listener for clicks outside the menu
+            window.addEventListener('click', function(event) {
+                const menuContainer = document.getElementById('menu-container');
+                const threeJsContainer = document.getElementById('threejs-container'); // The canvas
+
+                // If menu is visible, and the click is not on the menu, and not on the 'i' (or its container)
+                if (menuContainer.style.display !== 'none' && menuContainer.style.display !== '') {
+                    if (!menuContainer.contains(event.target) && !threeJsContainer.contains(event.target)) {
+                        toggleMenu(); // Hide the menu
+                    } else if (threeJsContainer.contains(event.target) && letterI && raycaster.intersectObjects([letterI]).length === 0) {
+                        // Clicked on canvas, but not on the 'i'
+                        toggleMenu(); // Hide the menu
+                    }
+                }
+            });
+            // Setup mouseleave for the menu columns wrapper to hide hover submenus
+            // This handles the case where the mouse leaves the entire menu area.
+            const menuColumnsWrapper = document.getElementById('menu-columns-wrapper');
+            if (menuColumnsWrapper) {
+                menuColumnsWrapper.addEventListener('mouseleave', (e) => {
+                    const menuContainer = document.getElementById('menu-container');
+                    // Check if mouse left the menu container area
+                    if (!e.relatedTarget || (menuContainer && !menuContainer.contains(e.relatedTarget))) {
+                        renderMenuColumns(currentMenuLevel); // Revert to the clicked path
+                        // Update title based on the clicked path
+                        if (currentMenuLevel.length > 0) {
+                            document.querySelector('.menu-title').textContent = currentMenuLevel[currentMenuLevel.length - 1].name;
+                        } else {
+                            document.querySelector('.menu-title').textContent = 'Main Menu';
+                        }
+                    }
+                });
+            }
+        };
+    </script>
+</body>
+</html>

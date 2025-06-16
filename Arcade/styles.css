@@ -1,0 +1,78 @@
+#menu {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 8px;
+            z-index: 100;
+            max-height: calc(100vh - 20px);
+            overflow-y: auto;
+            color: #765bff;
+        }
+        #menu h3 {
+            margin-top: 0;
+            color: #4CAF50; /* Green */
+        }
+        #menu ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        #menu li {
+            margin-bottom: 5px;
+        }
+        #menu li strong {
+            color: #FFC107; /* Amber */
+        }
+        #popup {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 8px;
+            pointer-events: none; /* Allow clicks to pass through to the canvas */
+            z-index: 50;
+            display: none; /* Hidden by default */
+            color: #765bff;
+        }
+        #popup h4 {
+            margin-top: 0;
+            margin-bottom: 5px;
+            color: #2196F3; /* Blue */
+        }
+        #popup p {
+            margin: 0;
+            font-size: 0.9em;
+        }
+
+        /* New Context Menu Style */
+        #context-menu {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.9);
+            padding: 10px;
+            border-radius: 8px;
+            z-index: 101; /* Above main menu and popup */
+            display: none; /* Hidden by default */
+            color: #765bff;
+            cursor: pointer; /* Indicate clickable links */
+        }
+        #context-menu h4 {
+             margin-top: 0;
+             margin-bottom: 5px;
+             color: #4CAF50; /* Green */
+        }
+         #context-menu ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        #context-menu li {
+            margin-bottom: 5px;
+        }
+        #context-menu a {
+            color: #00ccFF; /* White text for links */
+            text-decoration: none; /* No underline */
+        }
+        #context-menu a:hover {
+            text-decoration: underline;
+        }

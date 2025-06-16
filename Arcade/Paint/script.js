@@ -257,4 +257,12 @@ canvas.addEventListener('touchmove', paint, { passive: false });
 resizeCanvas();
 initializeBristles();
 
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'm' || event.key === 'M' || event.key === 'Escape') {
+        event.preventDefault();
+        const currentGameUrl = window.location.pathname.replace(/^\//, '') + window.location.search + window.location.hash;
+        window.location.href = '../../Menu.html?returnTo=' + encodeURIComponent(currentGameUrl);
+    }
+});
+
 console.log("Bristle Brush Ready! (Touch pressure enabled)");

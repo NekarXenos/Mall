@@ -1,0 +1,35 @@
+Art
+-Acrylics on Canvas
+
+--Funk Duel
+---(1.2m x 0.9m)
+
+--Jazz Trio
+---(2m x 1.2m)
+
+--Buskers
+---(1.2m x 1m)
+
+--Bassist
+---(0.9m x 1.2m)
+
+--Saxophonist
+---(0.9m x 1.2m)
+
+--Bass Blues
+---(0.9m x 0.9m)
+
+--Sunny in the Shade
+---(1.2m x 0.9m)
+
+--Blue Morpho
+---(1.2m x 0.9m)
+
+-Pov-Ray RayTraced 3d Renderings
+--Funk Duel
+--Bass Still
+--Sunny in the Shade
+--Buskers
+--Fusion Paint
+--3d Paint experiments
+---(I developed a script in PovRay that would create an impressionistic 3d painting of a 3d Scene)

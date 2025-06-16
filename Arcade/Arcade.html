@@ -4,89 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Arcade</title>
-    <style>
-        body { margin: 0; overflow: hidden; background-color: #1a1a1a; color: #ffffff; font-family: "VT323", monospace; font-weight: 400; font-style: normal; cursor: default; }
-        canvas { display: block; }
-        #menu {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background-color: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            border-radius: 8px;
-            z-index: 100;
-            max-height: calc(100vh - 20px);
-            overflow-y: auto;
-            color: #765bff;
-        }
-        #menu h3 {
-            margin-top: 0;
-            color: #4CAF50; /* Green */
-        }
-        #menu ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        #menu li {
-            margin-bottom: 5px;
-        }
-        #menu li strong {
-            color: #FFC107; /* Amber */
-        }
-        #popup {
-            position: absolute;
-            background-color: rgba(0, 0, 0, 0.8);
-            padding: 10px;
-            border-radius: 8px;
-            pointer-events: none; /* Allow clicks to pass through to the canvas */
-            z-index: 50;
-            display: none; /* Hidden by default */
-            color: #765bff;
-        }
-        #popup h4 {
-            margin-top: 0;
-            margin-bottom: 5px;
-            color: #2196F3; /* Blue */
-        }
-        #popup p {
-            margin: 0;
-            font-size: 0.9em;
-        }
-
-        /* New Context Menu Style */
-        #context-menu {
-            position: absolute;
-            background-color: rgba(0, 0, 0, 0.9);
-            padding: 10px;
-            border-radius: 8px;
-            z-index: 101; /* Above main menu and popup */
-            display: none; /* Hidden by default */
-            color: #765bff;
-            cursor: pointer; /* Indicate clickable links */
-        }
-        #context-menu h4 {
-             margin-top: 0;
-             margin-bottom: 5px;
-             color: #4CAF50; /* Green */
-        }
-         #context-menu ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        #context-menu li {
-            margin-bottom: 5px;
-        }
-        #context-menu a {
-            color: #00ccFF; /* White text for links */
-            text-decoration: none; /* No underline */
-        }
-        #context-menu a:hover {
-            text-decoration: underline;
-        }
-
-    </style>
+    <link rel="stylesheet" href="menu.css">
+    <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
@@ -112,6 +31,15 @@
 
 
     <div id="threejs-container"></div>
+        <!-- Menu Overlay (identical to Menu.html, minus the 'i') -->
+    <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+    <div id="menu-container">
+        <div class="menu-title">Main Menu</div>
+        <div id="menu-columns-wrapper">
+            <!-- Columns will be dynamically generated here -->
+        </div>
+    </div>
+    <script src="menu.js"></script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
@@ -276,8 +204,20 @@
             document.addEventListener('keydown', onKeyDown, false);
             document.addEventListener('keyup', onKeyUp, false);
             // Prevent default right-click context menu
-            document.addEventListener('contextmenu', onContextMenu, false);
-            // Pointer Lock API events
+            document.addEventListener('contextmenu', onContextMenu, false);            
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'm' || event.key === 'M' || event.key === 'Escape') {
+                    event.preventDefault();
+                    toggleMenu(true); // Ensure the menu is shown
+                }
+            });
+            // Add click listener to the document for pointer lock request
+            document.addEventListener('click', () => {
+                if (!isPointerLocked && !contextMenu.contains(event.target) && !document.getElementById('menu').contains(event.target)) {
+                     renderer.domElement.requestPointerLock();
+                }
+            });
+
             document.addEventListener('pointerlockchange', onPointerLockChange, false);
             document.addEventListener('pointerlockerror', onPointerLockError, false);
 
@@ -921,17 +861,26 @@
 
         // --- Pointer Lock API Callbacks ---
         function onPointerLockChange() {
+            const menuContainer = document.getElementById('menu-container');
             if (document.pointerLockElement === renderer.domElement) {
                 console.log('Pointer Locked');
                 isPointerLocked = true;
+                // Hide the menu when pointer is locked
+                menuContainer.style.display = 'none';
             } else {
                 console.log('Pointer Unlocked');
                 isPointerLocked = false;
-                 // Reset movement flags when pointer is unlocked
-                 moveForward = false;
-                 moveBackward = false;
-                 moveLeft = false;
-                 moveRight = false;
+                // Show the menu when pointer is unlocked
+                menuContainer.style.display = 'flex';
+                // Optionally re-render menu columns if needed
+                if (typeof renderMenuColumns === 'function') {
+                    renderMenuColumns(window.previousRenderedPath || []);
+                }
+                // Reset movement flags when pointer is unlocked
+                moveForward = false;
+                moveBackward = false;
+                moveLeft = false;
+                moveRight = false;
             }
         }
 

@@ -8,6 +8,9 @@ import { calculateEscalatorBoost, animateActiveEscalatorSteps, updateEscalatorSt
 // Up is +Y and Down is -Y in this world
 // +Z is forward and -Z is backward in this world
 
+let isGamePaused = false; let animationFrameIdGame; // Or whatever you call your game's animation frame ID
+        
+
 // --- Game Settings ---
 const SETTINGS = {
     numFloors: 3, // Number of floors
@@ -252,8 +255,18 @@ function init() {
         <p>Shoot: Left Mouse Button</p>
     `; // Updated instructions to include crouch toggle
 
-    controls.addEventListener('lock', () => instructions.style.display = 'none');
-    controls.addEventListener('unlock', () => instructions.style.display = 'block');
+    controls.addEventListener('lock', () => {
+        instructions.style.display = 'none';
+        if (typeof toggleMenu === 'function') {
+            toggleMenu(false); // Hide the menu-container
+        }
+    });
+    controls.addEventListener('unlock', () => {
+        instructions.style.display = 'block';
+        if (typeof toggleMenu === 'function') {
+            toggleMenu(true); // Show the menu-container
+        }
+    });
     document.body.addEventListener('click', () => controls.lock());
 
     // --- Procedural Generation ---
@@ -277,6 +290,15 @@ function init() {
 
     // Make the player jump slightly at the start
     playerVelocity.y = 2.0;
+
+        document.addEventListener('keydown', function(event) {
+            if (!controls.isLocked) return; // Only allow menu if game is active
+            if (event.key === 'm' || event.key === 'M' || event.key === 'Escape') {
+                event.preventDefault();
+                const currentGameUrl = window.location.pathname.replace(/^\//, '') + window.location.search + window.location.hash;
+                window.location.href = '../../Menu.html?returnTo=' + encodeURIComponent(currentGameUrl);
+            }
+        });
 
     // Start the animation loop
     animate();
@@ -566,67 +588,7 @@ function createLampshadeProjectile(startPosition, direction, firedByPlayer = fal
     worldObjects.push(lampshadeProjectile);
 }
 
-// --- Initialization ---
-/* function init() {
-    clock = new THREE.Clock(); // Initialize clock here
-    scene = new THREE.Scene();
-    // Set background to a dark blue for a moonlit night
-    scene.background = new THREE.Color(0x010309); // Dark blue
-    scene.fog = new THREE.Fog(0x010309, 10, 100); // Fog to match the night theme
 
-    // Camera
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    // Camera position will be set after elevators are created in generateWorld
-
-    // Renderer
-    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.shadowMap.enabled = true;
-
-    // Lighting (moved from original spot to be before generateWorld if it depends on scene)
-    const ambientLight = new THREE.AmbientLight(0x015599, 0.1); // Dim bluish ambient light
-    scene.add(ambientLight);
-
-    const moonlight = new THREE.DirectionalLight(0x015599, 0.3); // Soft bluish moonlight
-    moonlight.position.set(-10, 20, -10); // Position the moonlight
-    moonlight.castShadow = true;
-    scene.add(moonlight);
-
-    // --- Procedural Generation ---
-    generateWorld(); // Now clock is initialized, enemies can use it
-
-    // Pointer Lock Controls (after camera is positioned by generateWorld/elevators)
-    controls = new PointerLockControls(camera, document.body);
-    scene.add(controls.getObject()); // Add the camera holder to the scene
-
-    const instructions = document.getElementById('instructions');
-    instructions.innerHTML = `
-        <p>Move: W/A/S/D</p>
-        <p>Jump: Space</p>
-        <p>Sprint: Shift</p>
-        <p>Crouch: Ctrl</p>
-        <p>Prone: Ctrl, Ctrl</p>
-        <p>Interact: E</p>
-        <p>Shoot: Left Mouse Button</p>
-    `;
-
-    controls.addEventListener('lock', () => instructions.style.display = 'none');
-    controls.addEventListener('unlock', () => instructions.style.display = 'block');
-    document.body.addEventListener('click', () => controls.lock());
-
-    // --- Event Listeners ---
-    document.addEventListener('mousedown', shoot);
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('keyup', onKeyUp);
-    window.addEventListener('resize', onWindowResize);
-
-    // Make the player jump slightly at the start
-    playerVelocity.y = 2.0;
-
-    // Start the animation loop
-    animate();
-} */
 
 // --- World Generation ---
 function generateWorld() {
@@ -1095,30 +1057,7 @@ function generateWorld() {
     penthouseWallRight.castShadow = true; penthouseWallRight.receiveShadow = true;
     scene.add(penthouseWallRight); worldObjects.push(penthouseWallRight);
 
-    // Penthouse Wall Back
-    /* const penthouseWallBackGeo = new THREE.BoxGeometry(overallShaftActualWidth, penthouseWallHeight, wallDepth);
-    const penthouseWallBack = new THREE.Mesh(penthouseWallBackGeo, wallMaterial);
-    penthouseWallBack.name = `ElevatorPenthouseWall_Back`;
-    penthouseWallBack.position.set(
-        overallShaftActualCenterX, // Adjusted
-        penthouseWallCenterY,
-        overallShaftMinZ - wallDepth / 2
-    );
-    penthouseWallBack.castShadow = true; penthouseWallBack.receiveShadow = true;
-    scene.add(penthouseWallBack); worldObjects.push(penthouseWallBack); */
-
-    // Penthouse Wall Front (around opening, if any, or solid if no roof access door)
-    // For simplicity, let's make it solid for now. A door could be added here.
-    /* const penthouseWallFrontGeo = new THREE.BoxGeometry(currentElevatorConfig.shaftWidth, penthouseWallHeight, wallDepth);
-    const penthouseWallFront = new THREE.Mesh(penthouseWallFrontGeo, wallMaterial);
-    penthouseWallFront.name = `ElevatorPenthouseWall_Front`;
-    penthouseWallFront.position.set( // This was commented out, if re-enabled, adjust:
-        overallShaftActualCenterX, // Adjusted
-        penthouseWallCenterY,
-        overallShaftMaxZ + wallDepth / 2
-    );
-    penthouseWallFront.castShadow = true; penthouseWallFront.receiveShadow = true;
-    scene.add(penthouseWallFront); worldObjects.push(penthouseWallFront); */
+    
 
     // --- Floodlight on Elevator Shaft Roof ---
     const floodlightHousingMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7, roughness: 0.4 });
@@ -1288,16 +1227,7 @@ function generateWorld() {
     wallSideRightB.castShadow = true; wallSideRightB.receiveShadow = true; wallSideRightB.geometry.computeBoundingBox();
     scene.add(wallSideRightB); worldObjects.push(wallSideRightB);
 
-    
-/*     // Wall 5 : Side X (Negative X side of roof, at X = -SETTINGS.roomSize)
-    const wallSideLeftBGeo = new THREE.BoxGeometry(rooftopWallThickness, rooftopWallHeight, roofActualDepth);
-    const wallSideLeftB = new THREE.Mesh(wallSideLeftBGeo, rooftopWallMaterial);
-    wallSideLeftB.position.set(roofActualCenterX - roofActualWidth / 2 + rooftopWallThickness / 2, wallYPos, -16-roofActualCenterZ);
-    wallSideLeftB.name = "RooftopWall_B_SideLeft";
-    wallSideLeftB.castShadow = true; wallSideLeftB.receiveShadow = true; wallSideLeftB.geometry.computeBoundingBox();
-    scene.add(wallSideLeftB); worldObjects.push(wallSideLeftB);
-
- */
+ 
 
 
     // --- Define Building Footprint for Basement ---
@@ -1326,13 +1256,8 @@ function generateWorld() {
             const floorPanelY = floorY - floorDepth / 2; // Y for top surface of floor slab
             const ceilingPanelY = floorY + SETTINGS.wallHeight - (floorDepth / 4); // Y for top surface of ceiling slab
 
-            // --- Add Connector Floor & Ceiling for Basement (between corridor end Z=0 and new shaft front Z=-4) ---
-           /*  const connectorBasementFloorGeo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth, 4); // Adjusted width
-            const connectorBasementFloor = new THREE.Mesh(connectorBasementFloorGeo, concreteMaterial);
-            connectorBasementFloor.position.set(overallShaftActualCenterX, floorPanelY, -2); // Adjusted X
-            connectorBasementFloor.name = `BasementConnectorFloor_F${i}`;
-            scene.add(connectorBasementFloor); worldObjects.push(connectorBasementFloor);
- */
+            
+
             const connectorBasementCeilingGeo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth / 2, 4); // Adjusted width
             const connectorBasementCeiling = new THREE.Mesh(connectorBasementCeilingGeo, concreteMaterial);
             connectorBasementCeiling.position.set(overallShaftActualCenterX, ceilingPanelY, -2); // Adjusted X
@@ -1543,12 +1468,7 @@ function generateWorld() {
             const pillarSpacingZ = 7;
             // Use overall shaft dimensions for pillar exclusion zone
             const elevatorShaftZone = { minX: overallShaftMinX - 0.1, maxX: overallShaftMaxX + 0.1, minZ: overallShaftMinZ - 0.1, maxZ: overallShaftMaxZ + 0.1 };
-            /* const escalatorLandingZone = (i === -SETTINGS.numBasementFloors) ? { // Only for the first basement floor if escalators lead there
-                minX: -SETTINGS.escalatorWidth - 1,
-                maxX: SETTINGS.corridorWidth + SETTINGS.escalatorWidth + 1,
-                minZ: totalCorridorLength + 2,
-                maxZ: totalCorridorLength + SETTINGS.escalatorLength + 6
-            } : null; */
+           
 
             for (let px = basementMinX + pillarSpacingX / 2; px < basementMaxX; px += pillarSpacingX) {
                 for (let pz = basementMinZ + pillarSpacingZ / 2; pz < basementMaxZ; pz += pillarSpacingZ) {
@@ -1556,11 +1476,7 @@ function generateWorld() {
                         pz > elevatorShaftZone.minZ && pz < elevatorShaftZone.maxZ) {
                         continue;
                     }
-                    /* if (escalatorLandingZone &&
-                        px > escalatorLandingZone.minX && px < escalatorLandingZone.maxX &&
-                        pz > escalatorLandingZone.minZ && pz < escalatorLandingZone.maxZ) {
-                        continue;
-                    } */
+     
 
                     const pillar = new THREE.Mesh(pillarGeo, pillarMaterial);
                     pillar.position.set(px, pillarYPos, pz);
@@ -1708,17 +1624,7 @@ function generateWorld() {
                 // --- Right Side Room ---
                 const roomRXCenter = -SETTINGS.roomSize / 2;
                 const isRightRoomRedDoor = (j === redDoorIndex);
-                /* const rFloorGeo = new THREE.BoxGeometry(SETTINGS.roomSize, floorDepth, SETTINGS.corridorSegmentLength);
-                const rFloor = new THREE.Mesh(rFloorGeo, floorMaterial);
-                rFloor.position.set(roomRXCenter, floorY - floorDepth / 2, segmentCenterZ);
-                rFloor.receiveShadow = true; // scene.add(rFloor); worldObjects.push(rFloor); // Will be added to roomContents
-                rFloor.name = `RoomFloor_R_F${i}_D${j}`;
 
-                const rCeilingGeo = new THREE.BoxGeometry(SETTINGS.roomSize, roomCeilingThickness, SETTINGS.corridorSegmentLength);
-                const rCeiling = new THREE.Mesh(rCeilingGeo, ceilingMaterial); // Use existing ceilingMaterial
-                rCeiling.position.set(roomRXCenter, floorY + SETTINGS.wallHeight + roomCeilingThickness / 2, segmentCenterZ);
-                rCeiling.castShadow = true; rCeiling.receiveShadow = true;
-                rFloor.name = `RoomFloor_R_F${i}_D${j}`; */
                 
                 const deskRGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
                 const deskR = new THREE.Mesh(deskRGeo, deskMaterial);
@@ -1788,17 +1694,7 @@ function generateWorld() {
 
                 const roomBRXCenter = -SETTINGS.roomSize / 2;
                 const isRightBRoomRedDoor = (j === redDoorIndex);
-                /* const rFloorBGeo = new THREE.BoxGeometry(SETTINGS.roomSize, floorDepth, SETTINGS.corridorSegmentLength);
-                const rFloorB = new THREE.Mesh(rFloorBGeo, floorMaterial);
-                rFloorB.position.set(roomBRXCenter, floorY - floorDepth / 2, segmentBCenterZ);
-                rFloorB.receiveShadow = true; // scene.add(rFloor); worldObjects.push(rFloor); // Will be added to roomContents
-                rFloorB.name = `RoomFloor_B_R_F${i}_D${j}`;
 
-                const rCeilingBGeo = new THREE.BoxGeometry(SETTINGS.roomSize, roomCeilingThickness, SETTINGS.corridorSegmentLength);
-                const rCeilingB = new THREE.Mesh(rCeilingBGeo, ceilingMaterial); // Use existing ceilingMaterial
-                rCeilingB.position.set(roomRXCenter, floorY + SETTINGS.wallHeight + roomCeilingThickness / 2, segmentBCenterZ);
-                rCeilingB.castShadow = true; rCeilingB.receiveShadow = true;
-                rCeilingB.name = `RoomCeiling_B_R_F${i}_D${j}`; */
                 
                 const deskRBGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
                 const deskRB = new THREE.Mesh(deskRBGeo, deskMaterial);
@@ -1864,17 +1760,7 @@ function generateWorld() {
                 // --- Left Side Room ---
                 const roomLXCenter = SETTINGS.corridorWidth + SETTINGS.roomSize / 2;
                 const isLeftRoomRedDoor = ((SETTINGS.doorsPerSide + j) === redDoorIndex);
-                /* const lFloorGeo = new THREE.BoxGeometry(SETTINGS.roomSize, floorDepth, SETTINGS.corridorSegmentLength);
-                const lFloor = new THREE.Mesh(lFloorGeo, floorMaterial);
-                lFloor.position.set(roomLXCenter, floorY - floorDepth / 2, segmentCenterZ);
-                lFloor.receiveShadow = true; // scene.add(lFloor); worldObjects.push(lFloor);
-                lFloor.name = `RoomFloor_L_F${i}_D${j}`;
 
-                const lCeilingGeo = new THREE.BoxGeometry(SETTINGS.roomSize, roomCeilingThickness, SETTINGS.corridorSegmentLength);
-                const lCeiling = new THREE.Mesh(lCeilingGeo, ceilingMaterial);
-                lCeiling.position.set(roomRXCenter, floorY + SETTINGS.wallHeight + roomCeilingThickness / 2, segmentCenterZ);
-                lCeiling.castShadow = true; lCeiling.receiveShadow = true;
-                lFloor.name = `RoomFloor_L_F${i}_D${j}`; */
                 
                 const deskLGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
                 const deskL = new THREE.Mesh(deskLGeo, deskMaterial);
@@ -1928,24 +1814,11 @@ function generateWorld() {
 
                                 leftRoomContents.visible = false;
                                 scene.add(leftRoomContents);
-                                /* allRoomsData.push({ // Ensure new properties are initialized
-                                    id: leftRoomId, door: null, windowGlass: null, opaqueMaterial: null, transparentMaterial: null, contentsGroup: leftRoomContents,
-                                    visibleByDoor: false, visibleByWindow: false, lamp: roomLampL
-                                }); */
+
                                 // --- Left Side B Room ---
                                 const roomBLXCenter = SETTINGS.corridorWidth + SETTINGS.roomSize / 2;
                                 const isLeftBRoomRedDoor = ((SETTINGS.doorsPerSide + j) === redDoorIndex);
-                                /* const lFloorBGeo = new THREE.BoxGeometry(SETTINGS.roomSize, floorDepth, SETTINGS.corridorSegmentLength);
-                                const lFloorB = new THREE.Mesh(lFloorBGeo, floorMaterial);
-                                lFloorB.position.set(roomBLXCenter, floorY - floorDepth / 2, segmentBCenterZ);
-                                lFloorB.receiveShadow = true; // scene.add(lFloor); worldObjects.push(lFloor);
-                                lFloorB.name = `RoomFloor_B_L_F${i}_D${j}`;
-                
-                                const lCeilingBGeo = new THREE.BoxGeometry(SETTINGS.roomSize, roomCeilingThickness, SETTINGS.corridorSegmentLength);
-                                const lCeilingB = new THREE.Mesh(lCeilingBGeo, ceilingMaterial);
-                                lCeilingB.position.set(roomBLXCenter, floorY + SETTINGS.wallHeight + roomCeilingThickness / 2, segmentBCenterZ);
-                                lCeilingB.castShadow = true; lCeilingB.receiveShadow = true;
-                                lFloorB.name = `RoomFloor_B_L_F${i}_D${j}`; */
+
                                 
                                 const deskLBGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
                                 const deskBL = new THREE.Mesh(deskLBGeo, deskMaterial);
@@ -4261,27 +4134,7 @@ function dropLampshade(lampshade) {
     }, 33); // approx 30 FPS for this animation
 }
 
-/* function pickUpLampshade() {
-    if (!controls.isLocked) return;
 
-    const playerPosition = controls.getObject().position;
-
-    lights.forEach(lightGroup => {
-        const lampshade = lightGroup.children.find(child => child.geometry instanceof THREE.ConeGeometry);
-        if (lampshade && lampshade.userData.isPickable) {
-            const distance = lampshade.position.distanceTo(playerPosition);
-
-            if (distance < 1.5) { // Adjust the pickup range as needed
-                console.log("Picked up the lampshade!");
-                scene.remove(lampshade); // Remove the lampshade from the scene
-                lampshade.userData.isPickable = false;
-
-                // Add logic for what happens when the player picks it up
-                // For example, increase score, add to inventory, etc.
-            }
-        }
-    });
-} */
 
 function applyDamageToPlayer(damage) {
     if (isGameOver) return;
@@ -4647,16 +4500,7 @@ function updatePlayer(deltaTime) {
 
                     const originalLightId = lightGroup.id;
 
-                    // Remove the orange light beam
-                    /* for (let k = lightBeams.length - 1; k >= 0; k--) {
-                        if (lightBeams[k].userData.originalLightId === originalLightId) {
-                            scene.remove(lightBeams[k]);
-                            const worldObjBeamIndex = worldObjects.indexOf(lightBeams[k]);
-                            if (worldObjBeamIndex > -1) worldObjects.splice(worldObjBeamIndex, 1);
-                            lightBeams.splice(k, 1);
-                            break;
-                        }
-                    } */
+
 
                     // Remove the corresponding fallen lampshade mesh
                     for (let k = fallenLampshades.length - 1; k >= 0; k--) {
@@ -5008,9 +4852,62 @@ function updateProjectiles(deltaTime) {
     }
 }
 
+        function toggleGameMenuOverlay() { const menuOverlayContainer = document.getElementById('menuOverlayContainer'); const menuFrame = document.getElementById('menuFrame');
+
+              if (menuOverlayContainer.style.display === 'block') {
+          // Hide menu, resume game
+          menuOverlayContainer.style.display = 'none';
+          menuFrame.src = 'about:blank'; // Clear iframe content
+          isGamePaused = false;
+          if (document.pointerLockElement) { // If pointer was locked
+              // Attempt to re-lock pointer, specific to how your game handles it
+              // e.g., renderer.domElement.requestPointerLock(); or controls.lock();
+          }
+          // If you cancelAnimationFrame, you need to restart it here.
+          // If animate checks isGamePaused, it will resume automatically.
+          // For games like PacSnake or Paint that are event-driven, isGamePaused
+          // might be checked before processing input events.
+
+      } else {
+          // Show menu, pause game
+          isGamePaused = true;
+          if (document.pointerLockElement) {
+              document.exitPointerLock();
+          }
+          // Adjust path to Menu.html based on current file's location
+          // Example for a game in Arcade/GameName/Game.html:
+          let pathToMenu = '../../Menu.html';
+          // Example for Arcade.html:
+          // let pathToMenu = '../Menu.html';
+
+          // Dynamically calculate path (more robust)
+          const currentPath = window.location.pathname;
+          const pathSegments = currentPath.split('/');
+          let relativePath = '';
+          // Find 'Arcade' and go up one level from there for Menu.html in SHOP
+          // Or, if Menu.html is at the root of SHOP, and games are in SHOP/Arcade/...
+          const shopIndex = pathSegments.indexOf('SHOP'); // Assuming SHOP is in the path
+          if (shopIndex > -1) {
+              const depth = pathSegments.length - shopIndex - 1; // -1 because SHOP itself is one level
+              for(let i=0; i < depth; i++) {
+                  relativePath += '../';
+              }
+              pathToMenu = relativePath + 'Menu.html';
+          } else { // Fallback if SHOP isn't in path (e.g. running from a different structure)
+              const depth = currentPath.includes('/Arcade/') ? (currentPath.split('/Arcade/')[1].split('/').length) : 1;
+              pathToMenu = '../'.repeat(depth) + 'Menu.html';
+          }
+
+
+          menuFrame.src = pathToMenu + '?isOverlay=true&returnLabel=Resume';
+          menuOverlayContainer.style.display = 'block';
+      }
+  }
+  
 
 // --- Animation Loop ---
 function animate() {
+     // animationFrameIdGame = requestAnimationFrame(animate); // If you re-assign it here if (isGamePaused) { // Optional: If you want to completely stop rAF and restart, you'd cancel it here. // But for a simple pause, just returning is often enough if rAF is called once outside. // If animate calls itself, you must ensure it doesn't get called when paused. return; } // ... rest of your game's animate function } // Ensure requestAnimationFrame(animate) is called to start the loop initially. // If animate calls itself (e.g. requestAnimationFrame(animate) is inside animate), // then the `if (isGamePaused) return;` is sufficient.
     if (isGameOver) return; // Stop animation loop if game is over
 
     requestAnimationFrame(animate);

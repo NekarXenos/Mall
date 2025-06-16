@@ -1,0 +1,6 @@
+Software
+-Vehicle Wrap design directly onto 3d models (Concept)
+
+-3d Paint (Concept similar to my Pov-Ray experiments)
+
+-3d + Vector + Image-Manipulation all-in-one Software (Concept based on what I first did on the 48k ZX Spectrum)

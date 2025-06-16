@@ -4,35 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3D Mall Scene - Three.js</title>
-    <style>
-        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #111; color: #fff; }
-        canvas { display: block; }
-        #info {
-            position: absolute;
-            top: 10px;
-            width: 100%;
-            text-align: center;
-            z-index: 100;
-            display:block;
-            color: white;
-            padding: 10px;
-            background: rgba(0,0,0,0.5);
-        }
-        #hover-info {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%); /* Center the element */
-            color: white;
-            background: rgba(0,0,0,0.7);
-            padding: 10px;
-            border-radius: 5px;
-            display: none; /* Hidden by default */
-            z-index: 101; /* Above other info elements */
-            text-align: center;
-            pointer-events: none; /* Allow clicks to pass through if needed, though not strictly necessary here */
-        }
-    </style>
+    <link rel="stylesheet" href="menu.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="info">
@@ -40,6 +13,16 @@
         Click to Start<br/>Use mouse to look, W/A/S/D to move.
     </div>
     <div id="hover-info"></div>
+
+    <!-- Menu Overlay (identical to Menu.html, minus the 'i') -->
+    <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+    <div id="menu-container">
+        <div class="menu-title">Main Menu</div>
+        <div id="menu-columns-wrapper">
+            <!-- Columns will be dynamically generated here -->
+        </div>
+    </div>
+    <script src="menu.js"></script>
 
     <script type="importmap">
         {
@@ -121,10 +104,14 @@
             });
             controls.addEventListener('lock', function () {
                 infoDiv.style.display = 'none';
+                // When locking controls (resuming game), hide the menu:
+                if (typeof toggleMenu === 'function') toggleMenu(false);
             });
             controls.addEventListener('unlock', function () {
                 infoDiv.style.display = 'block';
                 infoDiv.innerHTML = 'Paused - Click to Resume<br/>Use mouse to look, W/A/S/D to move.';
+                // Show the menu overlay when paused
+                if (typeof toggleMenu === 'function') toggleMenu(true);
             });
 
             // --- LIGHTING ---
@@ -163,13 +150,18 @@
             // --- PROCEDURAL MARBLE FLOOR MATERIAL (REVISED SHADER) ---
             const floorVertexShader = `
                 varying vec2 vUv;
+                varying vec3 vNormal; // Normal in view space for lighting
+
                 void main() {
                     vUv = uv;
+                    // Calculate normal in view space and pass to fragment shader
+                    vNormal = normalize(normalMatrix * normal);
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
             `;
             const floorFragmentShader = `
                 varying vec2 vUv;
+                varying vec3 vNormal; // Received from vertex shader
 
                 // --- START: 2D Simplex Noise By Stefan Gustavson ---
                 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -294,8 +286,10 @@
             `;
 
             const floorMaterial = new THREE.ShaderMaterial({
+                
                 vertexShader: floorVertexShader,
                 fragmentShader: floorFragmentShader,
+                //lights: true // IMPORTANT: This injects Three.js lighting uniforms and sets up defines
             });
             const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
             const ceilingMaterial = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
@@ -363,7 +357,7 @@
             Promise.all(fontPromises).then(() => {
                 const shopsData = {
                     "The Sci-Fi Bookshop": createShop("The Sci-Fi Bookshop", new THREE.Vector3(10, 0, 5), loadedFonts.gentilis),
-                    "Gerhard's Art": createShop("Gerhard's Art", new THREE.Vector3(10, 0, 15), loadedFonts.helvetiker),
+                    "Art by Gerhard": createShop("Art by Gerhard", new THREE.Vector3(10, 0, 15), loadedFonts.helvetiker),
                     "GO 3Design": createShop("GO 3Design", new THREE.Vector3(0, 0, 25), loadedFonts.helvetiker),
                     "NX Dev": createShop("NX Dev", new THREE.Vector3(-10, 0, 15), loadedFonts.gentilis),
                     "X-Arcade": createShop("X-Arcade", new THREE.Vector3(-10, 0, 5), loadedFonts.optimer)
@@ -394,6 +388,33 @@
                     };
                     interactiveElements.push(xArcadeShop.doorGlass);
                 }
+                // Add interaction for The Sci-Fi Bookshop
+                const sciFiShop = shopsData["The Sci-Fi Bookshop"];
+                if (sciFiShop) {
+                    if (sciFiShop.facia) {
+                        sciFiShop.facia.userData = {
+                            type: 'facia',
+                            shopName: "The Sci-Fi Bookshop",
+                            message: "The Sci-Fi Bookshop - Browse Books",
+                            action: () => {
+                                window.location.href = 'SciFiBookshop/SciFiBookshop.html';
+                            }
+                        };
+                        interactiveElements.push(sciFiShop.facia);
+                    }
+                    if (sciFiShop.doorGlass) {
+                        sciFiShop.doorGlass.userData = {
+                            type: 'door',
+                            shopName: "The Sci-Fi Bookshop",
+                            message: "Click to enter The Sci-Fi Bookshop",
+                            action: () => {
+                                window.location.href = 'SciFiBookshop/SciFiBookshop.html';
+                            }
+                        };
+                        interactiveElements.push(sciFiShop.doorGlass);
+                    }
+                }
+
                 xArcadeShop.shopGroup.traverse((child) => {
                 if (child.isMesh) {
                     child.userData = {

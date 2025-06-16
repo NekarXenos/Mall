@@ -1,0 +1,135 @@
+body {
+            margin: 0;
+            overflow: hidden;
+            font-family: "Inter", sans-serif;
+            background-color: #1a202c; /* Dark background */
+            color: #00ffff; /* Light text */
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        /* body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #111; color: #fff; }
+        canvas { display: block; } */
+         #info {
+            position: absolute;
+            top: 20px;
+            right: 50%;
+            width: 20%;
+            transform: translate(50%, -50%); 
+            text-align: center;
+            z-index: 1001;
+            display:block;
+            color: #00ffff; /* Light text */
+            padding: 10px;
+            background: #1a202c;
+        }
+        #hover-info {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%); 
+            color: #00ffff; /* Light text */
+            background:  rgba(51, 65, 85, 0.8); /* slate-700 semi-transparent */
+            padding: 10px;
+            border-radius: 5px;
+            display: none; 
+            z-index: 1002; 
+            text-align: center;
+            pointer-events: none; 
+        } 
+        /* Menu styles identical to Menu.html */
+        
+        #menu-container {
+            position: absolute;
+            top: 10px; /* Adjust as needed for spacing from the top */
+            left: 10px; /* Adjust as needed for spacing from the left */
+            /* transform: translate(-50%, -50%); Removed for top-left alignment */
+            /* background-color: rgba(30, 41, 59, 0.9); */ /* Darker semi-transparent background - REMOVED */
+            /* border-radius: 0.75rem; */ /* rounded-xl - REMOVED */
+            /* padding: 1.5rem; */ /* p-6 - REMOVED */
+            /* box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2); */ /* shadow-2xl - REMOVED */
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+            /* display: none; /* Hidden by default, JS will control */
+            /* border: 1px solid rgba(71, 85, 105, 0.5); */ /* border-gray-700 - REMOVED */
+            display: flex; /* For title and columns-wrapper - Always display */
+            flex-direction: column; /* Title above, columns below */
+            /* Add a chamfer to the top-right corner */
+            /* clip-path: polygon(3rem 0, 100% 0, 100% 100%, 0 100%, 0 3rem); MODIFIED: Larger chamfer on top-left */
+        }
+        .menu-title {
+            font-size: 1.875rem; /* text-3xl */
+            font-weight: 600; /* font-semibold is often used with Inter */
+            margin-bottom: 1.5rem; /* mb-6 */
+            text-align: center;
+            color: #00aaaa; /* blue-300 */
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        .menu-item {
+            padding: 0.75rem 1rem; /* py-3 px-4 */
+            margin-bottom: 0.5rem; /* mb-2 */
+            background-color: rgba(20, 65, 96, 0.8); /* slate-700 semi-transparent */
+            border-radius: 0.5rem; /* rounded-lg */
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            border: 2px solid rgba(0, 187, 255, 0.5);
+            font-weight: 500;
+            /* Add a chamfer to the top-right corner of menu items */
+            clip-path: polygon(1rem 0, 100% 0, 100% 100%, 0 100%, 0 1rem); /* MODIFIED: Larger chamfer on top-left */
+        }
+        .menu-item:hover {
+            background-color: rgba(0, 120, 150, 0.9); /* slate-600 semi-transparent */
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.15);
+        }
+        .menu-item.current-level {
+            background-color: rgba(0, 64, 120, 0.7); /* blue-600 semi-transparent */
+            color: #11eeff; /* blue-300 */
+            font-weight: 600;
+            border-color: rgba(0, 255, 255, 1); /* blue-700 semi-transparent */
+        }
+        .subtitle {
+            font-size: 0.875rem; /* text-sm */
+            color: #00bbff; /* gray-400 */
+            margin-top: 0.25rem; /* mt-1 */
+            font-style: italic;
+        }
+
+        #menu-columns-wrapper {
+            display: flex;
+            flex-direction: row;
+            align-items: stretch; /* Stretch columns to fill height */
+            flex-grow: 1; /* Take remaining vertical space */
+            overflow: hidden; /* Prevent this wrapper from scrolling, columns will scroll */
+            /* margin-top: 1rem; /* Optional space below title */
+        }
+
+        #menu-content {
+            flex-shrink: 0;
+            min-width: 280px; /* Adjusted min-width */
+            height: 100%;
+            overflow-y: auto;
+            padding-right: 0.5rem; /* Space before the next column's margin */
+        }
+
+        #hover-submenu-column {
+            flex-shrink: 0;
+            min-width: 280px; /* Adjusted min-width */
+            height: 100%;
+            overflow-y: auto;
+            margin-left: 0.5rem; /* Space after menu-content's padding */
+            /* background-color: rgba(45, 55, 72, 0.92); */ /* Slightly distinct background - REMOVED */
+            /* border-radius: 0.5rem; */ /* rounded-lg - REMOVED */
+            /* padding: 0.75rem; */ /* p-3 - REMOVED */
+            /* border: 1px solid rgba(71, 85, 105, 0.6); */ /* REMOVED */
+            /* display: none; is handled by JS via .hidden class or style.display */
+        }
+
+        /* Ensure menu items in hover column also look good */
+        /* #hover-submenu-column .menu-item {
+            background-color: rgba(51, 65, 85, 0.85); 
+        } */

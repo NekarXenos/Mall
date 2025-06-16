@@ -1,0 +1,140 @@
+/* --- Global Menu Styles --- */
+
+/* Main container for the menu overlay */
+#modular-menu-container {
+    position: fixed; /* Use fixed to stay in place even on scrolled pages */
+    top: 20px;
+    left: 20px;
+    z-index: 10000; /* Ensure it's on top of everything */
+    background-color: rgba(30, 41, 59, 0.85); /* Dark, semi-transparent background */
+    backdrop-filter: blur(10px); /* Frosted glass effect */
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+    max-width: 95vw;
+    max-height: 90vh;
+    border: 1px solid rgba(71, 85, 105, 0.5);
+    display: flex; /* Switched to flex for layout */
+    flex-direction: column; /* Stack title and columns vertically */
+    color: #cbd5e1; /* Default text color (slate-300) */
+    font-family: "Inter", sans-serif, system-ui;
+
+    /* Chamfered top-left corner */
+    clip-path: polygon(2rem 0, 100% 0, 100% 100%, 0 100%, 0 2rem);
+}
+
+/* Title of the current menu level */
+#modular-menu-container .menu-title {
+    font-size: 1.875rem; /* 30px */
+    font-weight: 600;
+    margin-bottom: 24px;
+    text-align: center;
+    color: #67e8f9; /* cyan-300 */
+    text-shadow: 0 0 8px rgba(103, 232, 249, 0.5);
+    flex-shrink: 0; /* Prevent title from shrinking */
+}
+
+/* Wrapper for all menu columns */
+#menu-columns-wrapper {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start; /* Align columns at the top */
+    flex-grow: 1;
+    overflow-x: auto; /* Allow horizontal scroll if many submenus open */
+    overflow-y: hidden;
+}
+
+/* A single column in the menu */
+.menu-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 280px;
+    max-width: 320px;
+    margin-right: 16px; /* Space between columns */
+    height: 100%;
+}
+
+.menu-column:last-child {
+    margin-right: 0;
+}
+
+/* Individual clickable item in a menu column */
+.menu-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    background-color: rgba(51, 65, 85, 0.8); /* slate-700 */
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    border: 2px solid transparent;
+    font-weight: 500;
+    
+    /* Chamfered top-left corner for items */
+    clip-path: polygon(0.75rem 0, 100% 0, 100% 100%, 0 100%, 0 0.75rem);
+}
+
+.menu-item:hover {
+    background-color: rgba(71, 85, 105, 0.9); /* slate-600 */
+    border-color: rgba(103, 232, 249, 0.7); /* cyan-300 */
+    transform: translateY(-2px);
+}
+
+/* Smaller subtitle text inside a menu item */
+.menu-item .subtitle {
+    font-size: 0.875rem; /* 14px */
+    color: #94a3b8; /* slate-400 */
+    margin-top: 4px;
+    font-style: italic;
+    font-weight: 400;
+}
+
+/* Arrow indicating a submenu */
+.menu-item .arrow {
+    float: right;
+    margin-left: auto;
+    color: #67e8f9;
+}
+
+
+/* --- Custom Alert Box --- */
+#custom-alert-box {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: #1e293b; /* slate-800 */
+    color: #e2e8f0; /* slate-200 */
+    padding: 24px;
+    border-radius: 12px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75);
+    z-index: 10001; /* Above the menu */
+    border: 1px solid #334155; /* slate-700 */
+    text-align: center;
+    min-width: 300px;
+    max-width: 500px;
+}
+
+#custom-alert-box p {
+    margin: 0;
+    margin-bottom: 20px;
+    line-height: 1.6;
+}
+
+#custom-alert-box button {
+    background-color: #2563eb; /* blue-600 */
+    color: white;
+    font-weight: bold;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#custom-alert-box button:hover {
+    background-color: #1d4ed8; /* blue-700 */
+}
