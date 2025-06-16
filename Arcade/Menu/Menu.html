@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Interactive Menu</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: "Inter", sans-serif;
+            background-color: #1a202c; /* Dark background */
+            color: #00ffff; /* Light text */
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #menu-container {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            clip-path: polygon(3rem 0, 100% 0, 100% 100%, 0 100%, 0 3rem);
+        }
+        .menu-title {
+            font-size: 1.875rem; /* text-3xl */
+            font-weight: 600;
+            margin-bottom: 1.5rem; /* mb-6 */
+            text-align: center;
+            color: #00aaaa; /* blue-300 */
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        .menu-item {
+            padding: 0.75rem 1rem; /* py-3 px-4 */
+            margin-bottom: 0.5rem; /* mb-2 */
+            background-color: rgba(51, 65, 85, 0.8); /* slate-700 semi-transparent */
+            border-radius: 0.5rem; /* rounded-lg */
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            border: 2px solid rgba(0, 187, 255, 0.5);
+            font-weight: 500;
+            clip-path: polygon(1rem 0, 100% 0, 100% 100%, 0 100%, 0 1rem);
+        }
+        .menu-item:hover {
+            background-color: rgba(71, 85, 105, 0.9); /* slate-600 semi-transparent */
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.15);
+        }
+        .menu-item.current-level {
+            background-color: rgba(37, 99, 235, 0.7); /* blue-600 semi-transparent */
+            color: #00eeee; /* text-gray-100 */
+            font-weight: 600;
+            border-color: rgba(29, 78, 216, 0.7); /* blue-700 semi-transparent */
+        }
+        .subtitle {
+            font-size: 0.875rem; /* text-sm */
+            color: #00bbff; /* gray-400 */
+            margin-top: 0.25rem; /* mt-1 */
+            font-style: italic;
+        }
+        #menu-columns-wrapper {
+            display: flex;
+            flex-direction: row;
+            align-items: stretch;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+        #menu-content {
+            flex-shrink: 0;
+            min-width: 280px;
+            height: 100%;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+        #hover-submenu-column {
+            flex-shrink: 0;
+            min-width: 280px;
+            height: 100%;
+            overflow-y: auto;
+            margin-left: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="threejs-container"></div>
+    <div id="menu-container" style="display: flex;"> <!-- Start visible -->
+        <div class="menu-title">Main Menu</div>
+        <div id="menu-columns-wrapper">
+            <!-- Columns will be dynamically generated here -->
+        </div>
+    </div>
+
+    <script>
+        // Use __app_id and __firebase_config for Firebase if needed, but not for this specific example.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+
+        // Three.js setup
+        let scene, camera, renderer, letterI;
+        let raycaster, mouse;
+        let menuData = null;
+        let previousRenderedPath = null;
+        let currentMenuLevel = [];
+
+        // --- NEW ---
+        // State variable to control the animation. Since the menu starts visible, we start paused.
+        let isAnimationPaused = true;
+
+        // XML Menu Data
+        const xmlString = `<menu>
+            <item name="The SciFi BookStore">
+                <item name="The Next Sun"><subtitle>Science Fiction - Pioneers reach the first planet from another solar system</subtitle></item>
+                <item name="CaveMan Abduction"><subtitle>Sci-Fi Comedy - A Flying Saucer crashes near a group of Cave-men</subtitle></item>
+                <item name="The AbductoTron Chronicals"><subtitle>Sci-Fi Comedy - A Grey gets bored and decides to change things up a bit</subtitle></item>
+                <item name="Abduction And Absurdity"><subtitle>Sci-Fi Comedy - A Compilation of Sci-Fi Comedies - Just for fun AI Experiments</subtitle></item>
+                <item name="The Bue-Harian Chronicals">
+                    <subtitle>A Science-Fiction Trilogy</subtitle>
+                    <item name="MoonRise"><subtitle>Science Students trying to Simulate the Universe gone awry</subtitle></item>
+                    <item name="Bue-Har'ia"><subtitle>Life in the Simulation World</subtitle></item>
+                    <item name="Z3R0"><subtitle>A New Hero</subtitle></item>
+                </item>
+            </item>
+            <item name="Art By Gerhard">
+                <item name="Acrylics on Canvas">
+                    <item name="Funk Duel"><subtitle>1.2m x 0.9m</subtitle></item>
+                    <item name="Jazz Trio"><subtitle>2m x 1.2m</subtitle></item>
+                    <item name="Buskers"><subtitle>1.2m x 1m</subtitle></item>
+                    <item name="Bassist"><subtitle>0.9m x 1.2m</subtitle></item>
+                    <item name="Saxophonist"><subtitle>0.9m x 1.2m</subtitle></item>
+                    <item name="Bass Blues"><subtitle>0.9m x 0.9m</subtitle></item>
+                    <item name="Sunny In The Shade"><subtitle>1.2m x 0.9m</subtitle></item>
+                    <item name="Blue Morpho"><subtitle>1.2m x 0.9m</subtitle></item>
+                </item>
+                <item name="Pov-Ray 3d Renderings">
+                    <item name="Funk Duel"/><item name="Bass Still"/><item name="Sunny In The Shade"/><item name="Buskers"/><item name="Jazz Trio"/>
+                    <item name="Fusion Paint"><subtitle>I developed a script in PovRay that would create an impressionistic 3d painting of a 3d Scene</subtitle></item>
+                    <item name="3d Paint Experiments"><subtitle>I developed a script in PovRay that would create an impressionistic 3d painting of a 3d Scene</subtitle></item>
+                </item>
+            </item>
+            <item name="GO 3Design">
+                <item name="Furai-Vision Concept"><subtitle>A Rotary Hyper-car Design inspired by the Mazda Furai and the Mazda RX-Vision - Designed in Rhino-3d and converted to Blender-3d</subtitle></item>
+                <item name="Xaena Concept 3"><subtitle>Coming Soon TM</subtitle></item>
+                <item name="Quick Concept"/><item name="Concept Mockups"/>
+            </item>
+            <item name="NX Dev">
+                <item name="3d Vehicle Wrap Design"><subtitle>Vehicle Wrap design directly onto 3d models </subtitle></item>
+                <item name="3d Paint"><subtitle>Concept similar to my Pov-Ray experiments</subtitle></item>
+                <item name="3d + Vector + Raster Designer"><subtitle>3d + Vector + Image-Manipulation all-in-one Software. A Concept based on what I first did on the 48k ZX Spectrum</subtitle></item>
+            </item>
+            <item name="X-Arcade" link="Arcade/Arcade.html">
+                <item name="Pac-3d" link="Arcade/Pac3d/3dPacMan.html"><subtitle>A classic maze game in 3D</subtitle></item>
+                <item name="Escalated Mayhem" link="Arcade/Escalated/escalatedMayhem.html"><subtitle>Action game set in a high-rise elevator</subtitle></item>
+                <item name="Pac-Snake" link="Arcade/PacSnake/PacSnake.html"><subtitle>A mashup of Pac-Man and Snake</subtitle></item>
+                <item name="Planet Miner" link="Arcade/PlanetMiner/PlanetMiner.html"><subtitle>Explore and mine voxel planets</subtitle></item>
+                <item name="Flying Art" link="Arcade/PaintFlyer/PaintFlight.html"><subtitle>Fly and Paint in a 3D environment</subtitle></item>
+                <item name="Paint Sim" link="Arcade/Paint/Paint.html"><subtitle>A Painting Simulation</subtitle></item>
+                <item name="3d Road-Painter" link="Arcade/trackFlyer/FlyingTracks.html"><subtitle>Get behind the wheel and fly away, leaving a road trail</subtitle></item>
+            </item>
+            <item name="Contact Me">
+                <item name="Email: nekarx@gmail.com"/><item name="GitHub: github.com/nekarxenos"/>
+            </item>
+        </menu>`;
+
+        function parseMenuXML(xmlString) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+            const menuElement = xmlDoc.querySelector('menu');
+            function parseItem(element) {
+                const item = {
+                    name: element.getAttribute('name'),
+                    link: element.getAttribute('link') || null,
+                    subtitle: '',
+                    children: []
+                };
+                const subtitleElement = element.querySelector(':scope > subtitle');
+                if (subtitleElement) {
+                    item.subtitle = subtitleElement.textContent.trim();
+                }
+                const childItemElements = element.querySelectorAll(':scope > item');
+                childItemElements.forEach(childElement => {
+                    item.children.push(parseItem(childElement));
+                });
+                return item;
+            }
+            const items = menuElement.querySelectorAll(':scope > item');
+            const parsedMenu = {
+                name: "Root",
+                subtitle: "",
+                children: []
+            };
+            items.forEach(itemElement => {
+                parsedMenu.children.push(parseItem(itemElement));
+            });
+            return parsedMenu;
+        }
+
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('threejs-container').appendChild(renderer.domElement);
+
+            scene.background = new THREE.Color(0x1a202c);
+            const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+            pointLight.position.set(0, 0, 5);
+            scene.add(pointLight);
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+            camera.position.z = 5;
+
+            const fontLoader = new THREE.FontLoader();
+            fontLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/fonts/gentilis_bold.typeface.json', function (font) {
+                const geometry = new THREE.TextGeometry('i', {
+                    font: font, size: 2, height: 0.5, curveSegments: 12,
+                    bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.05, bevelOffset: 0, bevelSegments: 5
+                });
+                geometry.computeBoundingBox();
+                const centerOffset = -0.5 * (geometry.boundingBox.max.x - geometry.boundingBox.min.x);
+                geometry.translate(centerOffset, 0, 0);
+                const material = new THREE.MeshPhongMaterial({ color: 0x93c5fd });
+                letterI = new THREE.Mesh(geometry, material);
+                scene.add(letterI);
+            });
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            document.addEventListener('click', onClick, false);
+            document.addEventListener('contextmenu', onContextMenu, false);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function onClick(event) {
+            raycaster.setFromCamera(mouse, camera);
+            if (letterI) {
+                const intersects = raycaster.intersectObjects([letterI]);
+                if (intersects.length > 0) {
+                    toggleMenu();
+                    return;
+                }
+            }
+        }
+
+        /**
+         * Toggles the menu visibility and pauses/resumes the animation.
+         */
+        function toggleMenu() {
+            const menuContainer = document.getElementById('menu-container');
+            const isMenuVisible = menuContainer.style.display !== 'none' && menuContainer.style.display !== '';
+
+            if (!isMenuVisible) {
+                // --- MODIFIED: Show menu and pause animation ---
+                menuContainer.style.display = 'flex';
+                isAnimationPaused = true;
+                renderMenuColumns([]);
+                document.querySelector('.menu-title').textContent = 'Main Menu';
+            } else {
+                // --- MODIFIED: Hide menu and resume animation ---
+                menuContainer.style.display = 'none';
+                isAnimationPaused = false;
+                previousRenderedPath = null;
+            }
+        }
+
+        function onContextMenu(event) {
+            event.preventDefault();
+            toggleMenu();
+        }
+
+        function renderMenuColumns(currentPath) {
+            const wrapper = document.getElementById('menu-columns-wrapper');
+            wrapper.innerHTML = '';
+            let itemsForNextColumn = menuData.children;
+            let currentPathSegmentForListeners = [];
+
+            for (let columnIndex = 0; ; columnIndex++) {
+                if (!itemsForNextColumn || itemsForNextColumn.length === 0) break;
+
+                const columnDiv = document.createElement('div');
+                columnDiv.className = 'menu-column';
+                columnDiv.style.minWidth = '280px';
+                columnDiv.style.maxWidth = '320px';
+                columnDiv.style.overflowY = 'auto';
+                columnDiv.style.overflowX = 'hidden';
+                columnDiv.style.marginRight = '0.5rem';
+                columnDiv.style.position = 'relative';
+
+                if (columnIndex > 0 && currentPath[columnIndex - 1]) {
+                    const prevColumn = wrapper.children[columnIndex - 1];
+                    if (prevColumn) {
+                        const parentName = currentPath[columnIndex - 1].name;
+                        const parentDiv = Array.from(prevColumn.children).find(div => div.dataset.name === parentName);
+                        if (parentDiv) columnDiv.style.marginTop = parentDiv.offsetTop + 'px';
+                    }
+                }
+                const itemsInThisColumn = itemsForNextColumn;
+                itemsInThisColumn.forEach((item) => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'menu-item flex flex-col items-start';
+                    itemDiv.dataset.name = item.name;
+                    const nameSpan = document.createElement('span');
+                    nameSpan.textContent = item.name;
+                    nameSpan.classList.add('font-semibold');
+                    itemDiv.appendChild(nameSpan);
+
+                    if (item.subtitle) {
+                        const subtitleDiv = document.createElement('div');
+                        subtitleDiv.className = 'subtitle';
+                        subtitleDiv.textContent = item.subtitle;
+                        itemDiv.appendChild(subtitleDiv);
+                    }
+                    if (item.children && item.children.length > 0) {
+                        const arrowSpan = document.createElement('span');
+                        arrowSpan.textContent = ' \u25B6';
+                        arrowSpan.classList.add('ml-auto', 'text-cyan-300', 'self-center');
+                        nameSpan.appendChild(arrowSpan);
+                        itemDiv.addEventListener('mouseenter', () => {
+                            const newPath = currentPathSegmentForListeners.slice(0, columnIndex);
+                            newPath.push(item);
+                            renderMenuColumns(newPath);
+                            document.querySelector('.menu-title').textContent = item.name;
+                        });
+                    } else {
+                        itemDiv.addEventListener('mouseenter', () => {
+                            const newPath = currentPathSegmentForListeners.slice(0, columnIndex);
+                            renderMenuColumns(newPath);
+                            const parentOfThisColumnItem = currentPath[columnIndex - 1];
+                            document.querySelector('.menu-title').textContent = parentOfThisColumnItem ? parentOfThisColumnItem.name : 'Main Menu';
+                        });
+                    }
+                    itemDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (item.children && item.children.length > 0) {
+                            const newPath = currentPathSegmentForListeners.slice(0, columnIndex);
+                            newPath.push(item);
+                            currentMenuLevel = newPath;
+                            renderMenuColumns(newPath);
+                            document.querySelector('.menu-title').textContent = item.name;
+                        } else if (item.link) {
+                            window.location.href = item.link;
+                        } else {
+                            alert(`Info: ${item.name}` + (item.subtitle ? `\n${item.subtitle}` : ''));
+                        }
+                    });
+                    columnDiv.appendChild(itemDiv);
+                });
+                wrapper.appendChild(columnDiv);
+
+                if (currentPath[columnIndex]) {
+                    itemsForNextColumn = currentPath[columnIndex].children;
+                    currentPathSegmentForListeners.push(currentPath[columnIndex]);
+                } else {
+                    break;
+                }
+            }
+            previousRenderedPath = [...currentPath];
+        }
+
+        /**
+         * The main animation loop. Now checks if the animation is paused.
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // --- MODIFIED ---
+            // Only rotate the letter 'i' if the animation is not paused.
+            if (letterI && !isAnimationPaused) {
+                letterI.rotation.y += 0.005;
+            }
+
+            // We always render the scene to keep it responsive.
+            renderer.render(scene, camera);
+        }
+
+        // Custom alert function
+        function alert(message) {
+            const alertBox = document.createElement('div');
+            alertBox.className = 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-800 text-white p-6 rounded-lg shadow-xl z-50';
+            alertBox.style.width = 'fit-content';
+            alertBox.style.maxWidth = '80vw';
+            alertBox.style.textAlign = 'center';
+            alertBox.innerHTML = `<p class="mb-4">${message}</p><button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-200" onclick="this.parentNode.remove()">OK</button>`;
+            document.body.appendChild(alertBox);
+        }
+
+        // Initialize on window load
+        window.onload = function () {
+            menuData = parseMenuXML(xmlString);
+            initThreeJS();
+            animate();
+
+            // Populate the menu as it's now initially visible
+            renderMenuColumns([]);
+            document.querySelector('.menu-title').textContent = 'Main Menu';
+
+            // Check for 'returnTo' URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const returnToLink = urlParams.get('returnTo');
+            if (returnToLink) {
+                const menuContainer = document.getElementById('menu-container');
+                const returnButton = document.createElement('div');
+                returnButton.textContent = 'Return to Previous Page';
+                returnButton.className = 'menu-item';
+                returnButton.style.marginTop = '1rem';
+                returnButton.style.textAlign = 'center';
+                returnButton.style.backgroundColor = 'rgba(0, 150, 150, 0.8)';
+                returnButton.style.borderColor = 'rgba(0, 200, 200, 0.7)';
+                returnButton.onclick = () => { window.location.href = decodeURIComponent(returnToLink); };
+                const menuTitleDiv = document.querySelector('.menu-title');
+                if (menuTitleDiv && menuTitleDiv.parentNode === menuContainer) {
+                    menuContainer.insertBefore(returnButton, menuTitleDiv.nextSibling);
+                }
+            }
+
+            // Add listener for clicks outside the menu to hide it
+            window.addEventListener('click', function(event) {
+                const menuContainer = document.getElementById('menu-container');
+                const threeJsContainer = document.getElementById('threejs-container');
+                if (menuContainer.style.display !== 'none' && menuContainer.style.display !== '') {
+                    // If the click is not on the menu itself...
+                    if (!menuContainer.contains(event.target)) {
+                         //...and if the click is on the canvas but NOT on the 'i', then toggle.
+                        if (threeJsContainer.contains(event.target) && letterI && raycaster.intersectObjects([letterI]).length === 0) {
+                            toggleMenu();
+                        }
+                        //... or if the click is simply outside both the menu and the canvas container.
+                        else if (!threeJsContainer.contains(event.target)) {
+                            toggleMenu();
+                        }
+                    }
+                }
+            });
+        };
+    </script>
+</body>
+</html>

@@ -388,6 +388,33 @@
                     };
                     interactiveElements.push(xArcadeShop.doorGlass);
                 }
+
+                // Specifically tag Art Gallery elements for interaction
+                const artGallery = shopsData["Art by Gerhard"];
+                if (xArcadeShop && xArcadeShop.facia) {
+                    xArcadeShop.facia.userData = {
+                    type: 'facia',
+                    shopName: "Art by Gerhard",
+                    message: "Paintings and Digital Art by Gerhard - Click to enter",
+                    action: () => {
+                        window.location.href = 'Art/Art.html';
+                    }
+                };
+
+                    interactiveElements.push(artGallery.facia);
+                }
+                if (artGallery && artGallery.doorGlass) {
+                    artGallery.doorGlass.userData = {
+                        type: 'door',
+                        shopName: "Art by Gerhard",
+                        message: "Art by Gerhard - Click to enter",
+                        action: () => {
+                            window.location.href = 'Art/Art.html';
+                        }
+                    };
+                    interactiveElements.push(artGallery.doorGlass);
+                }
+
                 // Add interaction for The Sci-Fi Bookshop
                 const sciFiShop = shopsData["The Sci-Fi Bookshop"];
                 if (sciFiShop) {
@@ -408,7 +435,7 @@
                             shopName: "The Sci-Fi Bookshop",
                             message: "Click to enter The Sci-Fi Bookshop",
                             action: () => {
-                                window.location.href = 'SciFiBookshop/SciFiBookshop.html';
+                                window.location.href = 'Books/SciFiBookshop.html';
                             }
                         };
                         interactiveElements.push(sciFiShop.doorGlass);
@@ -416,16 +443,40 @@
                 }
 
                 xArcadeShop.shopGroup.traverse((child) => {
-                if (child.isMesh) {
-                    child.userData = {
-                        message: "X-Arcade - Alpha testing",
-                        action: () => {
-                            window.location.href = 'Arcade/Arcade.html';
-                        }
-                    };
-                    interactiveElements.push(child);
-                }
-            });
+                    if (child.isMesh) {
+                        child.userData = {
+                            message: "X-Arcade - Alpha testing",
+                            action: () => {
+                                window.location.href = 'Arcade/Arcade.html';
+                            }
+                        };
+                        interactiveElements.push(child);
+                    }
+                });
+
+                artGallery.shopGroup.traverse((child) => {
+                    if (child.isMesh) {
+                        child.userData = {
+                            message: "Art by Gerhard",
+                            action: () => {
+                                window.location.href = 'Art/Art.html';
+                            }
+                        };
+                        interactiveElements.push(child);
+                    }
+                });
+
+                sciFiShop.shopGroup.traverse((child) => {
+                    if (child.isMesh) {
+                        child.userData = {
+                            message: "Gerhard's Sci-Fi Bookshop",
+                            action: () => {
+                                window.location.href = 'Books/SciFiBookshop.html';
+                            }
+                        };
+                        interactiveElements.push(child);
+                    }
+                });
 
             }).catch(error => {
                 console.error("One or more fonts failed to load:", error);
