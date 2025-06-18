@@ -391,8 +391,8 @@
 
                 // Specifically tag Art Gallery elements for interaction
                 const artGallery = shopsData["Art by Gerhard"];
-                if (xArcadeShop && xArcadeShop.facia) {
-                    xArcadeShop.facia.userData = {
+                if (artGallery && artGallery.facia) {
+                    artGallery.facia.userData = {
                     type: 'facia',
                     shopName: "Art by Gerhard",
                     message: "Paintings and Digital Art by Gerhard - Click to enter",
@@ -414,6 +414,33 @@
                     };
                     interactiveElements.push(artGallery.doorGlass);
                 }
+
+                // Specifically tag GO 3Design elements for interaction
+                const go3Design = shopsData["Design & 3d by Gerhard Oosthuizen"];
+                if (go3Design && go3Design.facia) {
+                    go3Design.facia.userData = {
+                    type: 'facia',
+                    shopName: "GO 3Design",
+                    message: "Design & 3d by Gerhard Oosthuizen",
+                    action: () => {
+                        window.location.href = 'go3Design/go3design.html';
+                    }
+                };
+
+                    interactiveElements.push(go3Design.facia);
+                }
+                if (go3Design && go3Design.doorGlass) {
+                    go3Design.doorGlass.userData = {
+                        type: 'door',
+                        shopName: "GO 3Design",
+                        message: "Design & 3d by Gerhard Oosthuizen - Click to enter",
+                        action: () => {
+                            window.location.href = 'go3Design/go3design.html';
+                        }
+                    };
+                    interactiveElements.push(go3Design.doorGlass);
+                }
+
 
                 // Add interaction for The Sci-Fi Bookshop
                 const sciFiShop = shopsData["The Sci-Fi Bookshop"];
@@ -460,6 +487,18 @@
                             message: "Art by Gerhard",
                             action: () => {
                                 window.location.href = 'Art/Art.html';
+                            }
+                        };
+                        interactiveElements.push(child);
+                    }
+                });
+
+                go3Design.shopGroup.traverse((child) => {
+                    if (child.isMesh) {
+                        child.userData = {
+                            message: "Design & 3d by Gerhard",
+                            action: () => {
+                                window.location.href = 'go3Design/go3design.html';
                             }
                         };
                         interactiveElements.push(child);
