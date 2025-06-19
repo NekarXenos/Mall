@@ -388,60 +388,6 @@
                     };
                     interactiveElements.push(xArcadeShop.doorGlass);
                 }
-
-                // Specifically tag Art Gallery elements for interaction
-                const artGallery = shopsData["Art by Gerhard"];
-                if (artGallery && artGallery.facia) {
-                    artGallery.facia.userData = {
-                    type: 'facia',
-                    shopName: "Art by Gerhard",
-                    message: "Paintings and Digital Art by Gerhard - Click to enter",
-                    action: () => {
-                        window.location.href = 'Art/Art.html';
-                    }
-                };
-
-                    interactiveElements.push(artGallery.facia);
-                }
-                if (artGallery && artGallery.doorGlass) {
-                    artGallery.doorGlass.userData = {
-                        type: 'door',
-                        shopName: "Art by Gerhard",
-                        message: "Art by Gerhard - Click to enter",
-                        action: () => {
-                            window.location.href = 'Art/Art.html';
-                        }
-                    };
-                    interactiveElements.push(artGallery.doorGlass);
-                }
-
-                // Specifically tag GO 3Design elements for interaction
-                const go3Design = shopsData["Design & 3d by Gerhard Oosthuizen"];
-                if (go3Design && go3Design.facia) {
-                    go3Design.facia.userData = {
-                    type: 'facia',
-                    shopName: "GO 3Design",
-                    message: "Design & 3d by Gerhard Oosthuizen",
-                    action: () => {
-                        window.location.href = 'go3Design/go3design.html';
-                    }
-                };
-
-                    interactiveElements.push(go3Design.facia);
-                }
-                if (go3Design && go3Design.doorGlass) {
-                    go3Design.doorGlass.userData = {
-                        type: 'door',
-                        shopName: "GO 3Design",
-                        message: "Design & 3d by Gerhard Oosthuizen - Click to enter",
-                        action: () => {
-                            window.location.href = 'go3Design/go3design.html';
-                        }
-                    };
-                    interactiveElements.push(go3Design.doorGlass);
-                }
-
-
                 // Add interaction for The Sci-Fi Bookshop
                 const sciFiShop = shopsData["The Sci-Fi Bookshop"];
                 if (sciFiShop) {
@@ -462,7 +408,7 @@
                             shopName: "The Sci-Fi Bookshop",
                             message: "Click to enter The Sci-Fi Bookshop",
                             action: () => {
-                                window.location.href = 'Books/SciFiBookshop.html';
+                                window.location.href = 'SciFiBookshop/SciFiBookshop.html';
                             }
                         };
                         interactiveElements.push(sciFiShop.doorGlass);
@@ -470,52 +416,16 @@
                 }
 
                 xArcadeShop.shopGroup.traverse((child) => {
-                    if (child.isMesh) {
-                        child.userData = {
-                            message: "X-Arcade - Alpha testing",
-                            action: () => {
-                                window.location.href = 'Arcade/Arcade.html';
-                            }
-                        };
-                        interactiveElements.push(child);
-                    }
-                });
-
-                artGallery.shopGroup.traverse((child) => {
-                    if (child.isMesh) {
-                        child.userData = {
-                            message: "Art by Gerhard",
-                            action: () => {
-                                window.location.href = 'Art/Art.html';
-                            }
-                        };
-                        interactiveElements.push(child);
-                    }
-                });
-
-                go3Design.shopGroup.traverse((child) => {
-                    if (child.isMesh) {
-                        child.userData = {
-                            message: "Design & 3d by Gerhard",
-                            action: () => {
-                                window.location.href = 'go3Design/go3design.html';
-                            }
-                        };
-                        interactiveElements.push(child);
-                    }
-                });
-
-                sciFiShop.shopGroup.traverse((child) => {
-                    if (child.isMesh) {
-                        child.userData = {
-                            message: "Gerhard's Sci-Fi Bookshop",
-                            action: () => {
-                                window.location.href = 'Books/SciFiBookshop.html';
-                            }
-                        };
-                        interactiveElements.push(child);
-                    }
-                });
+                if (child.isMesh) {
+                    child.userData = {
+                        message: "X-Arcade - Alpha testing",
+                        action: () => {
+                            window.location.href = 'Arcade/Arcade.html';
+                        }
+                    };
+                    interactiveElements.push(child);
+                }
+            });
 
             }).catch(error => {
                 console.error("One or more fonts failed to load:", error);

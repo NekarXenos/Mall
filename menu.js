@@ -2,7 +2,7 @@
 
 // XML Menu Data (full, as in Menu.html)
 const xmlString = `<menu>
-    <item name="The SciFi BookStore">
+    <item name="The SciFi BookStore" link="Books/SciFiBookshop.html">
         <item name="The Next Sun">
             <subtitle>Science Fiction - Pioneers reach the first planet from another solar system</subtitle>
         </item>
@@ -28,7 +28,7 @@ const xmlString = `<menu>
             </item>
         </item>
     </item>
-    <item name="Art By Gerhard">
+    <item name="Art By Gerhard" link="Art/Art.html">
         <item name = "Acrylics on Canvas">
             <item name ="Funk Duel">
                 <subtitle>1.2m x 0.9m</subtitle>
@@ -69,7 +69,7 @@ const xmlString = `<menu>
             </item>
         </item>
     </item>
-    <item name = "GO 3Design">
+    <item name = "GO 3Design" link="go3Design/go3design.html">
         <item name = "Furai-Vision Concept">
             <subtitle>A Rotary Hyper-car Design inspired by the Mazda Furai and the Mazda RX-Vision - Designed in Rhino-3d and converted to Blender-3d</subtitle>
         </item>
@@ -79,7 +79,7 @@ const xmlString = `<menu>
         <item name = "Quick Concept" />
         <item name = "Concept Mockups" />
     </item>
-    <item name = "NX Dev">
+    <item name = "NX Dev" link="NX_Dev/nx_dev.html">
         <item name = "3d Vehicle Wrap Design">
             <subtitle>Vehicle Wrap design directly onto 3d models </subtitle>
         </item>
@@ -160,12 +160,19 @@ function renderMenuColumns(currentPath) {
             if (currentPath[columnIndex] && currentPath[columnIndex].name === item.name) {
                 menuItem.classList.add('current-level');
             }
+            // Hover to expand submenu
+            menuItem.onmouseenter = (e) => {
+                e.stopPropagation();
+                // Only re-render if the item has children (submenu)
+                if (item.children && item.children.length > 0) {
+                    renderMenuColumns([...currentPath.slice(0, columnIndex), item]);
+                }
+            };
+            // Click to follow link (if any)
             menuItem.onclick = (e) => {
                 e.stopPropagation();
                 if (item.link) {
                     window.location.href = item.link;
-                } else if (item.children && item.children.length > 0) {
-                    renderMenuColumns([...currentPath.slice(0, columnIndex), item]);
                 }
             };
             column.appendChild(menuItem);
