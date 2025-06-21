@@ -45,8 +45,6 @@
         </div>
     </div>
 
-    
-
     <!-- Video element for the wall screen texture -->
     <video id="wallVideo" loop muted crossOrigin="anonymous" style="display:none">
         <!-- Using a royalty-free abstract video -->
@@ -78,7 +76,6 @@
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { createICharacter } from './i_character.js';
 
         // --- Basic Setup ---
         let scene, camera, renderer, controls;
@@ -108,23 +105,7 @@
         let currentImageIndex = 0;
         let switchingImagePlane;
 
-        let iCharacter; // Will hold the character instance
-        let raycaster = new THREE.Raycaster();
-        let mouse = new THREE.Vector2();
-        let isHoveringIChar = false;
-
         init();
-
-        // Add a div for debug info
-        const debugDiv = document.createElement('div');
-        debugDiv.style.position = 'absolute';
-        debugDiv.style.top = '10px';
-        debugDiv.style.right = '10px';
-        debugDiv.style.color = 'white';
-        debugDiv.style.backgroundColor = 'rgba(0,0,0,0.5)';
-        debugDiv.style.padding = '5px';
-        debugDiv.style.zIndex = '100';
-        document.body.appendChild(debugDiv);
         animate();
 
         function init() {
@@ -166,20 +147,12 @@
             createHexagonalCeiling(); // NEW: Replaced old ceiling
             createCeilingLight();
             createDesk();
-            add3DModelOnDesk(); // Re-added the car model
             createDeskItems();
-            // Add the "i" character in front of the desk
-            iCharacter = createICharacter({
-                position: { x: 0, y: 0, z: 1.5 } 
-            });
-            scene.add(iCharacter.group);
+            add3DModelOnDesk();
             createWallDecor();
 
             // --- Event Listeners ---
             window.addEventListener('resize', onWindowResize);
-            // Add event listeners for interaction
-            renderer.domElement.addEventListener('pointermove', onPointerMove);
-            renderer.domElement.addEventListener('click', onPointerClick);
         }
 
         function setupControls() {
@@ -595,39 +568,6 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        function onPointerMove(event) {
-            // Calculate normalized device coordinates
-            mouse.x = (event.clientX / renderer.domElement.clientWidth) * 2 - 1;
-            mouse.y = - (event.clientY / renderer.domElement.clientHeight) * 2 + 1;
-        }
-
-        function onPointerClick(event) {
-            //if (!controls.isLocked) return; // Only interact when in scene
-            // If head is glowing (hovered), allow click anywhere to toggle
-            if (isHoveringIChar) {
-                iCharacter.toggleReveal();
-                return;
-            }
-            // Otherwise, fallback to raycast from center (for edge cases)
-            raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-            const intersects = iCharacter.raycast(raycaster);
-            let hit = intersects.length > 0;
-            // If camera is inside the head, treat as hit
-            if (!hit && iCharacter && iCharacter.group) {
-                const head = iCharacter.group.children.find(obj => obj.name === 'iSphereHead');
-                if (head) {
-                    const camPos = camera.position;
-                    const headPos = new THREE.Vector3();
-                    head.getWorldPosition(headPos);
-                    const dist = camPos.distanceTo(headPos);
-                    if (dist < head.geometry.parameters.radius + 0.1) hit = true; // head radius + margin
-                }
-            }
-            if (hit) {
-                iCharacter.toggleReveal();
-            }
-        }
-
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
@@ -653,38 +593,6 @@
                 camPos.z = Math.max(-ROOM_DEPTH/2 + buffer, Math.min(ROOM_DEPTH/2 - buffer, camPos.z));
             }
 
-            // Update i_character animation and hover glow
-            if (iCharacter) {
-                iCharacter.update({ camera, time: performance.now() });
-
-                // Raycast from mouse for hover effect
-                raycaster.setFromCamera(mouse, camera);
-                const iCharIntersects = iCharacter.raycast(raycaster);
-                const hovering = iCharIntersects.length > 0;
-                if (hovering !== isHoveringIChar) {
-                    isHoveringIChar = hovering;
-                    iCharacter.setAimingAtHead(hovering);
-                    renderer.domElement.style.cursor = hovering ? 'pointer' : '';
-                }
-
-                // Raycast from center of screen for debug output
-                raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-                const centerIntersects = raycaster.intersectObjects(scene.children, true);
-                if (centerIntersects.length > 0) {
-                    const firstHit = centerIntersects[0];
-                    const obj = firstHit.object;
-                    const pos = firstHit.point.clone().round();
-                    const isGlowing = obj.material && obj.material.emissive && obj.material.emissiveIntensity > 0.5;
-                    debugDiv.innerHTML = `
-                        Center Object: ${obj.name || 'unnamed'}<br>
-                        Position: ${pos.x}, ${pos.y}, ${pos.z}<br>
-                        Glowing: ${isGlowing}
-                    `;
-                } else {
-                    debugDiv.innerHTML = 'Center Object: None';
-                }
-            }
-
             renderer.render(scene, camera);
         }
 
@@ -698,10 +606,15 @@
                 model.rotation.y = - Math.PI * 3 / 4; // Rotate to face the front
                 model.position.set(-1.3, 0.75, 0.6);
                 model.traverse((child) => {
-                    if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
                 });
                 scene.add(model);
-            }, undefined, (error) => { console.error('Error loading GLB:', error); });
+            }, undefined, (error) => {
+                console.error('Error loading GLB:', error);
+            });
         }
     </script>
 </body>

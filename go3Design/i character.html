@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft-like Character with Floating Head</title>
+    <!-- Inter font for better typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Three.js library for 3D rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- PointerLockControls for FPS-like camera movement -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #f0f0f0; /* Light grey background */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Inter', sans-serif; /* Use Inter font */
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 100;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        #touch-controls {
+            position: absolute;
+            bottom: 20px;
+            width: 90%;
+            max-width: 400px;
+            display: flex;
+            justify-content: space-around; /* Distribute buttons evenly */
+            z-index: 10;
+            pointer-events: none; /* Allow touch events to pass through, handled by buttons */
+        }
+        .touch-button {
+            background: linear-gradient(145deg, #464646, #333333); /* Subtle gradient */
+            color: white;
+            padding: 15px 30px;
+            font-size: 1.2em;
+            border: none;
+            border-radius: 50px; /* Fully rounded buttons */
+            cursor: pointer;
+            -webkit-user-select: none;
+            user-select: none;
+            pointer-events: auto; /* Re-enable events for the buttons themselves */
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4); /* Deeper shadow */
+            transition: background 0.2s ease-in-out, transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            margin: 0 10px; /* Spacing between buttons */
+        }
+        .touch-button:active {
+            background: linear-gradient(145deg, #555555, #444444);
+            transform: scale(0.95); /* Shrink on press */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3); /* Smaller shadow on press */
+        }
+        @media (min-width: 768px) {
+            #touch-controls {
+                display: none; /* Hide touch controls on larger screens (desktop/tablet) */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Use WASD to move, Mouse to look around. On mobile, swipe to look and use buttons to move.</div>
+    <div id="touch-controls">
+        <button id="moveForwardBtn" class="touch-button">Forward</button>
+        <button id="moveBackwardBtn" class="touch-button">Backward</button>
+    </div>
+    <script src="i_character.js"></script>
+</body>
+</html>
