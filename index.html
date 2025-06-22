@@ -416,7 +416,7 @@
                 }
 
                 // Specifically tag GO 3Design elements for interaction
-                const go3Design = shopsData["Design & 3d by Gerhard Oosthuizen"];
+                const go3Design = shopsData["GO 3Design"];
                 if (go3Design && go3Design.facia) {
                     go3Design.facia.userData = {
                     type: 'facia',
@@ -439,6 +439,32 @@
                         }
                     };
                     interactiveElements.push(go3Design.doorGlass);
+                }
+
+                // Specifically tag X-Arcade elements for interaction
+                const nxDev = shopsData["NX Dev"];
+                if (nxDev && nxDev.facia) {
+                    nxDev.facia.userData = {
+                    type: 'facia',
+                    shopName: "NX Dev",
+                    message: "NX Dev Studio - Click to enter",
+                    action: () => {
+                        window.location.href = 'NX_Dev/nxdev.html';
+                    }
+                };
+
+                    interactiveElements.push(nxDev.facia);
+                }
+                if (nxDev && nxDev.doorGlass) {
+                    nxDev.doorGlass.userData = {
+                        type: 'door',
+                        shopName: "NX Dev",
+                        message: "Click to enter NX Dev",
+                        action: () => {
+                            window.location.href = 'NX_Dev/nxdev.html';
+                        }
+                    };
+                    interactiveElements.push(nxDev.doorGlass);
                 }
 
 
@@ -493,17 +519,32 @@
                     }
                 });
 
-                go3Design.shopGroup.traverse((child) => {
+                if (go3Design) {
+                    go3Design.shopGroup.traverse((child) => {
+                        if (child.isMesh) {
+                            child.userData = {
+                                message: "Design & 3d by Gerhard",
+                                action: () => {
+                                    window.location.href = 'go3Design/go3design.html';
+                                }
+                            };
+                            interactiveElements.push(child);
+                        }
+                    });
+                }
+
+                 nxDev.shopGroup.traverse((child) => {
                     if (child.isMesh) {
                         child.userData = {
-                            message: "Design & 3d by Gerhard",
+                            message: "NX Dev Studio - Click to enter",
                             action: () => {
-                                window.location.href = 'go3Design/go3design.html';
+                                window.location.href = 'NX_Dev/nxdev.html';
                             }
                         };
                         interactiveElements.push(child);
                     }
                 });
+
 
                 sciFiShop.shopGroup.traverse((child) => {
                     if (child.isMesh) {
@@ -533,7 +574,7 @@
                 const frameThickness = 0.2;
 
                 const shopInteriorGeo = new THREE.BoxGeometry(shopWidth, shopHeight, shopDepth);
-                const shopInteriorMat = new THREE.MeshStandardMaterial({ color: 0x333333, side: THREE.BackSide });
+                const shopInteriorMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, side: THREE.BackSide });
                 const shopInterior = new THREE.Mesh(shopInteriorGeo, shopInteriorMat);
                 shopInterior.position.y = shopHeight / 2;
                 shopGroup.add(shopInterior);
@@ -567,6 +608,17 @@
                 frontGroup.add(doorGroup);
                 const doorFrameDetails = createFrame(doorGroup, new THREE.Vector3(0,0,0), doorWidth, doorHeight, true);
                 
+                // Add a single transom window above the door
+                // Calculate the height of the space above the door
+                const transomWindowHeight = shopHeight - doorHeight; // (e.g., 3 - 2.2 = 0.8 units high)
+                // The transom window will have the same width as the door
+                const transomWidth = doorWidth;
+                // Calculate the center Y position for these transom windows
+                const transomYPosition = doorHeight + transomWindowHeight / 2; // (e.g., 2.2 + 0.8/2 = 2.6 units from floor)
+
+                // Create the single transom window, centered above the door
+                createFrame(frontGroup, new THREE.Vector3(0, transomYPosition, 0), transomWidth, transomWindowHeight);
+
                 const faciaGeo = new THREE.BoxGeometry(shopWidth, 4 - shopHeight, frameThickness);
                 const faciaMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
                 const faciaBoard = new THREE.Mesh(faciaGeo, faciaMat);

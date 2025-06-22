@@ -31,21 +31,86 @@
             margin-top: 0;
             color: #0088ff;
         }
+        #aiming-dot {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border: 2px solid white;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 101;
+            display: none; /* Hidden by default */
+        }
+        #ichar-popup {
+            display: none; /* Hidden by default */
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(20, 20, 40, 0.9);
+            border: 2px solid #0088ff;
+            border-radius: 10px;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            z-index: 102;
+            font-size: 16px;
+            width: 300px;
+            box-shadow: 0 0 15px rgba(0, 136, 255, 0.5);
+        }
+        #ichar-popup p {
+            margin: 0 0 15px 0;
+        }
+        #ichar-popup .popup-buttons button {
+            background-color: #0088ff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 0 10px;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        #ichar-popup .popup-buttons button:hover {
+            background-color: #00aaff;
+        }
+        #ichar-popup .popup-buttons button#popup-no {
+            background-color: #444;
+        }
+        #ichar-popup .popup-buttons button#popup-no:hover {
+            background-color: #666;
+        }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
+    <div id="aiming-dot"></div>
+
     <div id="blocker">
         <div id="instructions">
             <h2>Virtual Design Studio</h2>
             <p>Click to explore</p>
             <p><strong>Move:</strong> W, A, S, D<br><strong>Look:</strong> Mouse</p>
+            <p>
+                <!-- <a href="../Arcade/Arcade.html" style="color: #0088ff; text-decoration: none;">Back to Arcade</a> | -->
+                <a href="../index.html" style="color: #0088ff; text-decoration: none;">Back to Mall</a>
+            </p>
         </div>
     </div>
 
-    
+    <div id="ichar-popup">
+        <p>Need help with a design project?</p>
+        <div class="popup-buttons">
+            <button id="popup-yes">Yes, let's talk!</button>
+            <button id="popup-no">Not right now</button>
+        </div>
+    </div>
 
     <!-- Video element for the wall screen texture -->
     <video id="wallVideo" loop muted crossOrigin="anonymous" style="display:none">
@@ -72,6 +137,8 @@
             "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
         }
     }
+    
+    
     </script>
 
     <script type="module">
@@ -79,11 +146,13 @@
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { createICharacter } from './i_character.js';
+        import { addEscapeToGoBack } from '../common-navigation.js';
+
 
         // --- Basic Setup ---
         let scene, camera, renderer, controls;
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
-        let velocity = new THREE.Vector3();
+        let velocity = new THREE.Vector3(); // Declare aimingDot globally
         let direction = new THREE.Vector3();
         const clock = new THREE.Clock();
 
@@ -112,6 +181,9 @@
         let raycaster = new THREE.Raycaster();
         let mouse = new THREE.Vector2();
         let isHoveringIChar = false;
+        let aimingDot;
+        let icharPopup;
+        let canShowIcharPopup = true;
 
         init();
 
@@ -170,22 +242,47 @@
             createDeskItems();
             // Add the "i" character in front of the desk
             iCharacter = createICharacter({
-                position: { x: 0, y: 0, z: 1.5 } 
+                position: { x: 0, y: 0, z: 0 } 
             });
             scene.add(iCharacter.group);
             createWallDecor();
+
+            // --- Popup Handling ---
+            icharPopup = document.getElementById('ichar-popup');
+            const popupButtonYes = document.getElementById('popup-yes');
+            const popupButtonNo = document.getElementById('popup-no');
+
+            if (popupButtonYes && popupButtonNo) {
+                popupButtonYes.addEventListener('click', (event) => {
+                    // Prevent this click from being captured by the game canvas
+                    event.stopPropagation();
+                    // Open mail client - replace with your actual email
+                    window.location.href = 'mailto:nekarx@gmail.com?subject=Design Project Inquiry';
+                });
+
+                popupButtonNo.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    canShowIcharPopup = false;
+                    if (icharPopup) icharPopup.style.display = 'none';
+                });
+            }
+
 
             // --- Event Listeners ---
             window.addEventListener('resize', onWindowResize);
             // Add event listeners for interaction
             renderer.domElement.addEventListener('pointermove', onPointerMove);
-            renderer.domElement.addEventListener('click', onPointerClick);
+            document.addEventListener('click', onPointerClick); // Ensures click is registered in pointer lock
+            // Also listen for pointerdown for better browser compatibility
+            // (optional, but helps in some browsers)
+            document.addEventListener('pointerdown', onPointerClick);
         }
 
         function setupControls() {
             controls = new PointerLockControls(camera, document.body);
             const blocker = document.getElementById('blocker');
-            const instructions = document.getElementById('instructions');
+            const instructions = document.getElementById('instructions'); // Assign to global aimingDot
+            aimingDot = document.getElementById('aiming-dot');
 
             instructions.addEventListener('click', () => {
                 controls.lock();
@@ -194,6 +291,7 @@
             controls.addEventListener('lock', () => {
                 instructions.style.display = 'none';
                 blocker.style.display = 'none';
+                aimingDot.style.display = 'block';
                 // Start video playback when user enters the scene
                 const video = document.getElementById('wallVideo');
                 if (video.paused) {
@@ -214,6 +312,7 @@
             controls.addEventListener('unlock', () => {
                 blocker.style.display = 'flex';
                 instructions.style.display = '';
+                aimingDot.style.display = 'none';
             });
 
             scene.add(controls.getObject());
@@ -602,10 +701,13 @@
         }
 
         function onPointerClick(event) {
-            //if (!controls.isLocked) return; // Only interact when in scene
-            // If head is glowing (hovered), allow click anywhere to toggle
-            if (isHoveringIChar) {
-                iCharacter.toggleReveal();
+            // Only interact when in scene and aiming at i-character
+            if (isHoveringIChar && controls.isLocked) {
+                // Show popup and unlock pointer lock
+                if (icharPopup && canShowIcharPopup) {
+                    icharPopup.style.display = 'block';
+                    controls.unlock();
+                }
                 return;
             }
             // Otherwise, fallback to raycast from center (for edge cases)
@@ -623,8 +725,11 @@
                     if (dist < head.geometry.parameters.radius + 0.1) hit = true; // head radius + margin
                 }
             }
-            if (hit) {
-                iCharacter.toggleReveal();
+            if (hit && controls.isLocked) {
+                if (icharPopup && canShowIcharPopup) {
+                    icharPopup.style.display = 'block';
+                    controls.unlock();
+                }
             }
         }
 
@@ -661,10 +766,24 @@
                 raycaster.setFromCamera(mouse, camera);
                 const iCharIntersects = iCharacter.raycast(raycaster);
                 const hovering = iCharIntersects.length > 0;
+
                 if (hovering !== isHoveringIChar) {
                     isHoveringIChar = hovering;
                     iCharacter.setAimingAtHead(hovering);
                     renderer.domElement.style.cursor = hovering ? 'pointer' : '';
+                    if (aimingDot) {
+                        aimingDot.style.borderColor = hovering ? '#00FF00' : 'white';
+                    }
+                    // When user stops hovering, allow the popup to be shown again next time.
+                    if (!hovering) {
+                        canShowIcharPopup = true;
+                    }
+                }
+
+                // Manage popup visibility every frame based on hover state and user dismissal
+                if (icharPopup && !icharPopup.style.display || icharPopup.style.display === 'none') {
+                    // Only hide if not manually shown
+                    icharPopup.style.display = 'none';
                 }
 
                 // Raycast from center of screen for debug output

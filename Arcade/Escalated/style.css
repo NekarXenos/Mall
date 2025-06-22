@@ -24,8 +24,10 @@ html, body {
 /* Styling for the instructions box */
 #instructions {
     position: absolute; /* Positioned relative to the body */
-    top: 15px;
-    right: 15px; /* Placed top-right to avoid overlap with #ui */
+    top: 20%; /* Center vertically */
+    left: 45%; /* Center horizontally */
+    justify-content: center; /* Centers horizontally */
+    align-items: center;    /* Centers vertically */
     background-color: rgba(30, 30, 30, 0.85); /* Semi-transparent dark box */
     color: #f0f0f0; /* Light grey text */
     padding: 12px 18px;

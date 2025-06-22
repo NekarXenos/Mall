@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+import { addGarageCar, getLastGarageCar } from './car.js'; // Import the car model function
 import { calculateEscalatorBoost, animateActiveEscalatorSteps, updateEscalatorStepVisuals } from './escalator.js';
 
 // IMPORTANT: Left is +X and Right is -X in this world
@@ -75,6 +76,7 @@ let isPlayerRespawning = false; // Tracks if the player is waiting to respawn
 const animatedGarageDoors = []; // To store garage doors that need animation
 const enemies = []; // Array to store enemy objects
 let currentElevatorConfig = null; // To help generateWorld access the current elevator's properties
+let isPlayerInCar = false; // New state variable to track if player is in the car
 
 const floorDepth = SETTINGS.floorHeight - SETTINGS.wallHeight; // Add this near your SETTINGS or at the top of generateWorld
 
@@ -1425,6 +1427,11 @@ function generateWorld() {
 
                 const garagePointLight = new THREE.PointLight(0xffccaa, 0.7, 15); // Light color, intensity, range
                 garagePointLight.position.set(garageLightXPos, garageLightYPos, garageLightZPos);
+                garagePointLight.castShadow = true; // Enable shadow casting for the garage light
+                garagePointLight.shadow.mapSize.width = 1024; // Increase shadow map resolution for better quality
+                garagePointLight.shadow.mapSize.height = 1024;
+                garagePointLight.shadow.camera.far = 15; // Set shadow camera far plane to match light's distance
+                
                 scene.add(garagePointLight);
 
                 // Add a simple fixture mesh for the garage light
@@ -1433,6 +1440,11 @@ function generateWorld() {
                 const garageFixture = new THREE.Mesh(garageFixtureGeo, garageFixtureMat);
                 garageFixture.position.set(garageLightXPos, garageLightYPos + 0.075, garageLightZPos); // Centered with the light Y
                 scene.add(garageFixture);
+
+                // Add the car model to the garage floor
+                // The garage floor's top surface is at y = floorY.
+                addGarageCar(scene, new THREE.Vector3(basementCenterX, floorY, wallFarZPlane + wallDepth/2 + garageDepthVal / 2));
+            
             }
             
             // Front Wall (Near Z - around elevator shaft)
@@ -1484,6 +1496,34 @@ function generateWorld() {
                     pillar.castShadow = true; pillar.receiveShadow = true;
                     scene.add(pillar);
                     worldObjects.push(pillar);
+                }
+            }
+
+            // Place enemies on basement floors
+            const numBasementEnemies = 3; // Number of enemies per basement floor
+            for (let e = 0; e < numBasementEnemies; e++) {
+                let enemyX, enemyZ;
+                let attempts = 0;
+                const maxAttempts = 10; // Prevent infinite loops if space is too constrained
+
+                do {
+                    enemyX = basementMinX + Math.random() * (basementMaxX - basementMinX);
+                    enemyZ = basementMinZ + Math.random() * (basementMaxZ - basementMinZ);
+                    attempts++;
+                    // Check if the random position is inside the elevator shaft zone
+                    // Add a small buffer to avoid placing enemies too close to the shaft walls
+                    const buffer = 1.0; // Buffer around the elevator shaft
+                    const isInShaft = (enemyX > elevatorShaftZone.minX - buffer && enemyX < elevatorShaftZone.maxX + buffer &&
+                                        enemyZ > elevatorShaftZone.minZ - buffer && enemyZ < elevatorShaftZone.maxZ + buffer);
+
+                    if (!isInShaft) {
+                        createEnemy(enemyX, floorY, enemyZ, i);
+                        break; // Found a valid spot, move to next enemy
+                    }
+                } while (attempts < maxAttempts);
+
+                if (attempts >= maxAttempts) {
+                    console.warn(`Could not find a suitable spot for basement enemy ${e} on floor ${i} after ${maxAttempts} attempts.`);
                 }
             }
 
@@ -3237,7 +3277,32 @@ function onKeyDown(event) {
         case 'ShiftLeft':
         case 'ShiftRight': isSprinting = true; break;
         case 'Space': 
-            if (playerOnGround) {
+            if (isPlayerInCar) {
+                const garageCar = getLastGarageCar();
+                if (garageCar && garageCar.parent === controls.getObject()) {
+                    // Get car's world position and orientation before detaching
+                    const carWorldPos = new THREE.Vector3();
+                    garageCar.getWorldPosition(carWorldPos);
+                    const carWorldQuat = new THREE.Quaternion();
+                    garageCar.getWorldQuaternion(carWorldQuat);
+
+                    controls.getObject().remove(garageCar);
+                    scene.add(garageCar);
+                    garageCar.position.copy(carWorldPos);
+                    garageCar.quaternion.copy(carWorldQuat);
+
+                    const carDims = new THREE.Box3().setFromObject(garageCar).getSize(new THREE.Vector3());
+                    const offsetDirection = new THREE.Vector3(1, 0, 0).applyQuaternion(carWorldQuat); // Local +X (left) in world space
+                    // Clone carWorldPos to avoid modifying it before setting the car's final position
+                    const playerExitPos = carWorldPos.clone().addScaledVector(offsetDirection, carDims.x / 2 + 0.5);
+                    controls.getObject().position.copy(playerExitPos);
+                    // Place player's feet at the same level as the car's base (carWorldPos.y)
+                    controls.getObject().position.y = carWorldPos.y + playerHeight;
+                    playerVelocity.set(0, 0, 0);
+                    playerOnGround = true;
+                    isPlayerInCar = false;
+                }
+            } else if (playerOnGround) {
                 if (playerState === 'prone') {
                     // Jump from prone to crouch
                     playerState = 'crouching';
@@ -4253,6 +4318,68 @@ function resetGame() {
 function updatePlayer(deltaTime) {
     const speed = (isSprinting ? SETTINGS.playerSpeed * SETTINGS.sprintMultiplier : SETTINGS.playerSpeed) * deltaTime;
     const cameraObject = controls.getObject(); // This is the holder for the camera
+
+    // --- Attach car to player camera if colliding ---
+    const garageCar = getLastGarageCar && getLastGarageCar();
+    if (garageCar && garageCar.parent === scene) {
+        // Check collision with car by name
+        const playerBox = new THREE.Box3().setFromCenterAndSize(
+            cameraObject.position, // Player's current camera position
+            new THREE.Vector3(0.5, playerHeight, 0.5)
+        );
+        let carBox;
+        if (garageCar.geometry && garageCar.geometry.boundingBox) {
+            carBox = garageCar.geometry.boundingBox.clone().applyMatrix4(garageCar.matrixWorld);
+        } else {
+            carBox = new THREE.Box3().setFromObject(garageCar);
+        }
+        if (playerBox.intersectsBox(carBox)) {
+            const playerEyeLevelInCar = 1.09; // Desired player eye level above car's base
+            const carWorldPos = new THREE.Vector3();
+            garageCar.getWorldPosition(carWorldPos);
+            const carWorldQuat = new THREE.Quaternion();
+            garageCar.getWorldQuaternion(carWorldQuat);
+
+            let carDims = new THREE.Vector3(2,1.2,4.556); // Default fallback
+            if (garageCar.geometry && garageCar.geometry.boundingBox) {
+                carDims = garageCar.geometry.boundingBox.getSize(new THREE.Vector3());
+            } else {
+                const box = new THREE.Box3().setFromObject(garageCar);
+                carDims = box.getSize(new THREE.Vector3());
+            } // carDims now represents the actual dimensions of the loaded car model
+
+            // 1. Calculate where the player's camera should be in world space
+            // Player's XZ offset relative to car's center, rotated by car's orientation
+            const playerLocalOffsetXZ = new THREE.Vector3(-carDims.x/4, 0, 0); // Left-center XZ
+            const playerWorldOffsetXZ = playerLocalOffsetXZ.applyQuaternion(carWorldQuat); // Use clone to avoid modifying original
+            
+            const newCameraPos = carWorldPos.clone().add(playerWorldOffsetXZ);
+            newCameraPos.y = carWorldPos.y + playerEyeLevelInCar; // Player's Y is car's base Y + eye level
+
+            cameraObject.position.copy(newCameraPos);
+
+            // 2. Attach car to camera
+            // IMPORTANT: Get car's world orientation *before* it's parented to cameraObject
+            // because its world quaternion will change once it becomes a child.
+            const carWorldQuatBeforeParenting = new THREE.Quaternion();
+            garageCar.getWorldQuaternion(carWorldQuatBeforeParenting);
+
+            cameraObject.add(garageCar);
+
+            // Orient player's head to face the front of the car (-Z direction)
+            const carWorldForwardVector = new THREE.Vector3(0, 0, -1); // Car's local forward is -Z
+            carWorldForwardVector.applyQuaternion(carWorldQuatBeforeParenting);
+            const targetPlayerRotationY = Math.atan2(carWorldForwardVector.x, carWorldForwardVector.z);
+            controls.getObject().rotation.y = targetPlayerRotationY;
+            isPlayerInCar = true;
+
+            // 3. Set car's position relative to the camera
+            // Car's local position relative to camera = car's world position - camera's world position
+            const carLocalPosFromCamera = new THREE.Vector3();
+            carLocalPosFromCamera.subVectors(carWorldPos, newCameraPos);
+            garageCar.position.copy(carLocalPosFromCamera);
+        }
+    }
 
     // Determine player's XZ input for this frame
     const moveDirection = new THREE.Vector3();

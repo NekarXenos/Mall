@@ -6,26 +6,32 @@
     <title>Escalated Mayhem</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="menu.css">
+    <script src="https://cdn.tailwindcss.com"></script>
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
 </head>
 <body>
-    <div id="instructions">
-        Click to Lock Pointer<br>
-        W/A/S/D: Move<br>
-        SPACE: Jump (Basic)<br>
-        SHIFT: Sprint<br>
-        U: Call Elevator Up<br>
-        J: Call Elevator Down<br>
-        E: Interact with Doors (when looking at them)<br>
+    <div id="instructions" >
+        Click to Lock Pointer<br/>
+        W/A/S/D: Move<br/>
+        SPACE: Jump (Basic)<br/>
+        SHIFT: Sprint<br/>
+        U: Call Elevator Up<br/>
+        J: Call Elevator Down<br/>
+        E: Interact with Doors (when looking at them)<br/>
         Left Mouse: Shoot
     </div>
     <div id="crosshair">+</div>
     <div id="ui">
+        <div id="pause-navigation" style="margin-top:2rem; text-align:center; display:none;">
+            <button id="back-to-arcade" class="bg-gray-800 hover:bg-gray-600 text-white font-extrabold text-xl py-4 px-8 rounded-2xl shadow-lg transition-colors duration-200 mx-4 mb-4 border-2 border-gray-500" type="button">Back to Arcade</button>
+            <button id="back-to-mall" class="bg-gray-800 hover:bg-gray-600 text-white font-extrabold text-xl py-4 px-8 rounded-2xl shadow-lg transition-colors duration-200 mx-4 mb-4 border-2 border-gray-500" type="button">Back to Mall</button>
+        </div>
         <div id="score">Score: 0</div>
         <div id="lives">Lives: 3</div>
         <div id="floorLevel">Floor: G</div>
         <div id="lampshadeCount">Lampshades: 0</div> 
         <div id="gameOver">GAME OVER</div>
+
     </div>
     <div id="safeCrackedBanner" class="banner-overlay"></div>
 
@@ -38,7 +44,8 @@
         <p id="pointedObject">Looking at: None</p>
     </div>
 
-        <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+
+        
     <div id="menu-container">
         <div class="menu-title">Main Menu</div>
         <div id="menu-columns-wrapper">
@@ -60,5 +67,25 @@
 
 
     <script type="module" src="./main.js"></script>
+    <script>
+    // Pause navigation logic
+    const pauseNav = document.getElementById('pause-navigation');
+    const backToArcade = document.getElementById('back-to-arcade');
+    const backToMall = document.getElementById('back-to-mall');
+    // Show pause navigation when menu is visible
+    function showPauseNav(show) {
+        if (pauseNav) pauseNav.style.display = show ? 'block' : 'none';
+    }
+    // Attach navigation
+    if (backToArcade) backToArcade.onclick = () => { window.location.href = '../Arcade.html'; };
+    if (backToMall) backToMall.onclick = () => { window.location.href = '../../index.html'; };
+    // Listen for pause/resume events from main.js (if available)
+    window.addEventListener('game-paused', () => showPauseNav(true));
+    window.addEventListener('game-resumed', () => showPauseNav(false));
+    // Optionally, show on load if not pointer locked
+    document.addEventListener('DOMContentLoaded', () => {
+        if (document.pointerLockElement == null) showPauseNav(true);
+    });
+    </script>
 </body>
 </html>

@@ -47,17 +47,17 @@ body {
             top: 10px; /* Adjust as needed for spacing from the top */
             left: 10px; /* Adjust as needed for spacing from the left */
             /* transform: translate(-50%, -50%); Removed for top-left alignment */
-            /* background-color: rgba(30, 41, 59, 0.9); */ /* Darker semi-transparent background - REMOVED */
-            /* border-radius: 0.75rem; */ /* rounded-xl - REMOVED */
-            /* padding: 1.5rem; */ /* p-6 - REMOVED */
-            /* box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2); */ /* shadow-2xl - REMOVED */
+            background-color: rgba(30, 41, 59, 0.9); /* Darker semi-transparent background - REMOVED */
+            border-radius: 0.75rem; /* rounded-xl - REMOVED */
+            padding: 1.5rem; /* p-6 - REMOVED */
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2); /* shadow-2xl - REMOVED */
             max-width: 90vw;
             max-height: 90vh;
             overflow-y: auto;
             display: flex; /* Show by default */
             flex-direction: column; /* Title above, columns below */
             /* Add a chamfer to the top-right corner */
-            /* clip-path: polygon(3rem 0, 100% 0, 100% 100%, 0 100%, 0 3rem); MODIFIED: Larger chamfer on top-left */
+            clip-path: polygon(3rem 0, 100% 0, 100% 100%, 0 100%, 0 3rem); /* MODIFIED: Larger chamfer on top-left */
         }
         .menu-title {
             font-size: 1.875rem; /* text-3xl */
@@ -103,7 +103,7 @@ body {
             align-items: stretch; /* Stretch columns to fill height */
             flex-grow: 1; /* Take remaining vertical space */
             overflow: hidden; /* Prevent this wrapper from scrolling, columns will scroll */
-            /* margin-top: 1rem; /* Optional space below title */
+            margin-top: 1rem; /* Optional space below title */
         }
 
         #menu-content {
@@ -120,10 +120,10 @@ body {
             height: 100%;
             overflow-y: auto;
             margin-left: 0.5rem; /* Space after menu-content's padding */
-            /* background-color: rgba(45, 55, 72, 0.92); */ /* Slightly distinct background - REMOVED */
-            /* border-radius: 0.5rem; */ /* rounded-lg - REMOVED */
-            /* padding: 0.75rem; */ /* p-3 - REMOVED */
-            /* border: 1px solid rgba(71, 85, 105, 0.6); */ /* REMOVED */
+            background-color: rgba(45, 55, 72, 0.92); /* Slightly distinct background - REMOVED */
+            border-radius: 0.5rem; /* rounded-lg - REMOVED */
+            padding: 0.75rem; /* p-3 - REMOVED */
+            border: 1px solid rgba(71, 85, 105, 0.6); /* REMOVED */
             /* display: none; is handled by JS via .hidden class or style.display */
         }
 

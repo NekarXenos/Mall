@@ -127,6 +127,22 @@ body {
             /* display: none; is handled by JS via .hidden class or style.display */
         }
 
+        #back-button {
+             padding: 0.75rem 1rem; /* py-3 px-4 */
+            margin-bottom: 0.5rem; /* mb-2 */
+            background-color: rgba(20, 65, 96, 0.8); /* slate-700 semi-transparent */
+            border-radius: 0.5rem; /* rounded-lg */
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            border: 2px solid rgba(0, 187, 255, 0.5);
+            font-weight: 500;
+            /* Add a chamfer to the top-right corner of menu items */
+            clip-path: polygon(1rem 0, 100% 0, 100% 100%, 0 100%, 0 1rem); /* MODIFIED: Larger chamfer on top-left */
+            color: #00ffff; /* Light text */
+            text-align: center; 
+            text-decoration: none; /* Remove underline */
+        }
+
         /* Ensure menu items in hover column also look good */
         /* #hover-submenu-column .menu-item {
             background-color: rgba(51, 65, 85, 0.85); 

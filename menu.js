@@ -7,6 +7,7 @@ const xmlString = `<menu>
         <item name="The Next Sun">
             <subtitle>Science Fiction - Pioneers reach the first planet from another solar system</subtitle>
         </item>
+        <item name="The Escape from Sol"><subtitle>Science Fiction - Accidental extra-solar contact after a space circus mishap</subtitle></item>
         <item name="CaveMan Abduction">
             <subtitle>Sci-Fi Comedy - A Flying Saucer crashes near a group of Cave-men</subtitle>
         </item>
@@ -82,7 +83,7 @@ const xmlString = `<menu>
         <item name = "Quick Concept" />
         <item name = "Concept Mockups" />
     </item>
-    <item name = "NX Dev" link="NX_Dev/nx_dev.html">
+    <item name = "NX Dev" link="NX_Dev/nxdev.html">
         <item name = "Click to enter the NX Dev Studio" link="NX_Dev/nx_dev.html"/>
         <item name = "3d Vehicle Wrap Design">
             <subtitle>Vehicle Wrap design directly onto 3d models </subtitle>

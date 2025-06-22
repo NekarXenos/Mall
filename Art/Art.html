@@ -48,9 +48,9 @@
             max-height: 90vh;
             overflow-y: auto;
             /* Initially hidden, controlled by PointerLockControls */
-            display: none; 
+            display: none;
             flex-direction: column;
-            clip-path: polygon(3rem 0, 100% 0, 100% 100%, 0 100%, 0 3rem);
+            clip-path: polygon(1rem 0, 100% 0, 100% 100%, 0 100%, 0 1rem);
             background-color: rgba(30, 41, 59, 0.85);
             -webkit-backdrop-filter: blur(5px);
             backdrop-filter: blur(5px);
@@ -95,6 +95,63 @@
             flex-grow: 1;
             overflow: hidden;
         }
+        #artwork-info-popup {
+            transform: translateX(-50%); /* Center horizontally relative to its left edge */
+            white-space: nowrap; /* Prevent text from wrapping */
+        }
+
+        /* Styles for the new artwork modal */
+        #artwork-modal {
+            display: none; /* Hidden by default */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8); /* Semi-transparent black background */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* Ensure it's on top of everything */
+        }
+
+        #artwork-modal-content {
+            position: relative;
+            max-width: 90%;
+            max-height: 90%;
+            background-color: #333; /* Dark background for the modal content */
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5); /* Shadow for depth */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #modal-artwork-img {
+            max-width: 100%;
+            max-height: 80vh; /* Limit image height to 80% of viewport height */
+            display: block;
+            margin: auto;
+            object-fit: contain; /* Ensure the entire image fits within its bounds */
+        }
+
+        #modal-close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background-color 0.2s ease;
+        }
+
+        #modal-close-btn:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
     </style>
 </head>
 <body>
@@ -112,6 +169,18 @@
     <div id="menu-container">
         <div class="menu-title">Art Gallery Menu</div>
         <div id="menu-columns-wrapper"></div>
+    </div>
+
+    <!-- Artwork Info Popup -->
+    <div id="artwork-info-popup" style="position: absolute; background-color: rgba(0,0,0,0.7); color: white; padding: 8px; border-radius: 5px; display: none; pointer-events: none; z-index: 999;"></div>
+
+
+    <!-- Artwork Modal -->
+    <div id="artwork-modal">
+        <div id="artwork-modal-content">
+            <img id="modal-artwork-img" src="" alt="Artwork">
+            <button id="modal-close-btn">&times;</button>
+        </div>
     </div>
 
     <script>
@@ -223,11 +292,20 @@
         let velocity = new THREE.Vector3();
         let direction = new THREE.Vector3();
         let prevTime = performance.now();
+        let artworkInfoPopup; // Declare globally
+        let currentHoveredArtwork = null; // Declare globally
+        let wallThickness, roomSize; // Declare globally
+        let interactiveArtworks = []; // To store artwork meshes for raycasting
         const objects = []; // For collision detection
 
         const menuContainer = document.getElementById('menu-container');
         const blocker = document.getElementById('blocker');
         const instructions = document.getElementById('instructions');
+
+        // Get references to artwork modal elements
+        const artworkModal = document.getElementById('artwork-modal');
+        const modalArtworkImg = document.getElementById('modal-artwork-img');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
 
         // Dummy data for artworks. In a real application, these would be loaded dynamically from a server.
         // Paths are relative to the current HTML file.
@@ -303,6 +381,11 @@
                             subtitle: art.dimensions,
                             link: art.path // Could potentially open a larger view of the artwork
                         }))
+                    },
+                    {
+                        name: "Back to Main Page",
+                        subtitle: "Return to the main mall area",
+                        link: "../index.html"
                     }
                 ]
             };
@@ -338,6 +421,14 @@
                     case 'ArrowDown': case 'KeyS': moveBackward = true; break;
                     case 'ArrowRight': case 'KeyD': moveRight = true; break;
                     case 'Space': if (canJump === true) velocity.y += 350; canJump = false; break;
+                    case 'Escape': // Handle Escape key
+                        if (artworkModal.style.display === 'flex') {
+                            hideArtworkModal(); // If artwork modal is open, close it first
+                        } else if (menuContainer.style.display === 'flex') {
+                            // If menu is already open, navigate back to main page
+                            window.location.href = '../index.html';
+                        }
+                        break;
                 }
             };
             const onKeyUp = function (event) {
@@ -364,8 +455,8 @@
             // Walls
             const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x475569 });
             const wallHeight = 3;
-            const wallThickness = 0.1;
-            const roomSize = 30;
+            wallThickness = 0.1; // Initialize global
+            roomSize = 30; // Initialize global
 
             const wall1 = new THREE.Mesh(new THREE.BoxGeometry(roomSize, wallHeight, wallThickness), wallMaterial);
             wall1.position.set(0, wallHeight / 2, -roomSize/2);
@@ -382,6 +473,30 @@
             const wall4 = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, roomSize), wallMaterial);
             wall4.position.set(roomSize/2, wallHeight/2, 0);
             scene.add(wall4); objects.push(wall4);
+
+            // Pillars along the side walls
+            const pillarMaterial = new THREE.MeshStandardMaterial({ color: 0x607080, roughness: 0.7, metalness: 0.3 });
+            const pillarRadius = 0.4;
+            const pillarHeight = wallHeight;
+            const pillarGeometry = new THREE.CylinderGeometry(pillarRadius, pillarRadius, pillarHeight, 16);
+
+            // Positions for pillars along Z-axis
+            const pillarZPositions = [-10, 0, 10]; // Example positions, adjust as needed
+
+            // Left Wall Pillars
+            pillarZPositions.forEach(zPos => {
+                const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
+                pillar.position.set(-roomSize / 2 + pillarRadius + 0.1, pillarHeight / 2, zPos);
+                scene.add(pillar); objects.push(pillar);
+            });
+            // Right Wall Pillars
+            pillarZPositions.forEach(zPos => {
+                const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
+                pillar.position.set(roomSize / 2 - pillarRadius - 0.1, pillarHeight / 2, zPos);
+                scene.add(pillar); objects.push(pillar);
+            });
+
+            artworkInfoPopup = document.getElementById('artwork-info-popup'); // Initialize here
 
             // Function to create and position artworks
             function createArtwork(x, y, z, rotationY, type, art) {
@@ -411,6 +526,9 @@
                     // Set artwork at eye height (centered at 1.5 units)
                     mesh.position.set(x, 1.5, z);
                     mesh.rotation.y = rotationY;
+                    mesh.userData.targetHeight = targetHeight; // Store the calculated height for popup positioning
+                    mesh.userData.artworkData = art; // Store the full artwork data
+                    interactiveArtworks.push(mesh); // Add to the interactive list
                     scene.add(mesh);
                 });
             }
@@ -450,12 +568,39 @@
             document.getElementById('threejs-container').appendChild(renderer.domElement);
 
             window.addEventListener('resize', onWindowResize);
+
+            // Event listeners for the artwork modal
+            modalCloseBtn.addEventListener('click', hideArtworkModal);
+            artworkModal.addEventListener('click', (e) => {
+                if (e.target === artworkModal) { // Only close if clicking the background
+                    hideArtworkModal();
+                }
+            });
+        }
+
+        function showArtworkModal(imagePath) {
+            modalArtworkImg.src = imagePath;
+            artworkModal.style.display = 'flex'; // Show the modal
+
+            // Hide the main menu and blocker when the artwork modal is shown
+            menuContainer.style.display = 'none';
+            blocker.style.display = 'none';
         }
 
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function hideArtworkModal() {
+            artworkModal.style.display = 'none'; // Hide the modal
+            modalArtworkImg.src = ''; // Clear the image source
+
+            // Show the main menu and blocker again when the artwork modal is hidden
+            menuContainer.style.display = 'flex';
+            blocker.style.display = 'block';
+            renderMenuColumns([]); // Re-render menu to ensure correct state
         }
 
         function renderMenuColumns(currentPath) {
@@ -496,9 +641,14 @@
                     itemDiv.addEventListener('click', (e) => {
                         e.stopPropagation();
                         if (item.link) { 
-                            // In a real app, clicking on an artwork might open a detailed view
-                            console.log("Clicked artwork:", item.name, "Path:", item.link);
-                            // window.location.href = item.link; // If you want to navigate to the art directly
+                            // Check if the link is an image file (for artwork popup)
+                            if (item.link.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
+                                showArtworkModal(item.link);
+                            } else {
+                                // For other links (like "Back to Main Page")
+                                console.log("Navigating to:", item.name, "Path:", item.link);
+                                window.location.href = item.link;
+                            }
                         }
                     });
                     columnDiv.appendChild(itemDiv);
@@ -517,6 +667,43 @@
             const time = performance.now();
 
             if (controls.isLocked === true) {
+                // Raycasting for artwork hover
+                raycaster.setFromCamera({ x: 0, y: 0 }, camera); // Ray from center of screen
+                const intersects = raycaster.intersectObjects(interactiveArtworks, false); // Only check artworks
+
+                if (intersects.length > 0) {
+                    const intersectedObject = intersects[0].object;
+                    const artworkData = intersectedObject.userData.artworkData;
+                    const artworkHeightWorld = intersectedObject.userData.targetHeight; // Get the stored height
+
+                    // Check if the intersected object is an artwork and if it's a new hover target
+                    if (artworkData && currentHoveredArtwork !== artworkData) {
+                        currentHoveredArtwork = artworkData;
+
+                        // Calculate the world position of the top center of the artwork
+                        const artworkTopCenterWorldPosition = new THREE.Vector3();
+                        intersectedObject.getWorldPosition(artworkTopCenterWorldPosition); // Get current world position of object's center
+                        artworkTopCenterWorldPosition.y += artworkHeightWorld / 2; // Move up to the top edge
+
+                        // Project this world position to 2D screen coordinates
+                        artworkTopCenterWorldPosition.project(camera);
+
+                        // Calculate screen coordinates
+                        const x = (artworkTopCenterWorldPosition.x * 0.5 + 0.5) * window.innerWidth;
+                        const y = (-artworkTopCenterWorldPosition.y * 0.5 + 0.5) * window.innerHeight;
+
+                        artworkInfoPopup.style.left = `${x + 15}px`; // Offset slightly to the right
+                        artworkInfoPopup.style.top = `${y - 15}px`; // Offset slightly upwards
+                        artworkInfoPopup.textContent = artworkData.name;
+                        artworkInfoPopup.style.display = 'block';
+                    }
+                } else {
+                    if (currentHoveredArtwork) {
+                        artworkInfoPopup.style.display = 'none';
+                        currentHoveredArtwork = null;
+                    }
+                }
+
                 raycaster.ray.origin.copy(controls.getObject().position);
                 raycaster.ray.origin.y -= 1.75;
                 const intersections = raycaster.intersectObjects(objects, false);
@@ -531,8 +718,8 @@
                 direction.x = Number(moveRight) - Number(moveLeft);
                 direction.normalize();
 
-                if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta;
-                if (moveLeft || moveRight) velocity.x -= direction.x * 400.0 * delta;
+                if (moveForward || moveBackward) velocity.z -= direction.z * 150.0 * delta; // Reduced speed
+                if (moveLeft || moveRight) velocity.x -= direction.x * 150.0 * delta; // Reduced speed
 
                 if (onObject === true) {
                     velocity.y = Math.max(0, velocity.y);
@@ -548,6 +735,14 @@
                     controls.getObject().position.y = 1.75;
                     canJump = true;
                 }
+
+                // Prevent moving outside the room (wall collision)
+                const camPos = controls.getObject().position;
+                const buffer = wallThickness + 0.1; // A small buffer to prevent getting stuck
+                const minBound = -roomSize / 2 + buffer;
+                const maxBound = roomSize / 2 - buffer;
+                camPos.x = Math.max(minBound, Math.min(maxBound, camPos.x));
+                camPos.z = Math.max(minBound, Math.min(maxBound, camPos.z));
             }
             
             prevTime = time;

@@ -59,23 +59,29 @@
         const shopItems = [
             {
                 id: 'next-sun',
-                title: 'The Next Sun',
-                content: '<h3>The Next Sun</h3><p>Science Fiction - Pioneers reach the first planet from another solar system.</p>'
+                title: 'The Next Sun', // The title is important for display purposes.
+                filePath: 'NextSun/nextsun.html' // Corrected path
             },
+            {
+                id: 'solEscape',
+                title: 'The Escape from Sol',
+                filePath: 'BueHaria/Moonrise.html' // Corrected path
+            },
+
             {
                 id: 'caveman-abduction',
                 title: 'CaveMan Abduction',
-                content: '<h3>CaveMan Abduction</h3><p>Sci-Fi Comedy - A Flying Saucer crashes near a group of Cave-men.</p>'
+                filePath: 'Cavemen/Cavemen.html' // Corrected path
             },
             {
                 id: 'abductotron-chronicals',
                 title: 'The AbductoTron Chronicals',
-                content: '<h3>The AbductoTron Chronicals</h3><p>Sci-Fi Comedy - A Grey gets bored and decides to change things up a bit.</p>'
+                filePath: 'AbductoTron/abductoTron.html' // Corrected path
             },
             {
                 id: 'abduction-absurdity',
                 title: 'Abduction & Absurdity',
-                content: '<h3>Abduction & Absurdity</h3><p>Sci-Fi Comedy - A Compilation of Sci-Fi Comedies - Just for fun AI Experiments.</p>'
+                filePath: 'Absurdity/absurdity.html' // Corrected path
             },
             {
                 id: 'bue-harian-chronicals',
@@ -130,7 +136,30 @@
                 const contentDiv = document.createElement('div');
                 contentDiv.id = `content-${item.id}`;
                 contentDiv.classList.add('page-content', 'content-display-area', 'hidden');
-                contentDiv.innerHTML = item.content; // Use the pre-formatted HTML content
+
+                // Load content from the file using the fetch API
+                if (item.filePath) {
+                    fetch(item.filePath)
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error(`Failed to load ${item.filePath}: ${response.status}`);
+                            }
+                            return response.text();
+                        })
+                        .then(html => {
+                            contentDiv.innerHTML = html;
+                        })
+                        .catch(error => {
+                            console.error('Error fetching content:', error);
+                            contentDiv.innerHTML = `<p class="text-red-500">Error loading content: ${error.message}</p>`;
+                        });
+                } else {
+                    contentDiv.innerHTML = `
+                        <h3>${item.title}</h3>
+                        <p>No content available.</p>
+                    `;
+                }
+
                 mainContentArea.appendChild(contentDiv);
             });
 
@@ -140,5 +169,5 @@
             }
         };
     </script>
-</body>
+</body></html>
 </html>
