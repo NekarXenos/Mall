@@ -96,7 +96,7 @@
 
             // Camera setup
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.y = 1.5; // Set camera height
+            camera.position.y = 1.75; // Set camera height (eye level for a 1.7m tall player)
             camera.position.z = 4;
 
             // Pointer Lock Controls for FPS style camera
@@ -123,11 +123,11 @@
 
             // Player's physical body for collision detection
             const playerBody = new THREE.Mesh(
-                new THREE.BoxGeometry(0.5, 1.8, 0.5), // width, height, depth
+                new THREE.BoxGeometry(0.5, 1.7, 0.5), // width, height, depth
                 new THREE.MeshBasicMaterial({ visible: false })
-            );
+            ); // Player height is 1.7m
             playerBody.name = 'playerBody';
-            playerBody.position.y = -0.9; // Position body relative to eye-level camera
+            playerBody.position.y = -0.85; // Position body relative to eye-level camera, so its base is at y=0
             controls.getObject().add(playerBody);
 
             // Key event listeners for movement
@@ -196,7 +196,7 @@
             createCeilingLight(3, -3);
             createCeilingLight(-3, -3);
             // Floor
-            const floorGeometry = new THREE.PlaneGeometry(10, 10);
+            /* const floorGeometry = new THREE.PlaneGeometry(10, 10);
             const floorMaterial = new THREE.MeshStandardMaterial({
                 color: 0x111111,
                 metalness: 0.8,
@@ -206,6 +206,42 @@
             floor.rotation.x = -Math.PI / 2;
             scene.add(floor);
             objects.push(floor); // Add floor for ground detection
+ */
+// Floor (Checkerboard with textures)
+const loader = new THREE.TextureLoader();
+const marble1 = loader.load('images/BMarble.png');
+const marble2 = loader.load('images/BMarble2.png');
+
+const tileSize = 2.5;
+const floorSize = 10;
+const half = floorSize / 2;
+
+for (let x = -half + tileSize / 2; x < half; x += tileSize) {
+    for (let z = -half + tileSize / 2; z < half; z += tileSize) {
+        // Checkerboard pattern
+        const useFirst = ((Math.floor((x + half) / tileSize) + Math.floor((z + half) / tileSize)) % 2 === 0);
+        const texture = useFirst ? marble1 : marble2;
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(1, 1);
+
+        // Random rotation (0, 90, 180, 270 degrees)
+        const rotation = Math.PI / 2 * Math.floor(Math.random() * 4);
+
+        const material = new THREE.MeshStandardMaterial({
+            map: texture,
+            metalness: 0.8,
+            roughness: 0.4
+        });
+        const geometry = new THREE.PlaneGeometry(tileSize, tileSize);
+        const tile = new THREE.Mesh(geometry, material);
+        tile.position.set(x, 0, z);
+        tile.rotateZ(rotation);    
+        tile.rotation.x = -Math.PI / 2; // Lay flat
+        //tile.rotateY(rotation);         // Then rotate around Y for random orientation
+        scene.add(tile);
+        objects.push(tile); // Add each tile for ground detection
+    }
+}
 
             // Walls
             const wallHeight = 3;
@@ -470,17 +506,16 @@
                 // --- Vertical Movement (Gravity & Jumping) ---
                 gravityRaycaster.set(controls.getObject().position, new THREE.Vector3(0, -1, 0));
                 const groundIntersections = gravityRaycaster.intersectObjects(objects, true);
-                const onGround = groundIntersections.length > 0 && groundIntersections[0].distance < 1.6;
+                const onGround = groundIntersections.length > 0 && groundIntersections[0].distance < 1.8; // Adjusted threshold (camera Y + small epsilon)
 
                 // Apply gravity if in the air
                 if (!onGround || velocity.y > 0) {
                     velocity.y -= 9.8 * 5.0 * delta; // gravity
                 }
-
                 // Handle landing on ground
                 if (onGround && velocity.y <= 0) {
                     const groundY = controls.getObject().position.y - groundIntersections[0].distance;
-                    controls.getObject().position.y = groundY + 1.5; // Set player eye-height above ground
+                    controls.getObject().position.y = groundY + 1.75; // Snap player eye-height to be 1.75m above ground
                     velocity.y = 0;
                     canJump = true;
                 }

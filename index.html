@@ -134,10 +134,10 @@
             }
 
             // --- MATERIALS ---
-            const aluminumMaterial = new THREE.MeshStandardMaterial({
+           const aluminumMaterial = new THREE.MeshStandardMaterial({
                 color: 0xaaaaaa,
                 metalness: 0.9,
-                roughness: 0.4
+                roughness: 0.4,
             });
             const glassMaterial = new THREE.MeshStandardMaterial({
                 color: 0xaaffff,
@@ -147,151 +147,7 @@
                 opacity: 0.25
             });
 
-            // --- PROCEDURAL MARBLE FLOOR MATERIAL (REVISED SHADER) ---
-            const floorVertexShader = `
-                varying vec2 vUv;
-                varying vec3 vNormal; // Normal in view space for lighting
-
-                void main() {
-                    vUv = uv;
-                    // Calculate normal in view space and pass to fragment shader
-                    vNormal = normalize(normalMatrix * normal);
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `;
-            const floorFragmentShader = `
-                varying vec2 vUv;
-                varying vec3 vNormal; // Received from vertex shader
-
-                // --- START: 2D Simplex Noise By Stefan Gustavson ---
-                vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-                vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-                vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
-
-                float snoise(vec2 v) {
-                    const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-                    vec2 i  = floor(v + dot(v, C.yy) );
-                    vec2 x0 = v - i + dot(i, C.xx);
-                    vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-                    vec4 x12 = x0.xyxy + C.xxzz;
-                    x12.xy -= i1;
-                    i = mod289(i);
-                    vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
-                    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-                    m = m*m;
-                    m = m*m;
-                    vec3 x = 2.0 * fract(p * C.www) - 1.0;
-                    vec3 h = abs(x) - 0.5;
-                    vec3 ox = floor(x + 0.5);
-                    vec3 a0 = x - ox;
-                    m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-                    vec3 g;
-                    g.x  = a0.x  * x0.x   + h.x  * x0.y;
-                    g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-                    return 130.0 * dot(m, g);
-                }
-                // --- END: 2D Simplex Noise ---
-
-                // --- START: Fractional Brownian Motion (fBm) ---
-                float fbm(vec2 st) {
-                    float value = 0.0;
-                    float amplitude = 0.5;
-                    float frequency = 2.0;
-                    for (int i = 0; i < 5; i++) {
-                        value += amplitude * snoise(st * frequency);
-                        frequency *= 2.0;
-                        amplitude *= 0.5;
-                    }
-                    return value;
-                }
-                // --- END: fbm ---
-
-                void main() {
-                    // --- Checkerboard Identification ---
-                    // Get an ID for each tile based on its integer coordinates. Changed from 4.0 to 15.0
-                    vec2 tileId = floor(vUv * 15.0); 
-                    // Create a checkerboard value (0.0 or 1.0)
-                    float checker = mod(tileId.x + tileId.y, 2.0);
-
-                    // --- Tiling & Grout Logic ---
-                    // Get the fractional part of the UVs for coordinates within a single tile. Changed from 4.0 to 15.0
-                    vec2 tiledUv = fract(vUv * 15.0);
-                    // Calculate distance to the nearest edge to draw grout lines.
-                    float edgeFactor = min(tiledUv.x, tiledUv.y);
-                    edgeFactor = min(edgeFactor, 1.0 - tiledUv.x);
-                    edgeFactor = min(edgeFactor, 1.0 - tiledUv.y);
-                    float grout = smoothstep(0.0, 0.003, edgeFactor);
-                    
-                    // --- Marble Pattern Generation ---
-                    // Use world-space UVs for a continuous pattern across tiles. Scaled from 3.0 to 11.25 to match tile scaling.
-                    vec2 basePatternUv = vUv * 11.25; // Base scale for pattern density
-
-                    // --- Define Colors ---
-                    vec3 baseColor = vec3(0.9, 0.93, 0.95);    // White-ish
-                    vec3 greyColor = vec3(0.8, 0.84, 0.85);    // Grey (formerly veinColor)
-                    vec3 goldColor = vec3(0.85, 0.75, 0.5); // Vein colour Gold (e.g., GoldenRod)
-                    vec3 groutColor = vec3(0.7);
-                    
-                    float angle_45_deg = 0.78539816339; // 45 degrees in radians
-                    float stretch_factor = 2.0;
-
-                    // PATTERN 1 (Stretched and Rotated +45 degrees)
-                    float inv_angle1 = -angle_45_deg; // Inverse rotation to align grain direction
-                    mat2 rot_inv1 = mat2(cos(inv_angle1), -sin(inv_angle1),
-                                         sin(inv_angle1),  cos(inv_angle1));
-                    vec2 uv_grain_basis1 = rot_inv1 * basePatternUv;
-
-                    vec2 uv_for_fbm1;
-                    uv_for_fbm1.x = uv_grain_basis1.x / stretch_factor; // Scale along the grain direction for FBM
-                    uv_for_fbm1.y = uv_grain_basis1.y;
-                    float noise1 = fbm(uv_for_fbm1);
-
-                    // Veins run along uv_grain_basis1.x, so use uv_grain_basis1.y for sin
-                    float veins1 = sin(uv_grain_basis1.y * 8.0 + noise1 * 5.0);
-
-                    // New logic for PATTERN 1: white -> grey -> gold
-                    float whiteToGreyFactor1 = smoothstep(0.01, 0.98, veins1);
-                    vec3 color1 = mix(baseColor, greyColor, whiteToGreyFactor1);
-                    float greyToGoldFactor1 = smoothstep(0.995, 1.0, veins1); // Thin gold vein at high values
-                    color1 = mix(color1, goldColor, greyToGoldFactor1);
-
-                    // PATTERN 2 (Stretched and Rotated -45 degrees)
-                    float inv_angle2 = angle_45_deg; // Inverse rotation for -45 deg grain is +45
-                    mat2 rot_inv2 = mat2(cos(inv_angle2), -sin(inv_angle2),
-                                         sin(inv_angle2),  cos(inv_angle2));
-                    vec2 uv_grain_basis2 = rot_inv2 * basePatternUv;
-
-                    vec2 uv_for_fbm2;
-                    uv_for_fbm2.x = uv_grain_basis2.x / stretch_factor; // Scale along the grain direction for FBM
-                    uv_for_fbm2.y = uv_grain_basis2.y;
-                    float noise2 = fbm(uv_for_fbm2);
-                    // Veins run along uv_grain_basis2.x, so use uv_grain_basis2.y for sin
-                    float veins2 = sin(uv_grain_basis2.y * 8.0 + noise2 * 5.0);
-                    // New logic for PATTERN 2: white -> grey -> gold
-                    float whiteToGreyFactor2 = smoothstep(0.01, 0.98, veins2);
-                    vec3 color2 = mix(baseColor, greyColor, whiteToGreyFactor2);
-                    float greyToGoldFactor2 = smoothstep(0.995, 1.0, veins2); // Thin gold vein at high values
-                    color2 = mix(color2, goldColor, greyToGoldFactor2);
-                    
-                    // --- Select Pattern ---
-                    // Use the checker value to mix between the normal and rotated patterns.
-                    vec3 marbleColorFromPattern = mix(color1, color2, checker);
-
-                    // --- Mix Final Colors ---
-                    // Overlay the grout lines.
-                    vec3 finalPixelColor = mix(groutColor, marbleColorFromPattern, grout);
-                    
-                    gl_FragColor = vec4(finalPixelColor, 1.0);
-                }
-            `;
-
-            const floorMaterial = new THREE.ShaderMaterial({
-                
-                vertexShader: floorVertexShader,
-                fragmentShader: floorFragmentShader,
-                //lights: true // IMPORTANT: This injects Three.js lighting uniforms and sets up defines
-            });
-            const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const wallMaterial = new THREE.MeshStandardMaterial({color: 0xffffff});
             const ceilingMaterial = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
              const skylightGlassMaterial = new THREE.MeshStandardMaterial({
                 color: 0xaaffff,
@@ -301,15 +157,55 @@
                 opacity: 0.5
             });
 
-
             // --- MALL STRUCTURE ---
-            const floorGeometry = new THREE.PlaneGeometry(30, 30);
-            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-            floor.rotation.x = -Math.PI / 2;
-            floor.position.y = -0.1;
-            floor.position .z = 15; // Center the floor
-            floor.receiveShadow = true;
-            scene.add(floor);
+            // Floor (Checkerboard with textures)
+            const textureLoader = new THREE.TextureLoader();
+            const marbleTextureA = textureLoader.load('images/MarbleWhiteA.png');
+            const marbleTextureB = textureLoader.load('images/MarbleWhiteB.png');
+
+            // Set wrapping mode for textures to repeat
+            marbleTextureA.wrapS = THREE.RepeatWrapping;
+            marbleTextureA.wrapT = THREE.RepeatWrapping;
+            marbleTextureB.wrapS = THREE.RepeatWrapping;
+            marbleTextureB.wrapT = THREE.RepeatWrapping;
+
+            // Determine tile size based on the original shader's visual density (4 tiles across 30 units)
+            const tileSize = 4; 
+            const floorWidth = 30;
+            const floorDepth = 30; // The floor spans from -15 to 15 in X, and 0 to 30 in Z
+
+            const tileGeometry = new THREE.PlaneGeometry(tileSize, tileSize); // Geometry for a single tile
+
+            // Function to get a pseudo-random rotation (0, 90, 180, 270 degrees)
+            function getRandomRotation() {
+                return Math.PI / 2 * Math.floor(Math.random() * 4);
+            }
+
+            // Create individual tiles in a grid
+            for (let x = -floorWidth / 2; x < floorWidth / 2; x += tileSize) {
+                for (let z = 0; z < floorDepth; z += tileSize) {
+                    // Determine which texture to use based on checkerboard pattern
+                    // Adjusting indices for the coordinate system: x from -15 to 15, z from 0 to 30
+                    const tileXIndex = Math.floor((x + floorWidth / 2) / tileSize);
+                    const tileZIndex = Math.floor(z / tileSize);
+                    const useTextureA = (tileXIndex + tileZIndex) % 2 === 0;
+
+                    const material = new THREE.MeshStandardMaterial({
+                        map: useTextureA ? marbleTextureA : marbleTextureB,
+                        metalness: 0.0, // Marble is not metallic
+                        roughness: 0.2, // Adjust for desired shininess (lower is shinier)
+                        side: THREE.DoubleSide, // Render both sides of the plane
+                    });
+
+                    const tile = new THREE.Mesh(tileGeometry, material);
+                    tile.rotation.x = -Math.PI / 2; // Lay flat on the XZ plane
+                    tile.rotation.z = getRandomRotation(); // Apply random 90-degree rotation
+                    // Position each tile, centering it within its grid cell
+                    tile.position.set(x + tileSize / 2, -0.1, z + tileSize / 2); 
+                    tile.receiveShadow = true; // Allow the tile to receive shadows
+                    scene.add(tile);
+                }
+            }
 
             const ceilingGeometry = new THREE.PlaneGeometry(10, 20);
             const ceiling = new THREE.Mesh(ceilingGeometry, ceilingMaterial);
@@ -820,7 +716,6 @@
 
         init();
         animate();
-
     </script>
 </body>
 </html>
