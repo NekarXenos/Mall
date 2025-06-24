@@ -459,6 +459,50 @@
             });
             createEntranceDoor();
 
+  
+            function createConstructionSign() {
+                const signWidth = 1;
+                const signHeight = 1.2;
+                const signAngle = Math.PI / 9; // 20 degrees tilt
+
+                const textureLoader = new THREE.TextureLoader();
+                // Assuming the image is in an 'images' folder
+                const signTexture = textureLoader.load('images/Construction.jpg');
+                const signMaterial = new THREE.MeshStandardMaterial({ map: signTexture });
+
+                const signGeometry = new THREE.PlaneGeometry(signWidth, signHeight);
+
+                const signYellow = new THREE.MeshStandardMaterial({ color: 0xffff00, side: THREE.DoubleSide });
+                const signBackGeometry = new THREE.PlaneGeometry(signWidth, signHeight);
+                const signBack = new THREE.Mesh(signBackGeometry, signYellow);
+                signBack.position.y = signHeight / 2;
+                signBack.rotation.x = -signAngle;
+                signBack.position.z = -(signHeight / 2) * Math.sin(signAngle);
+                
+                const signGroup = new THREE.Group();
+
+                // One face of the A-frame
+                const signFace1 =   new THREE.Mesh(signBackGeometry, signYellow);
+                signFace1.position.y = signHeight / 2; // Lift it so the bottom is at y=0
+                signFace1.rotation.x = -signAngle;
+                signFace1.position.z = (signHeight / 2) * Math.sin(signAngle);
+                signFace1.castShadow = true;
+
+                // The other face
+                const signFace2 = new THREE.Mesh(signGeometry, signMaterial);
+                signFace2.position.y = signHeight / 2;
+                signFace2.rotation.x = signAngle;
+                signFace2.position.z = -(signHeight / 2) * Math.sin(signAngle);
+                signFace2.rotation.y = Math.PI; // Flip texture for the back
+                signFace2.castShadow = true;
+
+                signGroup.add(signFace1);
+                signGroup.add(signFace2);
+
+                return signGroup;
+            }
+          
+
             function createShop(name, position, font) {
                 const shopGroup = new THREE.Group();
                 shopGroup.position.copy(position);
@@ -504,6 +548,13 @@
                 frontGroup.add(doorGroup);
                 const doorFrameDetails = createFrame(doorGroup, new THREE.Vector3(0,0,0), doorWidth, doorHeight, true);
                 
+                
+                // Add a construction sign inside the shop
+                const constructionSign = createConstructionSign();
+                constructionSign.position.set(0, 0, 2); // Position it 2 units "behind" the door frame
+                frontGroup.add(constructionSign);
+                
+
                 // Add a single transom window above the door
                 // Calculate the height of the space above the door
                 const transomWindowHeight = shopHeight - doorHeight; // (e.g., 3 - 2.2 = 0.8 units high)
