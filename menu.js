@@ -2,8 +2,8 @@
 
 // XML Menu Data (full, as in Menu.html)
 const xmlString = `<menu>
-    <item name="The SciFi BookStore" link="Books/SciFiBookshop.html">
-        <item name="Click to enter The SciFi BookStore" link="Books/SciFiBookshop.html"/>
+    <item name="The SciFi BookShop" link="Books/SciFiBookshop.html">
+        <item name="Click to enter THE SCI-FI BOOKSHOP" link="Books/SciFiBookshop.html"/>
         <item name="The Next Sun">
             <subtitle>Science Fiction - Pioneers reach the first planet from another solar system</subtitle>
         </item>
@@ -31,7 +31,7 @@ const xmlString = `<menu>
         </item>
     </item>
     <item name="Art By Gerhard" link="Art/Art.html">
-        <item name="Click to view Art By Gerhard" link="Art/Art.html"/>
+        <item name="Click to view ART BY GERHARD" link="Art/Art.html"/>
         <item name = "Acrylics on Canvas">
             <item name ="Funk Duel">
                 <subtitle>1.2m x 0.9m</subtitle>
@@ -73,7 +73,7 @@ const xmlString = `<menu>
         </item>
     </item>
     <item name = "GO 3Design" link="go3Design/go3design.html">
-        <item name = "Click to enter the GO 3Design studio" link="go3Design/go3design.html"/>
+        <item name = "Click to enter the GO 3DESIGN STUDIO" link="go3Design/go3design.html"/>
         <item name = "Furai-Vision Concept">
             <subtitle>A Rotary Hyper-car Design inspired by the Mazda Furai and the Mazda RX-Vision - Designed in Rhino-3d and converted to Blender-3d</subtitle>
         </item>
@@ -84,7 +84,7 @@ const xmlString = `<menu>
         <item name = "Concept Mockups" />
     </item>
     <item name = "NX Dev" link="NX_Dev/nxdev.html">
-        <item name = "Click to enter the NX Dev Studio" link="NX_Dev/nxdev.html"/>
+        <item name = "Click to enter the NX DEV STUDIO" link="NX_Dev/nxdev.html"/>
         <item name = "3d Vehicle Wrap Design">
             <subtitle>Vehicle Wrap design directly onto 3d models </subtitle>
         </item>
@@ -96,7 +96,7 @@ const xmlString = `<menu>
         </item>
     </item>
     <item name = "X-Arcade" link="Arcade/Arcade.html">
-        <item name = "Click to enter the X-Arcade" link="Arcade/Arcade.html"/>
+        <item name = "Click to enter the X-ARCADE" link="Arcade/Arcade.html"/>
         <item name = "Pac-3d" link="Arcade/Pac3d/3dPacMan.html">
             <subtitle>A classic maze game in 3D</subtitle>
         </item>
