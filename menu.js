@@ -84,7 +84,7 @@ const xmlString = `<menu>
         <item name = "Concept Mockups" />
     </item>
     <item name = "NX Dev" link="NX_Dev/nxdev.html">
-        <item name = "Click to enter the NX Dev Studio" link="NX_Dev/nx_dev.html"/>
+        <item name = "Click to enter the NX Dev Studio" link="NX_Dev/nxdev.html"/>
         <item name = "3d Vehicle Wrap Design">
             <subtitle>Vehicle Wrap design directly onto 3d models </subtitle>
         </item>
