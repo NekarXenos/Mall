@@ -6,6 +6,26 @@
     <title>3D Mall Scene - Three.js</title>
     <link rel="stylesheet" href="menu.css">
     <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Mobile compatibility for the menu */
+        @media (max-width: 768px) {
+            #menu-columns-wrapper {
+                flex-direction: column;
+                overflow-y: auto; /* Allow vertical scrolling for the wrapper */
+                overflow-x: hidden;
+            }
+
+            /* The script adds inline styles, so we need to override them for mobile view */
+            #menu-columns-wrapper > div {
+                margin-right: 0 !important;
+                margin-bottom: 1rem !important; /* Add space between stacked columns */
+                max-height: none !important; /* Allow columns to grow as needed */
+                overflow-y: visible !important; /* Prevent nested vertical scrollbars */
+                min-width: unset !important; /* Allow column to fill container width */
+                max-width: 100% !important;
+            }
+        }
+    </style>
 </head>
 <body>
     <div id="info">
