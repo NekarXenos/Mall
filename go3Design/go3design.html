@@ -205,6 +205,9 @@
         let icharPopup;
         let canShowIcharPopup = true;
 
+        // Detect if the user is on a mobile device
+        const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+
         init();
 
         // Add a div for debug info
@@ -288,6 +291,15 @@
             }
 
 
+            // Initial state for mobile
+            if (isMobile) {
+                blocker.style.display = 'none'; // Hide initial instructions
+                instructions.style.display = 'none';
+                aimingDot.style.display = 'block'; // Show aiming dot
+                icharPopup.style.display = 'block'; // Show popup immediately
+            }
+
+
             // --- Event Listeners ---
             window.addEventListener('resize', onWindowResize);
             // Add event listeners for interaction
@@ -304,9 +316,16 @@
             const instructions = document.getElementById('instructions'); // Assign to global aimingDot
             aimingDot = document.getElementById('aiming-dot');
 
-            instructions.addEventListener('click', () => {
+/*             instructions.addEventListener('click', () => {
                 controls.lock();
-            });
+            }); */
+
+            if (!isMobile) { // Only enable pointer lock click for desktop
+                instructions.addEventListener('click', () => {
+                    controls.lock();
+                });
+            }
+
 
             controls.addEventListener('lock', () => {
                 instructions.style.display = 'none';
@@ -330,14 +349,27 @@
             });
 
             controls.addEventListener('unlock', () => {
-                blocker.style.display = 'flex';
-                instructions.style.display = '';
+                /* blocker.style.display = 'flex';
+                instructions.style.display = ''; */
+                // Only show blocker/instructions if not mobile and not dismissed popup
+                if (!isMobile || canShowIcharPopup) {
+                    blocker.style.display = 'flex';
+                    instructions.style.display = '';
+                }
+
                 aimingDot.style.display = 'none';
+                // If controls are unlocked, and the popup was dismissed, don't show the popup again automatically
+                if (!canShowIcharPopup) {
+                    if (icharPopup) icharPopup.style.display = 'none';
+                }
+            
             });
 
             scene.add(controls.getObject());
 
             const onKeyDown = (event) => {
+                //switch (event.code) {
+                if (!controls.isLocked && !isMobile) return; // Only allow movement if locked (desktop) or always (mobile)
                 switch (event.code) {
                     case 'ArrowUp': case 'KeyW': moveForward = true; break;
                     case 'ArrowLeft': case 'KeyA': moveLeft = true; break;
@@ -347,6 +379,8 @@
             };
 
             const onKeyUp = (event) => {
+                //switch (event.code) {
+                if (!controls.isLocked && !isMobile) return; // Only allow movement if locked (desktop) or always (mobile)
                 switch (event.code) {
                     case 'ArrowUp': case 'KeyW': moveForward = false; break;
                     case 'ArrowLeft': case 'KeyA': moveLeft = false; break;
@@ -357,7 +391,72 @@
 
             document.addEventListener('keydown', onKeyDown);
             document.addEventListener('keyup', onKeyUp);
+        
+            // Add touch controls for mobile movement (similar to i character.html)
+            if (isMobile) {
+                const touchControlsDiv = document.getElementById('touch-controls');
+                if (touchControlsDiv) {
+                    touchControlsDiv.style.display = 'flex'; // Ensure buttons are visible
+                }
+
+                let isSwiping = false;
+                let lastTouchX = 0;
+                let lastTouchY = 0;
+                const touchCameraSpeed = 0.005;
+
+                // Touch listeners for movement buttons (already in HTML, just need to attach logic)
+                const moveForwardBtn = document.getElementById('moveForwardBtn');
+                const moveBackwardBtn = document.getElementById('moveBackwardBtn');
+
+                if (moveForwardBtn && moveBackwardBtn) {
+                    moveForwardBtn.addEventListener('touchstart', (e) => { e.preventDefault(); moveForward = true; });
+                    moveForwardBtn.addEventListener('touchend', (e) => { e.preventDefault(); moveForward = false; });
+                    moveForwardBtn.addEventListener('touchcancel', (e) => { e.preventDefault(); moveForward = false; });
+
+                    moveBackwardBtn.addEventListener('touchstart', (e) => { e.preventDefault(); moveBackward = true; });
+                    moveBackwardBtn.addEventListener('touchend', (e) => { e.preventDefault(); moveBackward = false; });
+                    moveBackwardBtn.addEventListener('touchcancel', (e) => { e.preventDefault(); moveBackward = false; });
+                }
+
+                renderer.domElement.addEventListener('touchstart', (event) => {
+                    // Only start swiping if not touching a movement button and popup is hidden
+                    if (event.target !== moveForwardBtn && event.target !== moveBackwardBtn && (icharPopup.style.display === 'none' || !icharPopup)) {
+                        isSwiping = true;
+                        lastTouchX = event.touches[0].clientX;
+                        lastTouchY = event.touches[0].clientY;
+                    }
+                }, false);
+
+                renderer.domElement.addEventListener('touchmove', (event) => {
+                    if (isSwiping) {
+                        const deltaX = event.touches[0].clientX - lastTouchX;
+                        const deltaY = event.touches[0].clientY - lastTouchY;
+
+                        // Apply rotation directly to camera (manual rotation for touch)
+                        camera.rotation.y -= deltaX * touchCameraSpeed;
+                        camera.rotation.x -= deltaY * touchCameraSpeed;
+
+                        // Clamp vertical camera rotation to prevent flipping
+                        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+
+                        lastTouchX = event.touches[0].clientX;
+                        lastTouchY = event.touches[0].clientY;
+                    }
+                }, false);
+
+                renderer.domElement.addEventListener('touchend', () => {
+                    isSwiping = false;
+                }, false);
+            } else {
+                // Hide touch control buttons on desktop
+                const touchControlsDiv = document.getElementById('touch-controls');
+                if (touchControlsDiv) {
+                    touchControlsDiv.style.display = 'none';
+                }
+            }
         }
+
+       
 
         // --- Procedural Textures ---
         function createFloorTexture() {
@@ -746,6 +845,9 @@
                 }
             }
             if (hit && controls.isLocked) {
+                // Toggle character reveal state
+                iCharacter.toggleReveal();
+
                 if (icharPopup && canShowIcharPopup) {
                     icharPopup.style.display = 'block';
                     controls.unlock();
@@ -776,7 +878,31 @@
                 const buffer = 0.5;
                 camPos.x = Math.max(-ROOM_WIDTH/2 + buffer, Math.min(ROOM_WIDTH/2 - buffer, camPos.x));
                 camPos.z = Math.max(-ROOM_DEPTH/2 + buffer, Math.min(ROOM_DEPTH/2 - buffer, camPos.z));
+            
+            } else if (isMobile && icharPopup.style.display === 'none') { // Mobile movement only if popup is hidden
+                const moveSpeed = 0.5; // Base movement speed for mobile
+                const effectiveSpeed = moveSpeed * 60.0 * delta;
+
+                const forwardVector = new THREE.Vector3();
+                camera.getWorldDirection(forwardVector);
+                forwardVector.y = 0;
+                forwardVector.normalize();
+
+                if (moveForward) {
+                    camera.position.addScaledVector(forwardVector, effectiveSpeed);
+                }
+                if (moveBackward) {
+                    camera.position.addScaledVector(forwardVector, -effectiveSpeed);
+                }
+
+                // Prevent moving outside the room (for mobile too)
+                const camPos = camera.position;
+                const buffer = 0.5;
+                camPos.x = Math.max(-ROOM_WIDTH/2 + buffer, Math.min(ROOM_WIDTH/2 - buffer, camPos.x));
+                camPos.z = Math.max(-ROOM_DEPTH/2 + buffer, Math.min(ROOM_DEPTH/2 - buffer, camPos.z));
             }
+
+            
 
             // Update i_character animation and hover glow
             if (iCharacter) {
