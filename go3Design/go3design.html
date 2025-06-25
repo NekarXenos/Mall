@@ -17,8 +17,9 @@
             align-items: center;
         }
         #instructions {
-            width: 50%;
-            padding: 20px;
+            width: 90%; /* Make it wider on small screens */
+            max-width: 500px; /* Limit width on large screens */
+            padding: 5vw; /* Responsive padding */
             background-color: rgba(20, 20, 40, 0.8);
             border: 2px solid #0088ff;
             border-radius: 15px;
@@ -30,6 +31,16 @@
         #instructions h2 {
             margin-top: 0;
             color: #0088ff;
+            font-size: 6vw; /* Responsive font size for heading */
+        }
+        #instructions p {
+            font-size: 3vw; /* Responsive font size for paragraphs */
+        }
+        /* Media query for larger screens (e.g., tablets and desktops) */
+        @media (min-width: 768px) {
+            #instructions { width: 50%; padding: 20px; }
+            #instructions h2 { font-size: 26px; } /* Revert to fixed size */
+            #instructions p { font-size: 18px; } /* Revert to fixed size */
         }
         #aiming-dot {
             position: absolute;
@@ -50,16 +61,21 @@
             bottom: 30px;
             left: 50%;
             transform: translateX(-50%);
-            background-color: rgba(20, 20, 40, 0.9);
+            background-color: rgba(20, 20, 40, 0.9); /* Slightly more opaque */
             border: 2px solid #0088ff;
             border-radius: 10px;
             color: white;
             padding: 20px;
             text-align: center;
             z-index: 102;
-            font-size: 16px;
-            width: 300px;
+            font-size: 3.5vw; /* Responsive font size */
+            width: 90%; /* Wider on small screens */
+            max-width: 400px; /* Limit width on large screens */
             box-shadow: 0 0 15px rgba(0, 136, 255, 0.5);
+        }
+        /* Media query for larger screens */
+        @media (min-width: 768px) {
+            #ichar-popup { font-size: 16px; width: 300px; padding: 20px; }
         }
         #ichar-popup p {
             margin: 0 0 15px 0;
@@ -68,7 +84,7 @@
             background-color: #0088ff;
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 2vw 4vw; /* Responsive padding for buttons */
             border-radius: 5px;
             cursor: pointer;
             margin: 0 10px;
@@ -83,6 +99,10 @@
         }
         #ichar-popup .popup-buttons button#popup-no:hover {
             background-color: #666;
+        }
+        /* Media query for larger screens */
+        @media (min-width: 768px) {
+            #ichar-popup .popup-buttons button { padding: 10px 20px; margin: 0 10px; }
         }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
