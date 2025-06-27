@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClourDraw Vector Design App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+        canvas {
+            touch-action: none; /* Prevents default touch scrolling/zooming */
+        }
+        .tool-btn.active {
+            background-color: #3b82f6; /* blue-500 */
+            color: white;
+        }
+        .control-panel label {
+            font-weight: 500;
+        }
+        .control-panel input[type="color"] {
+            width: 40px;
+            height: 40px;
+            border: none;
+            padding: 0;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .control-panel input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        .control-panel input[type="color"]::-webkit-color-swatch {
+            border: 1px solid #ddd;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col md:flex-row h-screen overflow-hidden">
+
+    <!-- Controls Panel -->
+    <div id="controls" class="control-panel w-full md:w-64 bg-white p-4 shadow-lg flex flex-col space-y-6 order-2 md:order-1 overflow-y-auto">
+        <h1 class="text-xl font-bold text-gray-800">Vector Editor</h1>
+        
+        <!-- Tool Selection -->
+        <div class="space-y-2">
+            <label class="text-sm text-gray-600">Tools</label>
+            <div class="flex space-x-2">
+                <button id="drawToolBtn" class="tool-btn flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition duration-300">Draw</button>
+                <button id="selectToolBtn" class="tool-btn flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition duration-300">Select</button>
+            </div>
+        </div>
+
+        <div class="space-y-2">
+            <label for="fillColor" class="text-sm text-gray-600">Fill Color</label>
+            <div class="flex items-center space-x-3">
+                <input type="color" id="fillColor" value="#cccccc">
+                <span id="fillColorValue" class="text-sm text-gray-500">#cccccc</span>
+            </div>
+        </div>
+
+        <div class="space-y-2">
+            <label for="strokeColor" class="text-sm text-gray-600">Stroke Color</label>
+            <div class="flex items-center space-x-3">
+                <input type="color" id="strokeColor" value="#000000">
+                <span id="strokeColorValue" class="text-sm text-gray-500">#000000</span>
+            </div>
+        </div>
+
+        <div class="space-y-2">
+            <label for="strokeWidth" class="text-sm text-gray-600">Stroke Width: <span id="strokeWidthValue">2</span>px</label>
+            <input type="range" id="strokeWidth" min="0" max="50" value="2" class="w-full">
+        </div>
+
+        <div class="flex flex-col space-y-3 pt-4 border-t">
+            <button id="closePathBtn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300">Close Path</button>
+            <button id="newShapeBtn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300">New Shape</button>
+            <button id="clearBtn" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300">Clear Canvas</button>
+        </div>
+
+        <div class="pt-4 border-t mt-auto">
+             <h2 id="instructions-title" class="text-lg font-semibold text-gray-700">Drawing Instructions</h2>
+             <ul id="instructions-list" class="list-disc list-inside text-sm text-gray-600 mt-2 space-y-1">
+                 <!-- Instructions will be updated dynamically -->
+             </ul>
+        </div>
+    </div>
+
+    <!-- Canvas Area -->
+    <div class="flex-1 bg-gray-200 order-1 md:order-2 flex items-center justify-center p-2">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script>
+        // --- Setup ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const HANDLE_SIZE = 5;
+        const ANCHOR_SIZE = 6;
+        const ROTATION_HANDLE_DIST = 30; // Distance of rotation handle from bounding box top center
+
+        const fillColorInput = document.getElementById('fillColor');
+        const strokeColorInput = document.getElementById('strokeColor');
+        const strokeWidthInput = document.getElementById('strokeWidth');
+        const closePathBtn = document.getElementById('closePathBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const newShapeBtn = document.getElementById('newShapeBtn');
+        const drawToolBtn = document.getElementById('drawToolBtn');
+        const selectToolBtn = document.getElementById('selectToolBtn');
+
+        // --- State Management ---
+        let mode = 'draw'; // 'draw', 'select'
+        let paths = []; // Stores all completed or current paths
+        let currentPath = null; // The path currently being drawn
+        let selectedPath = null; // The path currently selected in 'select' mode
+        
+        let isDraggingHandle = false; // True when dragging a bezier handle (in draw mode)
+        let activePoint = null; // The point whose handles are being modified (in draw mode)
+        
+        // Selection/Transformation state
+        let selectedItem = null; // {type: 'path'/'anchor'/'handle1'/'handle2'/'rotate', path, point}
+        let isDragging = false; // True when dragging any selected item (in select mode)
+        let dragStartPos = { x: 0, y: 0 }; // Mouse position at the start of a drag operation
+        
+        // --- Utility Functions ---
+        // Calculates the distance between two points
+        const getDist = (p1, p2) => Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2);
+
+        // Rotates a point around a given center by a specified angle
+        const rotatePoint = (p, center, angle) => {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            const dx = p.x - center.x;
+            const dy = p.y - center.y;
+            return {
+                x: dx * cos - dy * sin + center.x,
+                y: dx * sin + dy * cos + center.y
+            };
+        };
+
+        // Resizes the canvas to fit its parent container
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            if (container.clientWidth > 0 && container.clientHeight > 0) {
+                canvas.width = container.clientWidth;
+                canvas.height = container.clientHeight;
+                draw(); // Redraw content after resize
+            }
+        }
+
+        // Gets mouse position relative to the canvas
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            // Handle both mouse and touch events
+            const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : (e.changedTouches ? e.changedTouches[0].clientX : 0));
+            const clientY = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : (e.changedTouches ? e.changedTouches[0].clientY : 0));
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+        
+        // Initializes a new path object
+        function createNewPath() {
+            // If there's an unclosed currentPath with points, save it to paths array
+            if (currentPath && currentPath.points.length > 0 && !paths.includes(currentPath)) {
+                paths.push(currentPath);
+            }
+            // Create a new empty path with current style settings
+            currentPath = {
+                points: [], isClosed: false, angle: 0,
+                fillColor: fillColorInput.value,
+                strokeColor: strokeColorInput.value,
+                strokeWidth: strokeWidthInput.value
+            };
+        }
+
+        // Calculates the bounding box for a given path
+        function getPathBounds(path) {
+            if (path.points.length === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0, centerX: 0, centerY: 0 };
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            // Include all points and control points in bounds calculation
+            path.points.forEach(p => {
+                minX = Math.min(minX, p.x, p.cp1.x, p.cp2.x);
+                minY = Math.min(minY, p.y, p.cp1.y, p.cp2.y);
+                maxX = Math.max(maxX, p.x, p.cp1.x, p.cp2.x);
+                maxY = Math.max(maxY, p.y, p.cp1.y, p.cp2.y);
+            });
+            const width = maxX - minX;
+            const height = maxY - minY;
+            return { minX, minY, maxX, maxY, width, height, centerX: minX + width/2, centerY: minY + height/2 };
+        }
+        
+        // --- Drawing Functions ---
+        // Builds a Path2D object from a custom path definition, applying rotation
+        function buildPath2D(path) {
+            const path2D = new Path2D();
+            if (path.points.length === 0) return path2D;
+
+            const bounds = getPathBounds(path);
+            const center = { x: bounds.centerX, y: bounds.centerY }; // Rotation center
+
+            // Start path from the first point, rotated
+            const p0 = rotatePoint(path.points[0], center, path.angle);
+            path2D.moveTo(p0.x, p0.y);
+
+            // Draw bezier curves for each segment
+            for (let i = 0; i < path.points.length - 1; i++) {
+                const p1 = path.points[i];
+                const p2 = path.points[i+1];
+                // Rotate control points and end point
+                const rp1_cp2 = rotatePoint(p1.cp2, center, path.angle);
+                const rp2_cp1 = rotatePoint(p2.cp1, center, path.angle);
+                const rp2 = rotatePoint(p2, center, path.angle);
+                path2D.bezierCurveTo(rp1_cp2.x, rp1_cp2.y, rp2_cp1.x, rp2_cp1.y, rp2.x, rp2.y);
+            }
+
+            // Close the path if specified, connecting last point to first with a bezier curve
+            if (path.isClosed) {
+                const pLast = path.points[path.points.length-1];
+                const pFirst = path.points[0];
+                const rLast_cp2 = rotatePoint(pLast.cp2, center, path.angle);
+                const rFirst_cp1 = rotatePoint(pFirst.cp1, center, path.angle);
+                path2D.bezierCurveTo(rLast_cp2.x, rLast_cp2.y, rFirst_cp1.x, rFirst_cp1.y, p0.x, p0.y);
+                path2D.closePath();
+            }
+            return path2D;
+        }
+
+        // Main drawing function: clears canvas and redraws all paths
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Include currentPath if it's being drawn
+            const allPaths = currentPath ? [...paths, currentPath] : paths;
+
+            allPaths.forEach(path => {
+                const path2D = buildPath2D(path);
+                if (path.isClosed) {
+                    ctx.fillStyle = path.fillColor;
+                    ctx.fill(path2D);
+                }
+                if (path.strokeWidth > 0) {
+                    ctx.strokeStyle = path.strokeColor;
+                    ctx.lineWidth = path.strokeWidth;
+                    ctx.stroke(path2D);
+                }
+            });
+
+            // Draw selection UI or active path handles based on mode
+            if (mode === 'select' && selectedPath) {
+                drawSelectionUI(selectedPath);
+            } else if (mode === 'draw' && currentPath && !currentPath.isClosed){
+                // In draw mode, always show handles for the current (unclosed) path
+                drawHandles(currentPath, getPathBounds(currentPath), currentPath.angle);
+            }
+        }
+        
+        // Draws the selection bounding box and rotation handle for a selected path
+        function drawSelectionUI(path) {
+            const bounds = getPathBounds(path);
+            const angle = path.angle;
+            const center = { x: bounds.centerX, y: bounds.centerY };
+            
+            // Bounding box (rotated)
+            ctx.save();
+            ctx.translate(center.x, center.y);
+            ctx.rotate(angle);
+            ctx.strokeStyle = '#3b82f6'; // blue-500
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]); // Dashed line
+            ctx.strokeRect(-bounds.width/2, -bounds.height/2, bounds.width, bounds.height);
+            ctx.setLineDash([]); // Reset line dash
+            ctx.restore();
+            
+            // Rotation handle (rotated)
+            const rotationHandleOffset = {x: 0, y: -bounds.height/2 - ROTATION_HANDLE_DIST}; // Relative to path center
+            const rotatedHandlePos = rotatePoint(rotationHandleOffset, {x:0, y:0}, angle); // Rotate offset
+            const finalHandlePos = {x: center.x + rotatedHandlePos.x, y: center.y + rotatedHandlePos.y}; // Translate to canvas coords
+
+            ctx.beginPath();
+            ctx.moveTo(center.x, center.y);
+            ctx.lineTo(finalHandlePos.x, finalHandlePos.y);
+            ctx.strokeStyle = '#3b82f6';
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(finalHandlePos.x, finalHandlePos.y, ANCHOR_SIZE, 0, 2 * Math.PI);
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = '#3b82f6';
+            ctx.fill();
+            ctx.stroke();
+
+            // Draw anchor points and control handles
+            drawHandles(path, center, angle);
+        }
+
+        // Draws the bezier anchor points and control handles for a path
+        function drawHandles(path, center, angle) {
+            path.points.forEach(p => {
+                // Rotate points and control points to their display positions
+                const rp = rotatePoint(p, center, angle);
+                const rcp1 = rotatePoint(p.cp1, center, angle);
+                const rcp2 = rotatePoint(p.cp2, center, angle);
+
+                // Draw lines connecting anchor to control points
+                ctx.beginPath();
+                ctx.moveTo(rcp1.x, rcp1.y);
+                ctx.lineTo(rcp2.x, rcp2.y);
+                ctx.strokeStyle = '#f87171'; // Red-400
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // Draw control point handles
+                ctx.fillStyle = '#fca5a5'; // Red-300
+                ctx.beginPath();
+                ctx.arc(rcp1.x, rcp1.y, HANDLE_SIZE, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(rcp2.x, rcp2.y, HANDLE_SIZE, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // Draw anchor points
+                ctx.fillStyle = '#3b82f6'; // Blue-500
+                ctx.beginPath();
+                ctx.arc(rp.x, rp.y, ANCHOR_SIZE, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+        }
+        
+        // --- Hit Testing ---
+        // Determines which item (path, anchor, handle, rotation handle) is at a given position
+        function getSelectedItem(pos) {
+            // Iterate paths in reverse order (top-most first)
+            for (let i = paths.length - 1; i >= 0; i--) {
+                const path = paths[i];
+                const bounds = getPathBounds(path);
+                const center = { x: bounds.centerX, y: bounds.centerY };
+                
+                // Check for rotation handle hit
+                const rotationHandleOffset = {x: 0, y: -bounds.height/2 - ROTATION_HANDLE_DIST};
+                const rotatedHandlePos = rotatePoint(rotationHandleOffset, {x:0, y:0}, path.angle);
+                const finalHandlePos = {x: center.x + rotatedHandlePos.x, y: center.y + rotatedHandlePos.y};
+
+                if (getDist(pos, finalHandlePos) < ANCHOR_SIZE * 1.5) {
+                    return { type: 'rotate', path: path };
+                }
+
+                // Check for anchors and handles hit
+                for (const point of path.points) {
+                    // Rotate point and control points to their display positions for hit testing
+                    const rp = rotatePoint(point, center, path.angle);
+                    const rcp1 = rotatePoint(point.cp1, center, path.angle);
+                    const rcp2 = rotatePoint(point.cp2, center, path.angle);
+
+                    if (getDist(pos, rp) < ANCHOR_SIZE * 1.5) return { type: 'anchor', path, point };
+                    if (getDist(pos, rcp1) < HANDLE_SIZE * 1.5) return { type: 'handle1', path, point };
+                    if (getDist(pos, rcp2) < HANDLE_SIZE * 1.5) return { type: 'handle2', path, point };
+                }
+
+                // Check for path body hit (fill or stroke)
+                const path2D = buildPath2D(path);
+                if (ctx.isPointInPath(path2D, pos.x, pos.y) || (path.strokeWidth > 0 && ctx.isPointInStroke(path2D, pos.x, pos.y))) {
+                    return { type: 'path', path };
+                }
+            }
+            return null; // No item found at position
+        }
+
+        // --- Event Handlers ---
+        // Handles mouse/touch down events
+        function handleMouseDown(e) {
+            e.preventDefault(); // Prevent default browser actions (e.g., text selection, scrolling)
+            const pos = getMousePos(e);
+            dragStartPos = pos; // Store starting position for drag calculations
+
+            if (mode === 'draw') {
+                // If no current path or the current one is closed, start a new one
+                if (!currentPath || currentPath.isClosed) createNewPath();
+                // Add a new point to the current path, initializing control points at the point's position
+                const newPoint = { x: pos.x, y: pos.y, cp1: { x: pos.x, y: pos.y }, cp2: { x: pos.x, y: pos.y } };
+                currentPath.points.push(newPoint);
+                isDraggingHandle = true; // Activate handle dragging for the newly added point
+                activePoint = newPoint; // Set the active point for modification
+            } else if (mode === 'select') {
+                selectedItem = getSelectedItem(pos); // Check if any item is clicked
+                if (selectedItem) {
+                    isDragging = true; // Activate general dragging for selected item
+                    selectedPath = selectedItem.path; // Set the selected path
+                    // If rotating, store initial angle and mouse angle for calculation
+                    if(selectedItem.type === 'rotate') {
+                        selectedItem.path.originalAngle = selectedItem.path.angle || 0;
+                        const bounds = getPathBounds(selectedItem.path);
+                        selectedItem.path.startDragAngle = Math.atan2(pos.y - bounds.centerY, pos.x - bounds.centerX);
+                    }
+                } else {
+                    // If no item is clicked, deselect current path
+                    selectedPath = null;
+                }
+            }
+            draw(); // Redraw canvas to reflect changes
+        }
+
+        // Handles mouse/touch move events
+        function handleMouseMove(e) {
+            e.preventDefault();
+            const pos = getMousePos(e);
+
+            if (mode === 'draw' && isDraggingHandle) {
+                // In draw mode, if dragging a handle, update the control points symmetrically
+                const dx = pos.x - activePoint.x;
+                const dy = pos.y - activePoint.y;
+                activePoint.cp2 = { x: pos.x, y: pos.y };
+                activePoint.cp1 = { x: activePoint.x - dx, y: activePoint.y - dy };
+            } else if (mode === 'select' && isDragging && selectedItem) {
+                const path = selectedItem.path;
+                const bounds = getPathBounds(path);
+                const center = { x: bounds.centerX, y: bounds.centerY };
+                
+                // Calculate movement differences
+                const dx = pos.x - dragStartPos.x;
+                const dy = pos.y - dragStartPos.y;
+
+                // For anchor/handle manipulation, we need the movement in the path's unrotated coordinate system
+                const unrotatedPos = rotatePoint(pos, center, -path.angle);
+                const unrotatedStartPos = rotatePoint(dragStartPos, center, -path.angle);
+                const unrotatedDx = unrotatedPos.x - unrotatedStartPos.x;
+                const unrotatedDy = unrotatedPos.y - unrotatedStartPos.y;
+                
+                switch (selectedItem.type) {
+                    case 'path':
+                        // Translate all points and control points of the path
+                        path.points.forEach(p => {
+                            p.x += dx; p.y += dy;
+                            p.cp1.x += dx; p.cp1.y += dy;
+                            p.cp2.x += dx; p.cp2.y += dy;
+                        });
+                        break;
+                    case 'anchor':
+                        // Move the anchor point and its control points directly
+                        selectedItem.point.x += unrotatedDx; selectedItem.point.y += unrotatedDy;
+                        selectedItem.point.cp1.x += unrotatedDx; selectedItem.point.cp1.y += unrotatedDy;
+                        selectedItem.point.cp2.x += unrotatedDx; selectedItem.point.cp2.y += unrotatedDy;
+                        break;
+                    case 'handle1':
+                        // Move control point 1 and update control point 2 symmetrically
+                        selectedItem.point.cp1.x += unrotatedDx; selectedItem.point.cp1.y += unrotatedDy;
+                        const d1x = selectedItem.point.x - selectedItem.point.cp1.x;
+                        const d1y = selectedItem.point.y - selectedItem.point.cp1.y;
+                        selectedItem.point.cp2 = { x: selectedItem.point.x + d1x, y: selectedItem.point.y + d1y };
+                        break;
+                    case 'handle2':
+                        // Move control point 2 and update control point 1 symmetrically
+                        selectedItem.point.cp2.x += unrotatedDx; selectedItem.point.cp2.y += unrotatedDy;
+                        const d2x = selectedItem.point.x - selectedItem.point.cp2.x;
+                        const d2y = selectedItem.point.y - selectedItem.point.cp2.y;
+                        selectedItem.point.cp1 = { x: selectedItem.point.x + d2x, y: selectedItem.point.y + d2y };
+                        break;
+                    case 'rotate':
+                        // Calculate new angle based on mouse position relative to path center
+                        const currentAngle = Math.atan2(pos.y - center.centerY, pos.x - center.centerX);
+                        path.angle = selectedItem.path.originalAngle + (currentAngle - selectedItem.path.startDragAngle);
+                        break;
+                }
+                dragStartPos = pos; // Update drag start position for continuous dragging
+            }
+            draw(); // Redraw canvas to show real-time changes
+        }
+
+        // Handles mouse/touch up events
+        function handleMouseUp(e) {
+            e.preventDefault();
+            isDraggingHandle = false; // Stop handle dragging
+            activePoint = null; // Clear active point
+            isDragging = false; // Stop general dragging
+            // selectedItem = null; // Removed this line, as selection should persist after drag unless explicitly deselected.
+            draw();
+        }
+
+        // --- UI Listeners ---
+        // Sets the current operating mode ('draw' or 'select')
+        function setMode(newMode) {
+            mode = newMode;
+            // Update button active states and canvas cursor
+            if (mode === 'draw') {
+                drawToolBtn.classList.add('active');
+                selectToolBtn.classList.remove('active');
+                selectedPath = null; // Deselect any path when switching to draw mode
+                createNewPath(); // Always start a new path when entering draw mode
+                canvas.style.cursor = 'crosshair';
+                // Update instructions for drawing mode
+                document.getElementById('instructions-title').textContent = 'Drawing Instructions';
+                document.getElementById('instructions-list').innerHTML = `
+                    <li><b>Click & Drag:</b> Create a point and drag to set its smooth handles.</li>
+                    <li><b>Click:</b> Create a sharp corner point (no drag).</li>
+                    <li><b>'New Shape'</b> starts another independent shape.</li>
+                    <li><b>'Close Path'</b> connects the last point to the first.</li>`;
+            } else { // select mode
+                selectToolBtn.classList.add('active');
+                drawToolBtn.classList.remove('active');
+                // If there's an unclosed path in draw mode, save it
+                if(currentPath && currentPath.points.length > 0) paths.push(currentPath);
+                currentPath = null; // Clear current path
+                canvas.style.cursor = 'default';
+                // Update instructions for editing/selection mode
+                document.getElementById('instructions-title').textContent = 'Editing Instructions';
+                document.getElementById('instructions-list').innerHTML = `
+                    <li><b>Click</b> a shape to select it.</li>
+                    <li><b>Drag</b> the body to move it.</li>
+                    <li><b>Drag</b> the top handle to rotate.</li>
+                    <li><b>Drag</b> blue anchors to move points.</li>
+                    <li><b>Drag</b> red handles to adjust curves.</li>`;
+            }
+            draw(); // Redraw with updated mode/selection
+        }
+
+        // Event listeners for UI controls
+        drawToolBtn.addEventListener('click', () => setMode('draw'));
+        selectToolBtn.addEventListener('click', () => setMode('select'));
+
+        // Color and stroke width inputs update properties of selected/current path
+        fillColorInput.addEventListener('input', e => {
+            const targetPath = selectedPath || currentPath;
+            if (targetPath) {
+                targetPath.fillColor = e.target.value;
+                document.getElementById('fillColorValue').textContent = e.target.value;
+                draw();
+            }
+        });
+        strokeColorInput.addEventListener('input', e => {
+            const targetPath = selectedPath || currentPath;
+            if (targetPath) {
+                targetPath.strokeColor = e.target.value;
+                document.getElementById('strokeColorValue').textContent = e.target.value;
+                draw();
+            }
+        });
+        strokeWidthInput.addEventListener('input', e => {
+            const targetPath = selectedPath || currentPath;
+            if (targetPath) {
+                targetPath.strokeWidth = e.target.value;
+                document.getElementById('strokeWidthValue').textContent = e.target.value;
+                draw();
+            }
+        });
+
+        // Close Path button action
+        closePathBtn.addEventListener('click', () => {
+            const targetPath = mode === 'draw' ? currentPath : selectedPath;
+            if (targetPath && targetPath.points.length > 1) {
+                targetPath.isClosed = true;
+                if(mode === 'draw') {
+                    // If in draw mode, close current path and start a new one automatically
+                    paths.push(currentPath);
+                    currentPath = null;
+                    createNewPath();
+                }
+                draw();
+            }
+        });
+
+        // Clear Canvas button action
+        clearBtn.addEventListener('click', () => {
+            paths = [];
+            selectedPath = null;
+            // Reset to draw mode, which will create a new empty currentPath
+            setMode('draw'); 
+        });
+
+        // New Shape button action (switches to draw mode and creates a new path)
+        newShapeBtn.addEventListener('click', () => {
+            setMode('draw');
+        });
+
+        // --- Initialisation ---
+        // Event listeners for canvas interaction
+        window.addEventListener('resize', resizeCanvas, false); // Handle window resizing
+        canvas.addEventListener('mousedown', handleMouseDown);
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('mouseup', handleMouseUp);
+        canvas.addEventListener('mouseleave', handleMouseUp); // End drag if mouse leaves canvas
+        canvas.addEventListener('contextmenu', e => e.preventDefault()); // Prevent right-click context menu
+        
+        // Touch events for mobile compatibility
+        canvas.addEventListener('touchstart', handleMouseDown, { passive: false });
+        canvas.addEventListener('touchmove', handleMouseMove, { passive: false });
+        canvas.addEventListener('touchend', handleMouseUp, { passive: false });
+        
+        // Initial setup when the window loads
+        window.addEventListener('load', () => {
+             resizeCanvas(); // Set initial canvas size
+             setMode('draw'); // Start in draw mode
+        });
+
+    </script>
+</body>
+</html>

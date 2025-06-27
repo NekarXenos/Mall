@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ColourDraw Vector Design App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+        canvas {
+            cursor: crosshair;
+            touch-action: none;
+        }
+        .control-panel label {
+            font-weight: 500;
+        }
+        .control-panel input[type="color"] {
+            width: 40px;
+            height: 40px;
+            border: none;
+            padding: 0;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .control-panel input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        .control-panel input[type="color"]::-webkit-color-swatch {
+            border: 1px solid #ddd;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col md:flex-row h-screen overflow-hidden">
+
+    <!-- Controls Panel -->
+    <div id="controls" class="control-panel w-full md:w-64 bg-white p-4 shadow-lg flex flex-col space-y-6 order-2 md:order-1 overflow-y-auto">
+        <h1 class="text-xl font-bold text-gray-800">Controls</h1>
+        
+        <div class="space-y-2">
+            <label for="fillColor" class="text-sm text-gray-600">Fill Color</label>
+            <div class="flex items-center space-x-3">
+                <input type="color" id="fillColor" value="#cccccc">
+                <span id="fillColorValue" class="text-sm text-gray-500">#cccccc</span>
+            </div>
+        </div>
+
+        <div class="space-y-2">
+            <label for="strokeColor" class="text-sm text-gray-600">Stroke Color</label>
+            <div class="flex items-center space-x-3">
+                <input type="color" id="strokeColor" value="#000000">
+                <span id="strokeColorValue" class="text-sm text-gray-500">#000000</span>
+            </div>
+        </div>
+
+        <div class="space-y-2">
+            <label for="strokeWidth" class="text-sm text-gray-600">Stroke Width: <span id="strokeWidthValue">2</span>px</label>
+            <input type="range" id="strokeWidth" min="0" max="50" value="2" class="w-full">
+        </div>
+
+        <div class="flex flex-col space-y-3 pt-4 border-t">
+            <button id="closePathBtn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300">Close Path</button>
+            <button id="newShapeBtn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300">New Shape</button>
+            <button id="clearBtn" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300">Clear Canvas</button>
+        </div>
+
+        <div class="pt-4 border-t mt-auto">
+             <h2 class="text-lg font-semibold text-gray-700">Instructions</h2>
+             <ul class="list-disc list-inside text-sm text-gray-600 mt-2 space-y-1">
+                <li><b>Left-Click & Drag:</b> Create a point and drag to set its smooth handles.</li>
+                <li><b>Right-Click & Drag:</b> Create a curve from the previous point.</li>
+                <li><b>'New Shape'</b> starts another independent shape.</li>
+             </ul>
+        </div>
+    </div>
+
+    <!-- Canvas Area -->
+    <div class="flex-1 bg-gray-200 order-1 md:order-2 flex items-center justify-center p-2">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script>
+        // --- Setup ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const fillColorInput = document.getElementById('fillColor');
+        const strokeColorInput = document.getElementById('strokeColor');
+        const strokeWidthInput = document.getElementById('strokeWidth');
+        const closePathBtn = document.getElementById('closePathBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const newShapeBtn = document.getElementById('newShapeBtn');
+        const fillColorValue = document.getElementById('fillColorValue');
+        const strokeColorValue = document.getElementById('strokeColorValue');
+        const strokeWidthValue = document.getElementById('strokeWidthValue');
+
+        // --- State Management ---
+        let paths = [];
+        let currentPath = null;
+        let isDrawing = false; // For right-click "Curve tool"
+        let dragStartPoint = null; // For right-click "Curve tool"
+        let isDraggingHandle = false; // For left-click "Pen tool"
+        let activePoint = null; // Point being modified by "Pen tool"
+
+
+        // --- Utility Functions ---
+        
+        /**
+         * Resizes the canvas to fit its container and redraws the content.
+         * This version is safer and avoids errors on initial load.
+         */
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const newWidth = container.clientWidth;
+            const newHeight = container.clientHeight;
+
+            // Only perform resize and redraw if the dimensions have actually changed.
+            if (canvas.width !== newWidth || canvas.height !== newHeight) {
+                canvas.width = newWidth;
+                canvas.height = newHeight;
+                // Redraw all content from the stored vector data.
+                draw();
+            }
+        }
+
+        function getMousePos(event) {
+            const rect = canvas.getBoundingClientRect();
+            // Use changedTouches for touchend events
+            const clientX = event.clientX ?? (event.touches && event.touches[0] ? event.touches[0].clientX : (event.changedTouches ? event.changedTouches[0].clientX : 0));
+            const clientY = event.clientY ?? (event.touches && event.touches[0] ? event.touches[0].clientY : (event.changedTouches ? event.changedTouches[0].clientY : 0));
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        function createNewPath() {
+            if (currentPath && currentPath.points.length > 0) {
+                if (!paths.includes(currentPath)) {
+                   paths.push(currentPath);
+                }
+            }
+            currentPath = {
+                points: [],
+                isClosed: false,
+                fillColor: fillColorInput.value,
+                strokeColor: strokeColorInput.value,
+                strokeWidth: strokeWidthInput.value
+            };
+        }
+
+        // --- Drawing Functions ---
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const allPaths = [...paths];
+            if (currentPath && !allPaths.includes(currentPath)) {
+                allPaths.push(currentPath);
+            }
+
+            allPaths.forEach(path => {
+                drawPath(path);
+            });
+            
+            if (currentPath && !currentPath.isClosed) {
+                drawHandles(currentPath);
+            }
+        }
+
+        function drawPath(path) {
+            if (path.points.length < 1) return;
+
+            ctx.beginPath();
+            ctx.moveTo(path.points[0].x, path.points[0].y);
+
+            for (let i = 0; i < path.points.length - 1; i++) {
+                const p1 = path.points[i];
+                const p2 = path.points[i + 1];
+                ctx.bezierCurveTo(p1.cp2.x, p1.cp2.y, p2.cp1.x, p2.cp1.y, p2.x, p2.y);
+            }
+
+            if (path.isClosed) {
+                const pLast = path.points[path.points.length - 1];
+                const pFirst = path.points[0];
+                ctx.bezierCurveTo(pLast.cp2.x, pLast.cp2.y, pFirst.cp1.x, pFirst.cp1.y, pFirst.x, pFirst.y);
+                ctx.closePath();
+                ctx.fillStyle = path.fillColor;
+                ctx.fill();
+            }
+
+            if (path.strokeWidth > 0) {
+                ctx.strokeStyle = path.strokeColor;
+                ctx.lineWidth = path.strokeWidth;
+                ctx.stroke();
+            }
+        }
+        
+        function drawHandles(path) {
+            ctx.fillStyle = '#3b82f6'; // Blue-500
+            path.points.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+
+            path.points.forEach(p => {
+                ctx.beginPath();
+                ctx.moveTo(p.cp1.x, p.cp1.y);
+                ctx.lineTo(p.cp2.x, p.cp2.y);
+                ctx.strokeStyle = '#f87171'; // Red-400
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                ctx.fillStyle = '#fca5a5'; // Red-300
+                ctx.beginPath();
+                ctx.arc(p.cp1.x, p.cp1.y, 4, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.arc(p.cp2.x, p.cp2.y, 4, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+        }
+
+
+        // --- Event Handlers ---
+        
+        function handleMouseDown(e) {
+            e.preventDefault();
+            const pos = getMousePos(e);
+
+            if (e.button === 0 || e.type === 'touchstart') { // Left-click or Touch
+                if (!currentPath || currentPath.isClosed) {
+                    createNewPath();
+                }
+                const newPoint = {
+                    x: pos.x, y: pos.y,
+                    cp1: { x: pos.x, y: pos.y },
+                    cp2: { x: pos.x, y: pos.y }
+                };
+                currentPath.points.push(newPoint);
+                isDraggingHandle = true;
+                activePoint = newPoint;
+
+            } else if (e.button === 2) { // Right-click
+                isDrawing = true;
+                dragStartPoint = pos;
+                if (!currentPath || currentPath.isClosed) {
+                    createNewPath();
+                }
+            }
+            draw();
+        }
+
+        function handleMouseUp(e) {
+            e.preventDefault();
+            
+            // Handle right-click "Curve Tool" drawing
+            if (isDrawing) {
+                const pos = getMousePos(e);
+                if (currentPath.points.length === 0) {
+                    const newPoint = { x: pos.x, y: pos.y, cp1: { x: pos.x, y: pos.y }, cp2: { x: pos.x, y: pos.y } };
+                    currentPath.points.push(newPoint);
+                } else {
+                    const prevPoint = currentPath.points[currentPath.points.length - 1];
+                    const newPoint = { x: pos.x, y: pos.y, cp1: { x: pos.x, y: pos.y }, cp2: { x: pos.x, y: pos.y } };
+                    if (dragStartPoint.x !== pos.x || dragStartPoint.y !== pos.y) {
+                        const dx = pos.x - dragStartPoint.x;
+                        const dy = pos.y - dragStartPoint.y;
+                        prevPoint.cp2 = { x: dragStartPoint.x, y: dragStartPoint.y };
+                        newPoint.cp1 = { x: pos.x - dx, y: pos.y - dy };
+                    }
+                    currentPath.points.push(newPoint);
+                }
+            }
+
+            // Reset all drawing states
+            isDrawing = false;
+            dragStartPoint = null;
+            isDraggingHandle = false;
+            activePoint = null;
+            draw();
+        }
+
+        function handleMouseMove(e) {
+            e.preventDefault();
+            
+            // Handle left-click "Pen Tool" handle dragging
+            if (isDraggingHandle && activePoint) {
+                const pos = getMousePos(e);
+                const dx = pos.x - activePoint.x;
+                const dy = pos.y - activePoint.y;
+
+                activePoint.cp2 = { x: pos.x, y: pos.y };
+                activePoint.cp1 = { x: activePoint.x - dx, y: activePoint.y - dy };
+                draw();
+            }
+            
+            // Handle right-click "Curve Tool" preview
+            if (isDrawing && dragStartPoint) {
+                draw(); 
+                ctx.beginPath();
+                const lastPoint = currentPath.points.length > 0 ? currentPath.points[currentPath.points.length - 1] : dragStartPoint;
+                ctx.moveTo(lastPoint.x, lastPoint.y);
+                const currentPos = getMousePos(e);
+                ctx.bezierCurveTo(dragStartPoint.x, dragStartPoint.y, currentPos.x, currentPos.y, currentPos.x, currentPos.y);
+                ctx.strokeStyle = '#60a5fa';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+
+
+        // --- Control Panel Listeners ---
+        fillColorInput.addEventListener('input', (e) => {
+            if (currentPath) {
+                currentPath.fillColor = e.target.value;
+                fillColorValue.textContent = e.target.value;
+                draw();
+            }
+        });
+
+        strokeColorInput.addEventListener('input', (e) => {
+            if (currentPath) {
+                currentPath.strokeColor = e.target.value;
+                strokeColorValue.textContent = e.target.value;
+                draw();
+            }
+        });
+
+        strokeWidthInput.addEventListener('input', (e) => {
+            if (currentPath) {
+                currentPath.strokeWidth = e.target.value;
+                strokeWidthValue.textContent = e.target.value;
+                draw();
+            }
+        });
+
+        closePathBtn.addEventListener('click', () => {
+            if (currentPath && currentPath.points.length > 1) {
+                currentPath.isClosed = true;
+                if (!paths.includes(currentPath)) {
+                   paths.push(currentPath);
+                }
+                currentPath = null;
+                draw();
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            paths = [];
+            currentPath = null;
+            draw();
+        });
+
+        newShapeBtn.addEventListener('click', () => {
+            createNewPath();
+            draw();
+        });
+
+
+        // --- Initialisation ---
+        window.addEventListener('resize', resizeCanvas);
+        canvas.addEventListener('mousedown', handleMouseDown);
+        canvas.addEventListener('mouseup', handleMouseUp);
+        canvas.addEventListener('mouseleave', handleMouseUp); // End drawing if mouse leaves canvas
+        canvas.addEventListener('mousemove', handleMouseMove);
+        
+        // Prevent right-click context menu
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+        
+        // Touch events for mobile support
+        canvas.addEventListener('touchstart', handleMouseDown, { passive: false });
+        canvas.addEventListener('touchend', handleMouseUp, { passive: false });
+        canvas.addEventListener('touchmove', handleMouseMove, { passive: false });
+
+
+        // Initial setup
+        resizeCanvas();
+        createNewPath();
+        draw();
+    </script>
+</body>
+</html>

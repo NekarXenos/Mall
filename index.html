@@ -32,7 +32,10 @@
         3D Mall<br/>
         Click to Start<br/>Use mouse to look, W/A/S/D to move.
     </div>
+
     <div id="hover-info"></div>
+    <!-- Dot reticule -->
+    <div id="reticule"></div>
 
     <!-- Menu Overlay (identical to Menu.html, minus the 'i') -->
     <link href="https://cdn.tailwindcss.com" rel="stylesheet">
@@ -42,7 +45,31 @@
             <!-- Columns will be dynamically generated here -->
         </div>
     </div>
+
     <script src="menu.js"></script>
+    <style>
+        #reticule {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            width: 12px;
+            height: 12px;
+            margin-left: -6px;
+            margin-top: -6px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.85);
+            box-shadow: 0 0 4px 1px rgba(0,0,0,0.18);
+            z-index: 1000;
+            pointer-events: none;
+            border: 2px solid #222233;
+        }
+        #reticule {
+            transition: opacity 0.2s;
+        }
+        #reticule.hidden {
+            opacity: 0;
+        }
+    </style>
 
     <script type="importmap">
         {
@@ -82,7 +109,34 @@
         let hoverInfoDiv;
         let currentHoverTarget = null; // Stores userData of the currently hovered interactive element
 
-        // Initialize the core components
+
+        // --- WIREFRAME DEBUG MODE ---
+        let wireframeDebug = false;
+        function setWireframeMode(enabled) {
+            scene.traverse((obj) => {
+                if (obj.isMesh && obj.material) {
+                    if (Array.isArray(obj.material)) {
+                        obj.material.forEach(mat => {
+                            if ('wireframe' in mat) mat.wireframe = enabled;
+                        });
+                    } else {
+                        if ('wireframe' in obj.material) obj.material.wireframe = enabled;
+                    }
+                }
+            });
+        }
+
+        function setReticuleVisible(visible) {
+            const reticule = document.getElementById('reticule');
+            if (reticule) {
+                if (visible) {
+                    reticule.classList.remove('hidden');
+                } else {
+                    reticule.classList.add('hidden');
+                }
+            }
+        }
+
         function init() {
             clock = new THREE.Clock();
 
@@ -124,12 +178,14 @@
             });
             controls.addEventListener('lock', function () {
                 infoDiv.style.display = 'none';
+                setReticuleVisible(true);
                 // When locking controls (resuming game), hide the menu:
                 if (typeof toggleMenu === 'function') toggleMenu(false);
             });
             controls.addEventListener('unlock', function () {
                 infoDiv.style.display = 'block';
                 infoDiv.innerHTML = 'Paused - Click to Resume<br/>Use mouse to look, W/A/S/D to move.';
+                setReticuleVisible(false);
                 // Show the menu overlay when paused
                 if (typeof toggleMenu === 'function') toggleMenu(true);
             });
@@ -246,6 +302,30 @@
             backWall.castShadow = true;
             scene.add(backWall);
 
+
+            // --- ART GALLERY EASEL PAINTINGS DATA ---
+            // These should match the paintings in Art/Art.html
+            const artGalleryPaintings = [
+                { name: "Bassist", path: "Art/Paintings/Bassist.jpg" },
+                { name: "BlueBass", path: "Art/Paintings/BlueBass.jpg" },
+                { name: "buskers 1.2mx1m", path: "Art/Paintings/buskers_1_2mx1m.jpg" },
+                { name: "funky Duel", path: "Art/Paintings/funky Duel.jpg" },
+                { name: "Jazz Trio", path: "Art/Paintings/Jazz Trio.jpg" },
+                { name: "saxplayer2016", path: "Art/Paintings/saxplayer2016.jpg" },
+                { name: "sonflower_acrylic", path: "Art/Paintings/sonflower_acrylic.jpg" },
+                { name: "Summer Blue Butterfly", path: "Art/Paintings/Summer Blue Butterfly.jpg" }
+            ];
+
+            // Helper to pick 2 random, different paintings
+            function pickTwoRandomPaintings() {
+                const idxs = [...Array(artGalleryPaintings.length).keys()];
+                for (let i = idxs.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [idxs[i], idxs[j]] = [idxs[j], idxs[i]];
+                }
+                return [artGalleryPaintings[idxs[0]], artGalleryPaintings[idxs[1]]];
+            }
+
             // --- FONT LOADING AND SHOP CREATION ---
             const fontLoader = new FontLoader();
             const fontPaths = {
@@ -264,7 +344,7 @@
                             resolve();
                         }, undefined, (error) => {
                             console.error(`Failed to load font: ${name}`, error);
-                            reject(error);
+                                                        reject(error);
                         });
                     })
                 );
@@ -305,18 +385,18 @@
                     interactiveElements.push(xArcadeShop.doorGlass);
                 }
 
+
                 // Specifically tag Art Gallery elements for interaction
                 const artGallery = shopsData["Art by Gerhard"];
                 if (artGallery && artGallery.facia) {
                     artGallery.facia.userData = {
-                    type: 'facia',
-                    shopName: "Art by Gerhard",
-                    message: "Paintings and Digital Art by Gerhard - Click to enter",
-                    action: () => {
-                        window.location.href = 'Art/Art.html';
-                    }
-                };
-
+                        type: 'facia',
+                        shopName: "Art by Gerhard",
+                        message: "Paintings and Digital Art by Gerhard - Click to enter",
+                        action: () => {
+                            window.location.href = 'Art/Art.html';
+                        }
+                    };
                     interactiveElements.push(artGallery.facia);
                 }
                 if (artGallery && artGallery.doorGlass) {
@@ -330,6 +410,95 @@
                     };
                     interactiveElements.push(artGallery.doorGlass);
                 }
+
+                // --- EASELS IN ART GALLERY WINDOWS ---
+                // Place two easels in the left and right window of the art gallery
+                const [painting1, painting2] = pickTwoRandomPaintings();
+                // Window positions: left and right of the door, slightly behind the glass
+                // Art gallery is at (10, 0, 15), facing corridor (X positive)
+                // Window X offsets: -2.2 (left), +2.2 (right) from shop center
+                // Z offset: 15 (gallery Z), Y: 1.1 (floor + easel height)
+                // Place easels just inside the window glass
+                function createEaselWithPainting(painting, position, rotationY = 0) {
+                    // Easel geometry
+                    const easelGroup = new THREE.Group();
+                    // Painting and box sizing
+                    const loader = new THREE.TextureLoader();
+                    loader.load(painting.path, function(texture) {
+                        // Calculate aspect ratio
+                        const aspect = texture.image.width / texture.image.height;
+                        // Determine canvas size so that the longest side is 1.2 units (or 2 units for Jazz Trio.jpg)
+                        let maxSide = 1.2;
+                        if (painting.name === "Jazz Trio" || painting.name === "Jazz Trio.jpg") {
+                            maxSide = 2.0;
+                        }
+                        let canvasWidth, canvasHeight;
+                        if (aspect >= 1) {
+                            // Landscape or square
+                            canvasWidth = maxSide;
+                            canvasHeight = maxSide / aspect;
+                        } else {
+                            // Portrait
+                            canvasHeight = maxSide;
+                            canvasWidth = maxSide * aspect;
+                        }
+
+                        // White box ("frame") behind the painting
+                        const boxDepth = 0.035;
+                        const boxGeo = new THREE.BoxGeometry(canvasWidth, canvasHeight, boxDepth);
+                        const boxMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                        const boxMesh = new THREE.Mesh(boxGeo, boxMat);
+                        boxMesh.position.set(0, 0.68 + canvasHeight/2, 0.11 - boxDepth/2); // Place on easel
+                        boxMesh.castShadow = true;
+                        boxMesh.receiveShadow = true;
+                        easelGroup.add(boxMesh);
+
+                        // Painting (canvas)
+                        const canvasGeo = new THREE.PlaneGeometry(canvasWidth, canvasHeight);
+                        const canvasMat = new THREE.MeshStandardMaterial({ map: texture });
+                        const canvasMesh = new THREE.Mesh(canvasGeo, canvasMat);
+                        canvasMesh.position.set(0, 0.68 + canvasHeight/2, 0.11 + 0.001); // Slightly in front of box
+                        canvasMesh.castShadow = true;
+                        easelGroup.add(canvasMesh);
+                    });
+
+                    // Easel legs (resize to fit new painting size)
+                    // Make the easel a bit taller than the painting
+                    const legHeight = 0.68 + 1.2 + 0.2; // base + painting + margin
+                    const legWidth = 0.05, legDepth = 0.05, spread = 0.4;
+                    const legGeo = new THREE.BoxGeometry(legWidth, legHeight, legDepth);
+                    const legMat = new THREE.MeshStandardMaterial({ color: 0x8B5C2A, roughness: 0.7 });
+                    // Left leg
+                    const leftLeg = new THREE.Mesh(legGeo, legMat);
+                    leftLeg.position.set(-spread/2, legHeight/2, 0.08);
+                    leftLeg.rotation.z = -0.07;
+                    easelGroup.add(leftLeg);
+                    // Right leg
+                    const rightLeg = new THREE.Mesh(legGeo, legMat);
+                    rightLeg.position.set(spread/2, legHeight/2, 0.08);
+                    rightLeg.rotation.z = 0.07;
+                    easelGroup.add(rightLeg);
+                    // Back leg
+                    const backLeg = new THREE.Mesh(legGeo, legMat);
+                    backLeg.position.set(0, legHeight/2, -0.13);
+                    backLeg.rotation.x = 0.25;
+                    easelGroup.add(backLeg);
+                    // Crossbar (raise to just below the painting)
+                    const crossbarGeo = new THREE.BoxGeometry(spread, 0.04, 0.04);
+                    const crossbar = new THREE.Mesh(crossbarGeo, legMat);
+                    crossbar.position.set(0, 0.68 - 0.05, 0.08);
+                    easelGroup.add(crossbar);
+
+                    easelGroup.position.copy(position);
+                    easelGroup.rotation.y = rotationY;
+                    // Tilt the whole easel (with artwork) back by 5 degrees
+                    //easelGroup.rotation.x = -Math.PI / 36; // ~5 degrees back
+                    scene.add(easelGroup);
+                }
+                // Left window
+                createEaselWithPainting(painting1, new THREE.Vector3(10 - 4.2, 0, 15 + 2.2), -Math.PI/2);
+                // Right window
+                createEaselWithPainting(painting2, new THREE.Vector3(10 - 4.2, 0, 15 - 2.2), -Math.PI/2);
 
                 // Specifically tag GO 3Design elements for interaction
                 const go3Design = shopsData["GO 3Design"];
@@ -709,6 +878,14 @@
             };
             document.addEventListener('keydown', onKeyDown);
             document.addEventListener('keyup', onKeyUp);
+
+            // Wireframe debug mode toggle (P key)
+            document.addEventListener('keydown', function (event) {
+                if (event.code === 'KeyP' && !event.repeat) {
+                    wireframeDebug = !wireframeDebug;
+                    setWireframeMode(wireframeDebug);
+                }
+            });
         }
 
         function onWindowResize() {
@@ -785,6 +962,8 @@
             renderer.render(scene, camera);
         }
 
+        // Hide reticule by default (menu/paused)
+        setReticuleVisible(false);
         init();
         animate();
     </script>
