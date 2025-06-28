@@ -524,12 +524,6 @@
 
                 // --- EASELS IN ART GALLERY WINDOWS ---
                 // Place two easels in the left and right window of the art gallery
-                const [painting1, painting2] = pickTwoRandomPaintings();
-                // Window positions: left and right of the door, slightly behind the glass
-                // Art gallery is at (10, 0, 15), facing corridor (X positive)
-                // Window X offsets: -2.2 (left), +2.2 (right) from shop center
-                // Z offset: 15 (gallery Z), Y: 1.1 (floor + easel height)
-                // Place easels just inside the window glass
                 function createEaselWithPainting(painting, position, rotationY = 0) {
                     // Easel geometry
                     const easelGroup = new THREE.Group();
@@ -606,10 +600,95 @@
                     //easelGroup.rotation.x = -Math.PI / 36; // ~5 degrees back
                     scene.add(easelGroup);
                 }
+                // Pick two random, different paintings for easels
+                const idxs = [...Array(artGalleryPaintings.length).keys()];
+                for (let i = idxs.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [idxs[i], idxs[j]] = [idxs[j], idxs[i]];
+                }
+                const painting1 = artGalleryPaintings[idxs[0]];
+                const painting2 = artGalleryPaintings[idxs[1]];
                 // Left window
                 createEaselWithPainting(painting1, new THREE.Vector3(10 - 4.2, 0, 15 + 2.2), -Math.PI/2);
                 // Right window
                 createEaselWithPainting(painting2, new THREE.Vector3(10 - 4.2, 0, 15 - 2.2), -Math.PI/2);
+
+                // --- Add random artworks to the gallery walls (no duplicates with easels) ---
+                // Remove easel paintings from pool
+                const wallArtworks = artGalleryPaintings.filter(p => p !== painting1 && p !== painting2);
+                // Shuffle wall artworks
+                for (let i = wallArtworks.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [wallArtworks[i], wallArtworks[j]] = [wallArtworks[j], wallArtworks[i]];
+                }
+                // Place up to 3 on the back wall, spaced evenly
+                const wallY = 1.5;
+                const backWallZ = 15 - 4.8; // back wall of gallery
+                const frontWallZ = 15 + 4.8; // opposite (front) wall of gallery
+                const wallXStart = 10 - 3.5;
+                // Place up to 3 on the back wall, spaced evenly
+                const numBackWall = Math.min(3, wallArtworks.length);
+                for (let i = 0; i < numBackWall; i++) {
+                    const art = wallArtworks[i];
+                    const loader = new THREE.TextureLoader();
+                    loader.load(art.path, function(texture) {
+                        const aspect = texture.image.width / texture.image.height;
+                        let maxSide = 1.5;
+                        let width, height;
+                        if (aspect >= 1) {
+                            width = maxSide;
+                            height = maxSide / aspect;
+                        } else {
+                            height = maxSide;
+                            width = maxSide * aspect;
+                        }
+                        const frameGeo = new THREE.BoxGeometry(width, height, 0.04);
+                        const frameMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                        const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+                        frameMesh.position.set(wallXStart + i * 3.5, wallY, backWallZ - 0.02);
+                        frameMesh.castShadow = true;
+                        frameMesh.receiveShadow = true;
+                        scene.add(frameMesh);
+                        const artGeo = new THREE.PlaneGeometry(width, height);
+                        const artMat = new THREE.MeshStandardMaterial({ map: texture });
+                        const artMesh = new THREE.Mesh(artGeo, artMat);
+                        artMesh.position.set(wallXStart + i * 3.5, wallY, backWallZ + 0.001);
+                        scene.add(artMesh);
+                    });
+                }
+
+                // Place remaining artworks (if any) on the opposite/front wall, spaced evenly, no duplication
+                const numFrontWall = wallArtworks.length - numBackWall;
+                for (let i = 0; i < numFrontWall; i++) {
+                    const art = wallArtworks[numBackWall + i];
+                    const loader = new THREE.TextureLoader();
+                    loader.load(art.path, function(texture) {
+                        const aspect = texture.image.width / texture.image.height;
+                        let maxSide = 1.5;
+                        let width, height;
+                        if (aspect >= 1) {
+                            width = maxSide;
+                            height = maxSide / aspect;
+                        } else {
+                            height = maxSide;
+                            width = maxSide * aspect;
+                        }
+                        const frameGeo = new THREE.BoxGeometry(width, height, 0.04);
+                        const frameMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                        const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+                        frameMesh.position.set(wallXStart + i * 3.5, wallY, frontWallZ + 0.02);
+                        frameMesh.rotation.y = Math.PI; // Rotate 180 degrees to face into the room
+                        frameMesh.castShadow = true;
+                        frameMesh.receiveShadow = true;
+                        scene.add(frameMesh);
+                        const artGeo = new THREE.PlaneGeometry(width, height);
+                        const artMat = new THREE.MeshStandardMaterial({ map: texture });
+                        const artMesh = new THREE.Mesh(artGeo, artMat);
+                        artMesh.position.set(wallXStart + i * 3.5, wallY, frontWallZ - 0.001);
+                        artMesh.rotation.y = Math.PI; // Rotate 180 degrees to face into the room
+                        scene.add(artMesh);
+                    });
+                }
 
                 // Specifically tag GO 3Design elements for interaction
                 const go3Design = shopsData["GO 3Design"];
@@ -1075,6 +1154,30 @@
                 }
 
                 if (name === "X-Arcade") {
+                    // Checkered texture for X-Arcade shop interior: two shades of dark grey
+                    const checkerCanvas = document.createElement('canvas');
+                    checkerCanvas.width = 64;
+                    checkerCanvas.height = 64;
+                    const ctx = checkerCanvas.getContext('2d');
+                    const colorA = '#111213'; // dark grey
+                    const colorB = '#111111'; // slightly lighter dark grey
+                    for (let y = 0; y < 8; y++) {
+                        for (let x = 0; x < 8; x++) {
+                            ctx.fillStyle = (x + y) % 2 === 0 ? colorA : colorB;
+                            ctx.fillRect(x * 32, y * 32, 32, 32);
+                        }
+                    }
+                    const checkerTexture = new THREE.CanvasTexture(checkerCanvas);
+                    checkerTexture.wrapS = THREE.RepeatWrapping;
+                    checkerTexture.wrapT = THREE.RepeatWrapping;
+                    checkerTexture.repeat.set(8, 8);
+                    shopGroup.traverse(obj => {
+                        if (obj.isMesh && obj.material && obj.material.color && obj.material.color.getHex() === 0xaaaaaa) {
+                            obj.material.map = checkerTexture;
+                            obj.material.color.set(0xffffff);
+                            obj.material.needsUpdate = true;
+                        }
+                    });
                     createArcadeMachine(new THREE.Vector3(-7, 0, 1), Math.PI );
                     createArcadeMachine(new THREE.Vector3(-10, 0, 1), Math.PI );
                     createArcadeMachine(new THREE.Vector3(-7, 0, 9), 2*Math.PI);
