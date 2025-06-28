@@ -324,7 +324,7 @@
                     const material = new THREE.MeshStandardMaterial({
                         map: useTextureA ? marbleTextureA : marbleTextureB,
                         metalness: 0.0, // Marble is not metallic
-                        roughness: 0.2, // Adjust for desired shininess (lower is shinier)
+                        roughness: 0.1, // Adjust for desired shininess (lower is shinier)
                         side: THREE.DoubleSide, // Render both sides of the plane
                     });
 
@@ -385,7 +385,9 @@
             const fontLoader = new FontLoader();
             const fontPaths = {
                 helvetiker: 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_regular.typeface.json',
+                helvetiker_bold: 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json',
                 optimer: 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/optimer_regular.typeface.json',
+                optimer_bold: 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/optimer_bold.typeface.json',
                 gentilis: 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/gentilis_regular.typeface.json'
             };
             const loadedFonts = {};
@@ -949,14 +951,14 @@
 
                 // --- Add Desk for GO 3Design ---
                 if (name === "GO 3Design") {
-                    // Desk parameters from go3design.html, rotated 180 degrees
-                    const deskHeight = 0.75;
-                    const deskGroup = new THREE.Group();
-                    const deskMaterial = new THREE.MeshStandardMaterial({
-                        color: 0xffffff,
-                        roughness: 0.7,
-                        metalness: 0.1
-                    });
+                // Desk parameters from go3design.html, rotated 180 degrees
+                const deskHeight = 0.75;
+                const deskGroup = new THREE.Group();
+                const deskMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                    roughness: 0.7,
+                    metalness: 0.1
+                });
                     // Main desk shape using ExtrudeGeometry
                     const shape = new THREE.Shape();
                     shape.moveTo(-1, 0);
@@ -1077,6 +1079,103 @@
                     createArcadeMachine(new THREE.Vector3(-10, 0, 1), Math.PI );
                     createArcadeMachine(new THREE.Vector3(-7, 0, 9), 2*Math.PI);
                     createArcadeMachine(new THREE.Vector3(-10, 0, 9), 2*Math.PI);
+                }
+
+                // --- NX Dev: Cyan Matrix Effect with UNDER CONSTRUCTION ---
+                if (name === "NX Dev") {
+                    // Cyan matrix effect for all shop interior walls
+                    // Replace shopInterior material
+                    const matrixTextureCanvas = document.createElement('canvas');
+                    matrixTextureCanvas.width = 256;
+                    matrixTextureCanvas.height = 256;
+                    const ctx = matrixTextureCanvas.getContext('2d');
+                    // Fill with cyan background
+                    ctx.fillStyle = '#003344';
+                    ctx.fillRect(0, 0, 256, 256);
+                    // Draw matrix-like random characters
+                    ctx.font = 'bold 18px monospace';
+                    for (let y = 0; y < 256; y += 24) {
+                        for (let x = 0; x < 256; x += 16) {
+                            ctx.fillStyle = '#00ffff';
+                            const char = String.fromCharCode(0x30A0 + Math.floor(Math.random() * 96));
+                            ctx.fillText(char, x, y + 18);
+                        }
+                    }
+                    // Create texture
+                    const matrixTexture = new THREE.CanvasTexture(matrixTextureCanvas);
+                    matrixTexture.wrapS = THREE.RepeatWrapping;
+                    matrixTexture.wrapT = THREE.RepeatWrapping;
+                    matrixTexture.repeat.set(4, 2);
+                    // Apply to shop interior
+                    shopGroup.traverse(obj => {
+                        if (obj.isMesh && obj.material && obj.material.color && obj.material.color.getHex() === 0xaaaaaa) {
+                            obj.material.map = matrixTexture;
+                            obj.material.color.set(0xffffff);
+                            obj.material.needsUpdate = true;
+                        }
+                    });
+                    // Add UNDER CONSTRUCTION text on facia with Helvetiker Bold font
+                    const helvetikerBoldFont = loadedFonts.helvetiker_bold;
+                    const ucTextGeometry = new TextGeometry('UNDER CONSTRUCTION', {
+                        font: helvetikerBoldFont,
+                        size: 0.5,
+                        height: 0.01,
+                    });
+                    ucTextGeometry.center();
+                    const ucTextMaterial = new THREE.MeshStandardMaterial({ color: 0xffee00, metalness: 0.1, roughness: 0.5 });
+                    const ucTextMesh = new THREE.Mesh(ucTextGeometry, ucTextMaterial);
+                    ucTextMesh.position.set(0, 1.5, 1);
+                    ucTextMesh.rotation.y = Math.PI;
+                    ucTextMesh.castShadow = true;
+                    frontGroup.add(ucTextMesh);
+                }
+
+                // --- Sci-Fi Bookshop: Inverse Matrix Effect with UNDER CONSTRUCTION ---
+                if (name === "The Sci-Fi Bookshop") {
+                    // Inverse matrix effect: black text on white background
+                    const matrixTextureCanvas = document.createElement('canvas');
+                    matrixTextureCanvas.width = 256;
+                    matrixTextureCanvas.height = 256;
+                    const ctx = matrixTextureCanvas.getContext('2d');
+                    // Fill with white background
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, 256, 256);
+                    // Draw matrix-like random characters (black)
+                    ctx.font = 'bold 18px monospace';
+                    for (let y = 0; y < 256; y += 24) {
+                        for (let x = 0; x < 256; x += 16) {
+                            ctx.fillStyle = '#000000';
+                            const char = String.fromCharCode(0x30A0 + Math.floor(Math.random() * 96));
+                            ctx.fillText(char, x, y + 18);
+                        }
+                    }
+                    // Create texture
+                    const matrixTexture = new THREE.CanvasTexture(matrixTextureCanvas);
+                    matrixTexture.wrapS = THREE.RepeatWrapping;
+                    matrixTexture.wrapT = THREE.RepeatWrapping;
+                    matrixTexture.repeat.set(4, 2);
+                    // Apply to shop interior
+                    shopGroup.traverse(obj => {
+                        if (obj.isMesh && obj.material && obj.material.color && obj.material.color.getHex() === 0xaaaaaa) {
+                            obj.material.map = matrixTexture;
+                            obj.material.color.set(0xffffff);
+                            obj.material.needsUpdate = true;
+                        }
+                    });
+                    // Add UNDER CONSTRUCTION text on facia with Helvetiker Bold font
+                    const helvetikerBoldFont = loadedFonts.helvetiker_bold;
+                    const ucTextGeometry = new TextGeometry('UNDER CONSTRUCTION', {
+                        font: helvetikerBoldFont,
+                        size: 0.5,
+                        height: 0.01,
+                    });
+                    ucTextGeometry.center();
+                    const ucTextMaterial = new THREE.MeshStandardMaterial({ color: 0xffee00, metalness: 0.1, roughness: 0.5 });
+                    const ucTextMesh = new THREE.Mesh(ucTextGeometry, ucTextMaterial);
+                    ucTextMesh.position.set(0, 1.5, 1);
+                    ucTextMesh.rotation.y = Math.PI;
+                    ucTextMesh.castShadow = true;
+                    frontGroup.add(ucTextMesh);
                 }
 
                 return {
