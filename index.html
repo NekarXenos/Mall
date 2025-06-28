@@ -109,6 +109,10 @@
         let hoverInfoDiv;
         let currentHoverTarget = null; // Stores userData of the currently hovered interactive element
 
+        // --- SHOP ENTRY POPUP ---
+        let shopEntryPopup = null;
+        let shopEntryTarget = null;
+
 
         // --- WIREFRAME DEBUG MODE ---
         let wireframeDebug = false;
@@ -135,6 +139,50 @@
                     reticule.classList.add('hidden');
                 }
             }
+        }
+
+        function createShopEntryPopup() {
+            let popup = document.createElement('div');
+            popup.id = 'shop-entry-popup';
+            popup.style.position = 'fixed';
+            popup.style.left = '50%';
+            popup.style.top = '50%';
+            popup.style.transform = 'translate(-50%, -50%)';
+            popup.style.background = 'rgba(20, 20, 40, 0.95)';
+            popup.style.border = '2px solid #0088ff';
+            popup.style.borderRadius = '15px';
+            popup.style.color = 'white';
+            popup.style.padding = '32px 32px 24px 32px';
+            popup.style.textAlign = 'center';
+            popup.style.fontSize = '1.3rem';
+            popup.style.zIndex = '2000';
+            popup.style.display = 'none';
+            popup.innerHTML = '<span id="shop-entry-message"></span><br><br><button id="shop-entry-continue" style="background:#0088ff;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:1.1rem;cursor:pointer;">Continue</button>';
+            document.body.appendChild(popup);
+            return popup;
+        }
+
+        function showShopEntryPopup(shopName, onContinue) {
+            if (!shopEntryPopup) shopEntryPopup = createShopEntryPopup();
+            document.getElementById('shop-entry-message').textContent = `You are about to enter '${shopName}'. Click to continue.`;
+            shopEntryPopup.style.display = 'block';
+            function handler(e) {
+                e.stopPropagation();
+                hideShopEntryPopup();
+                if (onContinue) onContinue();
+            }
+            document.getElementById('shop-entry-continue').onclick = handler;
+            // Also allow clicking anywhere to continue
+            setTimeout(() => {
+                document.addEventListener('pointerdown', handler, { once: true });
+            }, 0);
+        }
+        function hideShopEntryPopup() {
+            if (shopEntryPopup) shopEntryPopup.style.display = 'none';
+        }
+
+        function isShopHitbox(obj) {
+            return obj && obj.userData && obj.userData.message && obj.userData.action && obj.geometry && obj.geometry.type === 'BoxGeometry';
         }
 
         function init() {
@@ -168,6 +216,13 @@
 
             const infoDiv = document.getElementById('info');
             document.body.addEventListener('click', function () {
+                if (shopEntryTarget) {
+                    // If popup is up, clicking anywhere continues
+                    shopEntryTarget.action();
+                    shopEntryTarget = null;
+                    hideShopEntryPopup();
+                    return;
+                }
                 if (controls.isLocked) { // If already locked, check for interaction
                     if (currentHoverTarget && currentHoverTarget.action) {
                         currentHoverTarget.action(); // Execute the action (e.g., navigate)
@@ -363,38 +418,44 @@
                 const shopHitboxes = [
                     {
                         name: "The Sci-Fi Bookshop",
-                        position: new THREE.Vector3(10, 1.5, 5 - 5.001),
-                        size: [9, 3, 0.2],
+                        position: new THREE.Vector3(5, 1.5, 5),
+                        size: [0.1, 3, 10],
                         url: 'Books/SciFiBookshop.html'
                     },
                     {
                         name: "Art by Gerhard",
-                        position: new THREE.Vector3(10, 1.5, 15 - 5.001),
-                        size: [9, 3, 0.2],
+                        position: new THREE.Vector3(5, 1.5, 15),
+                        size: [0.1, 3, 10],
                         url: 'Art/Art.html'
                     },
                     {
                         name: "GO 3Design",
-                        position: new THREE.Vector3(0, 1.5, 25 - 5.001),
-                        size: [9, 3, 0.2],
+                        position: new THREE.Vector3(0, 1.5, 20),
+                        size: [9.9, 3, 0.1],
                         url: 'go3Design/go3design.html'
                     },
                     {
                         name: "NX Dev",
-                        position: new THREE.Vector3(-10, 1.5, 15 - 5.001),
-                        size: [9, 3, 0.2],
+                        position: new THREE.Vector3(-5, 1.5, 15),
+                        size: [0.1, 3, 10],
                         url: 'NX_Dev/nxdev.html'
                     },
                     {
                         name: "X-Arcade",
-                        position: new THREE.Vector3(-10, 1.5, 5 - 5.001),
-                        size: [9, 3, 0.2],
+                        position: new THREE.Vector3(-5, 1.5, 5),
+                        size: [0.1, 3, 10],
                         url: 'Arcade/Arcade.html'
                     }
                 ];
                 shopHitboxes.forEach(hitbox => {
                     const geometry = new THREE.BoxGeometry(...hitbox.size);
-                    const material = new THREE.MeshBasicMaterial({ visible: false });
+                    const material = new THREE.MeshStandardMaterial({
+                        color: 0xaaffff,
+                        metalness: 0.1,
+                        roughness: 0.1,
+                        transparent: true,
+                        opacity: 0.25
+                    });  // THREE.MeshBasicMaterial({  visible: false });
                     const mesh = new THREE.Mesh(geometry, material);
                     mesh.position.copy(hitbox.position);
                     mesh.userData = {
@@ -1078,9 +1139,45 @@
                 raycaster.setFromCamera({ x: 0, y: 0 }, camera); // Ray from center of screen
                 const intersects = raycaster.intersectObjects(interactiveElements, false); // false for non-recursive
 
+                let foundShopHitbox = null;
+                let foundShopName = null;
+                let foundShopAction = null;
+                let foundShopObj = null;
+                let foundShopDist = null;
+                if (intersects.length > 0) {
+                    for (let i = 0; i < intersects.length; i++) {
+                        const obj = intersects[i].object;
+                        if (isShopHitbox(obj) && intersects[i].distance < 0.5) {
+                            foundShopHitbox = obj;
+                            foundShopName = obj.userData.message.replace(/^Enter /, '');
+                            foundShopAction = obj.userData.action;
+                            foundShopObj = obj;
+                            foundShopDist = intersects[i].distance;
+                            break;
+                        }
+                    }
+                }
+                if (foundShopHitbox && !shopEntryTarget) {
+                    // Show popup and block movement
+                    shopEntryTarget = foundShopHitbox.userData;
+                    showShopEntryPopup(foundShopName, foundShopAction);
+                    // Optionally, you could freeze movement here
+                } else if (!foundShopHitbox && shopEntryTarget) {
+                    // Hide popup if player moves away
+                    shopEntryTarget = null;
+                    hideShopEntryPopup();
+                }
+
+                // If popup is up, don't show hover info or allow movement
+                if (shopEntryTarget) {
+                    hoverInfoDiv.style.display = 'none';
+                    currentHoverTarget = null;
+                    renderer.render(scene, camera);
+                    return;
+                }
+
                 if (intersects.length > 0) {
                     const firstIntersect = intersects[0];
-                    // Interaction range: e.g., 5 units. Adjust as needed.
                     if (firstIntersect.distance < 7) {
                         const intersectedObject = firstIntersect.object;
                         if (intersectedObject.userData && intersectedObject.userData.message) {
