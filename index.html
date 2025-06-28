@@ -359,6 +359,52 @@
                     "X-Arcade": createShop("X-Arcade", new THREE.Vector3(-10, 0, 5), loadedFonts.optimer)
                 };
 
+                // --- Add invisible hitbox links for each shop ---
+                const shopHitboxes = [
+                    {
+                        name: "The Sci-Fi Bookshop",
+                        position: new THREE.Vector3(10, 1.5, 5 - 5.001),
+                        size: [9, 3, 0.2],
+                        url: 'Books/SciFiBookshop.html'
+                    },
+                    {
+                        name: "Art by Gerhard",
+                        position: new THREE.Vector3(10, 1.5, 15 - 5.001),
+                        size: [9, 3, 0.2],
+                        url: 'Art/Art.html'
+                    },
+                    {
+                        name: "GO 3Design",
+                        position: new THREE.Vector3(0, 1.5, 25 - 5.001),
+                        size: [9, 3, 0.2],
+                        url: 'go3Design/go3design.html'
+                    },
+                    {
+                        name: "NX Dev",
+                        position: new THREE.Vector3(-10, 1.5, 15 - 5.001),
+                        size: [9, 3, 0.2],
+                        url: 'NX_Dev/nxdev.html'
+                    },
+                    {
+                        name: "X-Arcade",
+                        position: new THREE.Vector3(-10, 1.5, 5 - 5.001),
+                        size: [9, 3, 0.2],
+                        url: 'Arcade/Arcade.html'
+                    }
+                ];
+                shopHitboxes.forEach(hitbox => {
+                    const geometry = new THREE.BoxGeometry(...hitbox.size);
+                    const material = new THREE.MeshBasicMaterial({ visible: false });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.position.copy(hitbox.position);
+                    mesh.userData = {
+                        message: `Enter ${hitbox.name}`,
+                        action: () => { window.location.href = hitbox.url; }
+                    };
+                    interactiveElements.push(mesh);
+                    scene.add(mesh);
+                });
+
                 // Specifically tag X-Arcade elements for interaction
                 const xArcadeShop = shopsData["X-Arcade"];
                 if (xArcadeShop && xArcadeShop.facia) {
@@ -774,6 +820,131 @@
                 textMesh.rotation.y = Math.PI;
                 textMesh.castShadow = true;
                 frontGroup.add(textMesh);
+
+                // --- Add Desk for GO 3Design ---
+                if (name === "GO 3Design") {
+                    // Desk parameters from go3design.html, rotated 180 degrees
+                    const deskHeight = 0.75;
+                    const deskGroup = new THREE.Group();
+                    const deskMaterial = new THREE.MeshStandardMaterial({
+                        color: 0xffffff,
+                        roughness: 0.7,
+                        metalness: 0.1
+                    });
+                    // Main desk shape using ExtrudeGeometry
+                    const shape = new THREE.Shape();
+                    shape.moveTo(-1, 0);
+                    shape.absarc(0, 0, 1.5, Math.PI, 0, true);
+                    shape.absarc(0, 0, 0.5, 0, Math.PI, false);
+                    const extrudeSettings = {
+                        depth: deskHeight, // Corrected from 0.6
+                        bevelEnabled: false
+                    };
+                    const mainDeskGeom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                    mainDeskGeom.rotateX(-Math.PI / 2);
+                    mainDeskGeom.translate(0, 0, -deskHeight/2);
+                    const mainDesk = new THREE.Mesh(mainDeskGeom, deskMaterial);
+                    mainDesk.castShadow = true;
+                    mainDesk.receiveShadow = true;
+                    // Side cylinders
+                    const sideCylinderGeom = new THREE.CylinderGeometry(0.52, 0.52, deskHeight, 32);
+                    const leftCylinder = new THREE.Mesh(sideCylinderGeom, deskMaterial);
+                    leftCylinder.position.set(-1, deskHeight * 0.499, -0.5);
+                    leftCylinder.castShadow = true;
+                    const rightCylinder = new THREE.Mesh(sideCylinderGeom, deskMaterial);
+                    rightCylinder.position.set(1, deskHeight * 0.499, -0.5);
+                    rightCylinder.castShadow = true;
+                    deskGroup.add(mainDesk);
+                    deskGroup.add(leftCylinder);
+                    deskGroup.add(rightCylinder);
+                    deskGroup.position.set(-1.5, 0, 0);
+                    deskGroup.rotation.y = -Math.PI/2;
+                    shopGroup.add(deskGroup);
+
+                    // --- Desk Monitors, Keyboard, Mouse ---
+                    const deskItemGrp = new THREE.Group();
+                    const deskTopY = deskHeight;
+                    const textureLoader = new THREE.TextureLoader();
+                    const monitorMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
+                    const blueprintTexture = textureLoader.load('go3Design/images/blueprint.jpg');
+                    const screenMaterial = new THREE.MeshStandardMaterial({ map: blueprintTexture });
+                    for(let i = -1; i <= 1; i++) {
+                        const monitor = new THREE.Group();
+                        const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.2, 16), monitorMaterial);
+                        stand.position.y = deskTopY + 0.1;
+                        stand.position.z = -0.03;
+
+                        const screen = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.45, 0.02), monitorMaterial);
+                        screen.position.y = deskTopY + 0.3;
+                        
+                        const display = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.43), screenMaterial);
+                        display.position.z = 0.011;
+                        screen.add(display);
+
+                        monitor.add(stand);
+                        monitor.add(screen);
+                        monitor.position.x = i * 0.9;
+                        monitor.position.z = 0.5* Math.abs(i);
+                        monitor.rotation.y = -i;
+                        monitor.castShadow = true;
+                        deskItemGrp.add(monitor);
+                    }
+                    const keyboardGeom = new THREE.BoxGeometry(0.5, 0.02, 0.18);
+                    const keyboard = new THREE.Mesh(keyboardGeom, monitorMaterial);
+                    keyboard.position.set(0, deskTopY + 0.01, 0.3);
+                    deskItemGrp.add(keyboard);
+                    const mouseGeom = new THREE.BoxGeometry(0.07, 0.02, 0.12);
+                    const mouse = new THREE.Mesh(mouseGeom, monitorMaterial);
+                    mouse.position.set(0.35, deskTopY + 0.01, 0.3);
+                    deskItemGrp.add(mouse);
+                    deskItemGrp.rotation.y = -Math.PI/2;
+                    deskItemGrp.position.z = 0;
+                    deskItemGrp.traverse(obj => {
+                        if(obj.isMesh) {
+                            obj.castShadow = true;
+                            obj.receiveShadow = true;
+                        }
+                    });
+                    shopGroup.add(deskItemGrp);
+
+                    // --- Wall Screens (static images from designImages) ---
+                    const designImages = [
+                        'go3Design/images/Furai-Vision 002.jpg',
+                        'go3Design/images/Furai-Vision 003.jpg',
+                        'go3Design/images/Furai-Vision 004.jpg',
+                        'go3Design/images/Furai-Vision 005.jpg',
+                        'go3Design/images/Furai-Vision 007.jpg',
+                    ];
+                    function getRandomImages(arr, n) {
+                        const shuffled = arr.slice().sort(() => 0.5 - Math.random());
+                        return shuffled.slice(0, n);
+                    }
+                    const wallImages = getRandomImages(designImages, 3);
+                    
+                    // Right wall screen
+                    const rightScreenMat = new THREE.MeshBasicMaterial({ map: textureLoader.load(wallImages[0]) });
+                    const rightScreenGeom = new THREE.PlaneGeometry(4, 2.25);
+                    const rightScreen = new THREE.Mesh(rightScreenGeom, rightScreenMat);
+                    rightScreen.position.set(shopWidth/2 - 0.01, 1.6, 0);
+                    rightScreen.rotation.y = -Math.PI / 2;
+                    shopGroup.add(rightScreen);
+
+                    // Back wall screen
+                    const centerScreenMat = new THREE.MeshBasicMaterial({ map: textureLoader.load(wallImages[1]) });
+                    const centerScreenGeom = new THREE.PlaneGeometry(3.556, 2);
+                    const centerScreen = new THREE.Mesh(centerScreenGeom, centerScreenMat);
+                    centerScreen.position.set(0, 1.6, shopDepth - 5 - 0.01);
+                    centerScreen.rotation.y = Math.PI;
+                    shopGroup.add(centerScreen);
+
+                    // Left wall screen
+                    const leftScreenMat = new THREE.MeshBasicMaterial({ map: textureLoader.load(wallImages[2]) });
+                    const leftScreenGeom = new THREE.PlaneGeometry(2.25, 2.25);
+                    const leftScreen = new THREE.Mesh(leftScreenGeom, leftScreenMat);
+                    leftScreen.position.set(-shopWidth/2 + 0.01, 1.6, 0);
+                    leftScreen.rotation.y = Math.PI / 2;
+                    shopGroup.add(leftScreen);
+                }
 
                 return {
                     shopGroup: shopGroup,
