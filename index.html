@@ -416,6 +416,36 @@
                     "X-Arcade": createShop("X-Arcade", new THREE.Vector3(-10, 0, 5), loadedFonts.optimer)
                 };
 
+                // --- Add cylindrical pillars in the back corners of the art gallery ---
+                // Pillar geometry/material (shared for all pillars)
+                const pillarRadius = 0.25;
+                const pillarHeight = 5;
+                const pillarGeo = new THREE.CylinderGeometry(pillarRadius, pillarRadius, pillarHeight, 32);
+                const pillarMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.1, roughness: 0.4 });
+
+                // Helper to create and add a pillar instance at a given (x, z)
+                function addPillar(x, z) {
+                    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+                    pillar.position.set(x, pillarHeight / 2, z);
+                    pillar.castShadow = true;
+                    pillar.receiveShadow = true;
+                    scene.add(pillar);
+                    return pillar;
+                }
+
+                // Art gallery back corners (using correct positions for the gallery at (10, 0, 15), width 10, depth 10)
+                addPillar(14, 18); // right back
+                addPillar(14, 12);  // left back
+
+                // --- Mall pillars ---
+                // (X:4, Z:19), (X:-4, Z:19), (X:4, Z:1), (X:-4, Z:1)
+                addPillar(4, 19);
+                addPillar(-4, 19);
+                addPillar(4, 1);
+                addPillar(-4, 1);
+
+     
+
                 
 
                 // --- Add invisible hitbox links for each shop ---
