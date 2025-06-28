@@ -80,7 +80,7 @@
         // Game data with added colors
         const games = [
             { id: 'pacman', title: '3d Pac-Man', stage: 'Alpha', description: 'A classic maze game in 3D.', type: 'normal', link: 'Pac3d/3dPacMan.html', machineColor: 0xaa9900, textColor: 0x7F00FF }, // Yellow machine, purple text
-            { id: 'elevator', title: '3d Lift Action', stage: 'In development', description: 'Action game set in a high-rise elevator.', type: 'normal', link: 'Escalated/escalatedMayhem.html', machineColor: 0x113366, textColor: 0xffa511 }, // Navy blue machine, orange text
+            { id: 'elevator', title: 'ESCALAT3D Mayhem', stage: 'In development', description: '3d Elevator Action game set in a high-rise with escalators.', type: 'normal', link: 'Escalated/escalatedMayhem.html', machineColor: 0x112244, textColor: 0xff2211 }, // Navy blue machine, orange text
             { id: 'pacsnake', title: 'Pac-Snake', stage: 'In development', description: 'A mashup of Pac-Man and Snake.', type: 'normal', link: 'PacSnake/PacSnake.html', machineColor: 0x220055, textColor: 0xcc9911 }, // purple machine, yellow text
             { id: 'voxelminer', title: 'Planet Miner', stage: 'In development', description: 'Explore and mine voxel planets.', type: 'normal', link: 'PlanetMiner/PlanetMiner.html', machineColor: 0xcaa5500, textColor: 0x111111 }, // Golden Yellow machine, Black text
             { id: 'flightsim', title: 'Flying Art', stage: 'In development', description: 'Fly and paint in a 3D environment.', type: 'flight', link: 'PaintFlyer/PaintFlight.html', machineColor: 0x0088aa, textColor: 0x111111 }, // Sky blue machine, black text
@@ -350,7 +350,7 @@
             arcadeGroup.userData.game = game;
 
             // Use game.machineColor for the main machine parts
-            const machineBaseMaterial = new THREE.MeshStandardMaterial({ color: game.machineColor });
+            const machineBaseMaterial = new THREE.MeshStandardMaterial({ color: game.machineColor , roughness:0.2 , metalness: 0.1 });
 
             // Main Box
             const mainBoxGeometry = new THREE.BoxGeometry(0.9, 1.75, 0.56);
@@ -379,7 +379,7 @@
 
             // Joystick (Keep original color)
             const joystickGeometry = new THREE.SphereGeometry(0.04, 16, 16);
-            const joystickMaterial = new THREE.MeshStandardMaterial({ color: 0xee0000 }); // Red
+            const joystickMaterial = new THREE.MeshStandardMaterial({ color: 0xee0000, roughness:0 }); // Red
             const joystick = new THREE.Mesh(joystickGeometry, joystickMaterial);
             joystick.position.set(0.22, 1, -0.45); // Adjust position
             joystick.userData.parentGroup = arcadeGroup; // Reference to the parent group
@@ -388,7 +388,7 @@
 
             // Stick (Keep original color)
             const stickGeometry = new THREE.CylinderGeometry(0.01, 0.01, 0.1, 16);
-            const stickMaterial = new THREE.MeshStandardMaterial({ color: 0x999999 }); // grey
+            const stickMaterial = new THREE.MeshStandardMaterial({ color: 0x999999, metalness:1, roughness:0 }); // grey
             const stick = new THREE.Mesh(stickGeometry, stickMaterial);
             stick.position.set(0.22, .95, -0.45); // Adjust position
             stick.userData.parentGroup = arcadeGroup; // Reference to the parent group
@@ -397,7 +397,7 @@
 
             // Buttons (Keep original color)
             const buttonGeometry = new THREE.CylinderGeometry(0.04, 0.04, 0.1, 16);
-            const buttonMaterial = new THREE.MeshStandardMaterial({ color: 0xee0000 }); // Dark Grey
+            const buttonMaterial = new THREE.MeshStandardMaterial({ color: 0xee0000, roughness:0 }); // Dark Grey
             const button = new THREE.Mesh(buttonGeometry, buttonMaterial);
             button.position.set(-0.22, 0.93, -0.43); // Adjust position
             button.rotation.x = THREE.MathUtils.degToRad(-15); // Rotate -15 degrees
@@ -408,7 +408,7 @@
 
             // Screen (Interactive part)
             const screenGeometry = new THREE.PlaneGeometry(0.8, 0.6);
-            const screenMaterial = new THREE.MeshStandardMaterial({ color: 0x111111 }); // Black
+            const screenMaterial = new THREE.MeshStandardMaterial({ color: 0x1F51FF }); // UV Blue
             const screen = new THREE.Mesh(screenGeometry, screenMaterial);
             screen.rotation.y = THREE.MathUtils.degToRad(180); // Rotate 180 degrees
             screen.position.set(0, 1.3, -0.29); // Adjust position
@@ -418,16 +418,77 @@
 
 
             // Placeholder for PNG image on the screen
-            const textureLoader = new THREE.TextureLoader();
-            // You would replace 'path/to/placeholder.png' with the actual path to your screen image
-            // This will require a web server to load the image due to browser security restrictions.
-            textureLoader.load('https://placehold.co/800x600/000000/FFFFFF?text=Game+Screen', (texture) => {
-                screen.material.map = texture;
-                screen.material.needsUpdate = true;
-            }, undefined, (error) => {
-                 console.error('Error loading screen texture:', error);
-                 // Fallback or handle error if texture fails to load
-            });
+            // --- PacSnake playable screen integration ---
+            if (game.id === 'pacsnake') {
+                // Only use in-arcade projection for non-mobile devices
+                function isMobile() {
+                    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                }
+                if (!isMobile()) {
+                    (function() {
+                        const pacSnakeCanvas = document.createElement('canvas');
+                        pacSnakeCanvas.width = 400;
+                        pacSnakeCanvas.height = 400;
+                        // Create a Three.js texture from the canvas
+                        const pacSnakeTexture = new THREE.CanvasTexture(pacSnakeCanvas);
+                        screen.material.map = pacSnakeTexture;
+                        screen.material.needsUpdate = true;
+
+                        // Load PacSnake game code dynamically
+                        fetch('PacSnake/PacSnake.html')
+                            .then(function(response) { return response.text(); })
+                            .then(function(html) {
+                                // Use RegExp constructor to avoid literal issues
+                                var scriptRe = new RegExp('<script>([\s\S]*?)<\/script>', 'm');
+                                var scriptMatch = html.match(scriptRe);
+                                if (scriptMatch) {
+                                    var pacSnakeCode = scriptMatch[1];
+                                    // Replace document.getElementById('gameCanvas') with our canvas
+                                    pacSnakeCode = pacSnakeCode.replace(/const canvas = document.getElementById\('gameCanvas'\);/, 'const canvas = pacSnakeCanvas;');
+                                    // Remove document.addEventListener('keydown', handleKeyPress);
+                                    pacSnakeCode = pacSnakeCode.replace(/document.addEventListener\('keydown', handleKeyPress\);/g, '');
+                                    // Patch alert('Game Over!') to a non-blocking message
+                                    pacSnakeCode = pacSnakeCode.replace(/alert\('Game Over!'\);/, 'console.log("Game Over!");');
+                                    // Wrap the code in a function for isolation
+                                    pacSnakeCode = 'window.pacSnakeGame = (function(pacSnakeCanvas, inputQueue) {\n' + pacSnakeCode + '\nreturn { handleDirectionChange, handleKeyPress, draw, moveSnake, gameOver };\n});';
+                                    // Evaluate the patched code
+                                    eval(pacSnakeCode);
+                                    // Set up input queue for direction changes
+                                    var inputQueue = [];
+                                    // Create the game instance
+                                    var gameInstance = window.pacSnakeGame(pacSnakeCanvas, inputQueue);
+                                    // Animation loop to update the texture
+                                    function updatePacSnake() {
+                                        if (inputQueue.length > 0) {
+                                            var dir = inputQueue.shift();
+                                            gameInstance.handleDirectionChange(dir);
+                                        } else {
+                                            gameInstance.draw();
+                                        }
+                                        pacSnakeTexture.needsUpdate = true;
+                                        requestAnimationFrame(updatePacSnake);
+                                    }
+                                    updatePacSnake();
+                                    // Expose a way to send input from the 3D arcade context
+                                    screen.userData.pacSnakeInput = function(dir) {
+                                        inputQueue.push(dir);
+                                    };
+                                }
+                            });
+                    })();
+                } else {
+                    // On mobile, clicking the machine should open PacSnake.html as before
+                    screen.userData.pacSnakeMobile = true;
+                }
+                // Default: show placeholder image
+                const textureLoader = new THREE.TextureLoader();
+                textureLoader.load('https://placehold.co/800x600/000000/FFFFFF?text=Game+Screen', (texture) => {
+                    screen.material.map = texture;
+                    screen.material.needsUpdate = true;
+                }, undefined, (error) => {
+                    console.error('Error loading screen texture:', error);
+                });
+            }
 
             // Add 3D Title Text using the machine title font and game.textColor
             if (font) {
@@ -642,6 +703,33 @@
 
 
         // --- FPS Controls Implementation ---
+// --- PacSnake Visual Indicator Overlay ---
+let pacSnakeIndicator = null;
+function showPacSnakeIndicator() {
+    if (!pacSnakeIndicator) {
+        pacSnakeIndicator = document.createElement('div');
+        pacSnakeIndicator.id = 'pacsnake-indicator';
+        pacSnakeIndicator.style.position = 'fixed';
+        pacSnakeIndicator.style.top = '20px';
+        pacSnakeIndicator.style.left = '50%';
+        pacSnakeIndicator.style.transform = 'translateX(-50%)';
+        pacSnakeIndicator.style.background = 'rgba(0,0,0,0.8)';
+        pacSnakeIndicator.style.color = '#FFD700';
+        pacSnakeIndicator.style.fontSize = '1.5em';
+        pacSnakeIndicator.style.fontFamily = 'monospace, sans-serif';
+        pacSnakeIndicator.style.padding = '12px 32px';
+        pacSnakeIndicator.style.borderRadius = '12px';
+        pacSnakeIndicator.style.zIndex = '9999';
+        pacSnakeIndicator.style.boxShadow = '0 2px 12px #000';
+        pacSnakeIndicator.innerText = 'PacSnake Input Active! Use Arrow Keys. Press Escape to exit.';
+        document.body.appendChild(pacSnakeIndicator);
+    } else {
+        pacSnakeIndicator.style.display = 'block';
+    }
+}
+function hidePacSnakeIndicator() {
+    if (pacSnakeIndicator) pacSnakeIndicator.style.display = 'none';
+}
         function onMouseMove(event) {
             // Update mouse position for raycasting (for hover popup)
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -704,8 +792,128 @@
             }
         }
 
+let pacSnakeActive = false;
+let pacSnakeScreen = null;
+function onClick(event) {
+    // Request pointer lock on left click
+    if (!isPointerLocked) {
+        renderer.domElement.requestPointerLock();
+        return; // Don't process click for interaction until pointer is locked
+    }
+
+    // Calculate mouse position in normalized device coordinates (-1 to +1)
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    // Update the raycaster
+    raycaster.setFromCamera(mouse, camera);
+
+    // Check for intersections with ALL interactive meshes
+    const intersects = raycaster.intersectObjects(interactiveMeshes);
+
+    let clickedMachine = null;
+    let clickedScreen = null;
+
+    if (intersects.length > 0) {
+        const intersectedObject = intersects[0].object;
+
+        // Find the top-level arcade machine object (Group)
+        let currentObject = intersectedObject;
+        while (currentObject) {
+            if (currentObject.userData && currentObject.userData.game) {
+                // Found an object with game data (the top-level group)
+                clickedMachine = currentObject;
+                break; // Stop traversing up
+            }
+            if (currentObject.userData && currentObject.userData.parentGroup) {
+                // Found a child mesh with a parent group reference
+                if (currentObject.geometry && currentObject.geometry.type === 'PlaneGeometry') {
+                    clickedScreen = currentObject;
+                }
+                clickedMachine = currentObject.userData.parentGroup;
+                break; // Stop traversing up
+            }
+            currentObject = currentObject.parent;
+        }
+    }
+
+    // If PacSnake screen is clicked, activate PacSnake input mode
+
+    // PacSnake: desktop in-arcade mode
+    if (
+        clickedMachine &&
+        clickedMachine.userData &&
+        clickedMachine.userData.game &&
+        clickedMachine.userData.game.id === 'pacsnake'
+    ) {
+        // If mobile, open PacSnake.html as before
+        if (clickedScreen && clickedScreen.userData && clickedScreen.userData.pacSnakeMobile) {
+            window.location.href = 'PacSnake/PacSnake.html';
+            return;
+        }
+        // Desktop: activate in-arcade input mode
+        if (clickedScreen && typeof clickedScreen.userData.pacSnakeInput === 'function') {
+            pacSnakeActive = true;
+            pacSnakeScreen = clickedScreen;
+            showPacSnakeIndicator();
+            hideContextMenu();
+            hidePopup();
+            return;
+        }
+    }
+
+    // If already in PacSnake mode and click elsewhere, deactivate
+    if (pacSnakeActive) {
+        pacSnakeActive = false;
+        pacSnakeScreen = null;
+        hidePacSnakeIndicator();
+    }
+
+    if (clickedMachine && clickedMachine.userData.game && clickedMachine.userData.game.link) {
+        // Link to the placeholder page
+        window.location.href = clickedMachine.userData.game.link;
+        hideContextMenu(); // Hide context menu if a machine is clicked
+    } else {
+        // Toggle context menu visibility if no machine was clicked
+        if (contextMenu.style.display === 'block') {
+            hideContextMenu();
+        } else {
+            showContextMenu(event.clientX, event.clientY);
+        }
+        hidePopup(); // Hide hover popup if showing context menu
+    }
+}
+
         function onKeyDown(event) {
-             if (isPointerLocked) {
+    if (pacSnakeActive && pacSnakeScreen && typeof pacSnakeScreen.userData.pacSnakeInput === 'function') {
+        switch (event.code) {
+            case 'ArrowUp':
+                pacSnakeScreen.userData.pacSnakeInput('up');
+                event.preventDefault();
+                break;
+            case 'ArrowDown':
+                pacSnakeScreen.userData.pacSnakeInput('down');
+                event.preventDefault();
+                break;
+            case 'ArrowLeft':
+                pacSnakeScreen.userData.pacSnakeInput('left');
+                event.preventDefault();
+                break;
+            case 'ArrowRight':
+                pacSnakeScreen.userData.pacSnakeInput('right');
+                event.preventDefault();
+                break;
+            case 'Escape':
+                pacSnakeActive = false;
+                pacSnakeScreen = null;
+                hidePacSnakeIndicator();
+                event.preventDefault();
+                break;
+        }
+        return;
+    }
+            // ...existing code for FPS controls...
+            if (isPointerLocked) {
                 switch (event.code) {
                     case 'KeyW':
                     case 'ArrowUp':
@@ -732,30 +940,84 @@
         }
 
         function onKeyUp(event) {
-             if (isPointerLocked) {
-                switch (event.code) {
-                    case 'KeyW':
-                    case 'ArrowUp':
-                        moveForward = false;
-                        break;
-                    case 'KeyS':
-                    case 'ArrowDown':
-                        moveBackward = false;
-                        break;
-                    case 'KeyA':
-                        moveLeft = false; // 'A' sets moveLeft
-                        break;
-                    case 'KeyD':
-                        moveRight = false; // 'D' sets moveRight
-                        break;
-                     case 'ArrowLeft': // ArrowLeft now controls moveRight
-                        moveLeft = false;
-                        break;
-                    case 'ArrowRight': // ArrowRight now controls moveLeft
-                        moveLeft = false;
-                        break;
+    if (pacSnakeActive && pacSnakeScreen && typeof pacSnakeScreen.userData.pacSnakeInput === 'function') {
+        // Prevent default for arrow keys while active
+        switch (event.code) {
+            case 'ArrowUp':
+            case 'ArrowDown':
+            case 'ArrowLeft':
+            case 'ArrowRight':
+                event.preventDefault();
+                break;
+        }
+        return;
+    }
+    // ...existing code for FPS controls...
+    if (isPointerLocked) {
+        switch (event.code) {
+            case 'KeyW':
+            case 'ArrowUp':
+                moveForward = false;
+                break;
+            case 'KeyS':
+            case 'ArrowDown':
+                moveBackward = false;
+                break;
+            case 'KeyA':
+                moveLeft = false; // 'A' sets moveLeft
+                break;
+            case 'KeyD':
+                moveRight = false; // 'D' sets moveRight
+                break;
+            case 'ArrowLeft': // ArrowLeft now controls moveRight
+                moveLeft = false;
+                break;
+            case 'ArrowRight': // ArrowRight now controls moveLeft
+                moveLeft = false;
+                break;
+        }
+    }
+        }
+
+        // --- Collision Detection Helper ---
+        function checkCollision(newPosition, radius = 0.3) {
+            // Check room boundaries (walls)
+            const minX = -roomSize / 2 + wallThickness + radius;
+            const maxX = roomSize / 2 - wallThickness - radius;
+            const minZ = -roomSize / 2 + wallThickness + radius;
+            const maxZ = roomSize / 2 - wallThickness - radius;
+            if (newPosition.x < minX || newPosition.x > maxX || newPosition.z < minZ || newPosition.z > maxZ) {
+                return true;
+            }
+            // Check collision with arcade machines (bounding spheres)
+            for (const obj of arcadeMachineObjects) {
+                const box = new THREE.Box3().setFromObject(obj);
+                box.expandByScalar(radius);
+                if (box.containsPoint(newPosition)) {
+                    return true;
                 }
-             }
+            }
+            // --- Counter/Desk Collision (rotated block in corner) ---
+    // The counter is a box rotated 45deg (Math.PI/4) in the back-left corner
+    // Get the same transform as in addCounterAndSign
+    const deskCenter = new THREE.Vector3(
+        backLeftCorner.x + counterWidth / 2 + wallThickness / 2,
+        counterHeight / 2,
+        backLeftCorner.z + counterDepth + wallThickness / 2
+    );
+    // Inverse rotate the player position by -PI/4 around Y, then check AABB
+    const rel = newPosition.clone().sub(deskCenter);
+    const angle = -Math.PI / 4;
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const rx = rel.x * cos - rel.z * sin;
+    const rz = rel.x * sin + rel.z * cos;
+    // Desk AABB extents (with radius margin)
+    const halfW = counterWidth / 2 + radius;
+    const halfD = counterDepth / 2 + radius;
+    if (Math.abs(rx) < halfW && Math.abs(rz) < halfD && newPosition.y < counterHeight + 0.5) {
+        return true;
+    }
+    return false;
         }
 
         function updateCameraPosition() {
@@ -766,11 +1028,16 @@
                 const forward = new THREE.Vector3(direction.x, 0, direction.z).normalize(); // Forward on the ground plane
                 const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forward).normalize(); // Right on the ground plane
 
-                if (moveForward) camera.position.addScaledVector(forward, cameraSpeed);
-                if (moveBackward) camera.position.addScaledVector(forward, -cameraSpeed);
-                // Strafe logic based on moveLeft and moveRight flags
-                if (moveLeft) camera.position.addScaledVector(right, cameraSpeed); // Move left by adding the right vector (corrected)
-                if (moveRight) camera.position.addScaledVector(right, -cameraSpeed);  // Move right by subtracting the right vector (corrected)
+                let newPosition = camera.position.clone();
+                if (moveForward) newPosition.addScaledVector(forward, cameraSpeed);
+                if (moveBackward) newPosition.addScaledVector(forward, -cameraSpeed);
+                if (moveLeft) newPosition.addScaledVector(right, cameraSpeed);
+                if (moveRight) newPosition.addScaledVector(right, -cameraSpeed);
+
+                // Only update camera position if no collision
+                if (!checkCollision(newPosition)) {
+                    camera.position.copy(newPosition);
+                }
             }
         }
 
@@ -892,6 +1159,38 @@
         }
 
 
+        // --- Reticule (Cyan Circle) ---
+let reticuleSprite;
+function addReticule() {
+    // Remove any previous reticule
+    if (reticuleSprite && reticuleSprite.parent) reticuleSprite.parent.remove(reticuleSprite);
+    // Create a canvas for a crisp 2D reticule
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 64, 64);
+    ctx.beginPath();
+    ctx.arc(32, 32, 20, 0, 2 * Math.PI);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'cyan';
+    ctx.globalAlpha = 0.85;
+    ctx.shadowColor = '#00ffff';
+    ctx.shadowBlur = 6;
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+    // Create a texture and sprite
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture, color: 0xffffff, depthTest: false, depthWrite: false, transparent: true });
+    reticuleSprite = new THREE.Sprite(spriteMaterial);
+    reticuleSprite.center.set(0.5, 0.5);
+    reticuleSprite.scale.set(0.08, 0.08, 1); // Size in world units
+    // Add to camera so it stays centered
+    camera.add(reticuleSprite);
+    reticuleSprite.position.set(0, 0, -1); // 1 unit in front of camera
+}
+
         // --- Animation Loop ---
         function animate() {
             requestAnimationFrame(animate);
@@ -1000,7 +1299,10 @@
         }
 
         // Initialize the scene when the window loads
-        window.onload = init;
+        window.onload = function() {
+            init();
+            addReticule();
+        };
 
     </script>
 </body>
