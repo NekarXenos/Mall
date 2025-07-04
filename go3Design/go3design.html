@@ -748,22 +748,28 @@
             const textureLoader = new THREE.TextureLoader();
 
             // Large Poster
-            const posterMaterial = new THREE.MeshStandardMaterial({
-                map: 'images/Poster.jpg' //textureLoader.load(designImages[1])
+            textureLoader.load('images/Bass.png', (texture) => {
+                const aspectRatio = texture.image.width / texture.image.height;
+                const posterHeight = 2;
+                const posterWidth = posterHeight * aspectRatio;
+
+                const posterGeometry = new THREE.PlaneGeometry(posterWidth, posterHeight);
+                const posterMaterial = new THREE.MeshStandardMaterial({ map: texture });
+                const poster = new THREE.Mesh(posterGeometry, posterMaterial);
+
+                poster.position.set(0, 1.6, -ROOM_DEPTH/2 + 0.01);
+                //poster.rotation.y = Math.PI / 2;
+                scene.add(poster);
             });
-            /* const posterGeometry = new THREE.PlaneGeometry(2, 2);
-            const poster = new THREE.Mesh(posterGeometry, posterMaterial);
-            poster.position.set(-ROOM_WIDTH/2 + 0.01, 1.5, -2);
-            poster.rotation.y = Math.PI / 2;
-            scene.add(poster);
- */
+
             // Switching Image Poster
             const switchingImageMaterial = new THREE.MeshBasicMaterial({
                 map: textureLoader.load(designImages[0])
             });
             const switchingImageGeometry = new THREE.PlaneGeometry(3.556, 2);
             switchingImagePlane = new THREE.Mesh(switchingImageGeometry, switchingImageMaterial);
-            switchingImagePlane.position.set(0, 1.6, -ROOM_DEPTH/2 + 0.01);
+            switchingImagePlane.position.set(ROOM_WIDTH/2 - 0.01, 1.6, 0);
+            switchingImagePlane.rotation.y = -Math.PI / 2;
             scene.add(switchingImagePlane);
 
             setInterval(switchImage, 5000); // Switch image every 5 seconds
@@ -799,7 +805,7 @@
             // videoScreen3.position.set(-2, 1.6, -ROOM_DEPTH/2 + 0.01);
 
             
-            scene.add(videoScreen3);
+            //scene.add(videoScreen3);
         }
 
         function switchImage() {

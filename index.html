@@ -1167,12 +1167,20 @@
                     shopGroup.add(rightScreen);
 
                     // Back wall screen
-                    const centerScreenMat = new THREE.MeshBasicMaterial({ map: textureLoader.load(wallImages[1]) });
-                    const centerScreenGeom = new THREE.PlaneGeometry(3.556, 2);
-                    const centerScreen = new THREE.Mesh(centerScreenGeom, centerScreenMat);
-                    centerScreen.position.set(0, 1.6, shopDepth - 5 - 0.01);
-                    centerScreen.rotation.y = Math.PI;
-                    shopGroup.add(centerScreen);
+                    textureLoader.load('images/Bass.png', (texture) => {
+                        const aspectRatio = texture.image.width / texture.image.height;
+                        const posterHeight = 2;
+                        const posterWidth = posterHeight * aspectRatio;
+
+                        const posterGeometry = new THREE.PlaneGeometry(posterWidth, posterHeight);
+                        const posterMaterial = new THREE.MeshStandardMaterial({ map: texture });
+                        const centerScreen = new THREE.Mesh(posterGeometry, posterMaterial);
+
+                        
+                        centerScreen.position.set(0, 1.6, shopDepth - 5 - 0.01);
+                        centerScreen.rotation.y = Math.PI;
+                        shopGroup.add(centerScreen);
+                    });
 
                     // Left wall screen
                     const leftScreenMat = new THREE.MeshBasicMaterial({ map: textureLoader.load(wallImages[2]) });

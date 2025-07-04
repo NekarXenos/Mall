@@ -239,23 +239,26 @@ export function createEscalatorsForFloor(config) {
             escalatorSteps.up[floorIndex] = [];
 
             // --- Steps UP (RIGHT side) ---
+            const stepGeoUp = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
+            const instancedStepsUp = new THREE.InstancedMesh(stepGeoUp, materials.escalatorMaterial, stepCount);
+            instancedStepsUp.castShadow = true;
+            instancedStepsUp.receiveShadow = true;
             for (let s = 0; s < stepCount; s++) {
                 const y = floorY + 0.01 - (s + 1) * stepHeight + stepHeight / 2;
                 const z = totalCorridorLength + 4.3 + (s / stepCount) * settings.escalatorLength;
-                const stepGeo = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
-                const stepUp = new THREE.Mesh(stepGeo, materials.escalatorMaterial);
-                stepUp.position.set(
+                const pos = new THREE.Vector3(
                     -0.1 - (stepWidth / 2),
                     y,
                     z
                 );
-                stepUp.castShadow = true;
-                stepUp.receiveShadow = true;
-                stepUp.name = `Right Escalator Step Up ${floorIndex}-${s}`;
-                scene.add(stepUp);
-                worldObjects.push(stepUp);
-                escalatorSteps.up[floorIndex].push(stepUp);
+                const matrix = new THREE.Matrix4();
+                matrix.setPosition(pos);
+                instancedStepsUp.setMatrixAt(s, matrix);
             }
+            instancedStepsUp.instanceMatrix.needsUpdate = true;
+            scene.add(instancedStepsUp);
+            worldObjects.push(instancedStepsUp);
+            escalatorSteps.up[floorIndex] = instancedStepsUp;
 
             const endEscUpGeo = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
             const endEscUp = new THREE.Mesh(endEscUpGeo, materials.escalatorMaterial);
@@ -290,23 +293,26 @@ export function createEscalatorsForFloor(config) {
             escalatorStepsB.down[floorIndex] = [];
 
             // --- B-Wing Steps DOWN (RIGHT side) --- // was left
+            const stepBGeoDown = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
+            const instancedStepsBDown = new THREE.InstancedMesh(stepBGeoDown, materials.escalatorMaterial, stepCount);
+            instancedStepsBDown.castShadow = true;
+            instancedStepsBDown.receiveShadow = true;
             for (let s = 0; s < stepCount; s++) {
                 const y = floorY - .01 - (s + 1) * stepHeight - stepHeight / 2;
                 const z = NegativeZ - totalCorridorLength - 4.3 - (s / stepCount) * settings.escalatorLength; // was totalCorridorLength + 4.3 + (s / stepCount) * settings.escalatorLength;
-                const stepBGeo = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
-                const stepDownB = new THREE.Mesh(stepBGeo, materials.escalatorMaterial);
-                stepDownB.position.set(
+                const pos = new THREE.Vector3(
                     - (stepWidth / 2) - 0.1,// was settings.corridorWidth + (stepWidth / 2) + 0.1,
                     y,
                     z
                 );
-                stepDownB.castShadow = true;
-                stepDownB.receiveShadow = true;
-                stepDownB.name = `Right Escalator Step Down B ${floorIndex}-${s}`;
-                scene.add(stepDownB);
-                worldObjects.push(stepDownB);
-                escalatorStepsB.down[floorIndex].push(stepDownB);
+                const matrix = new THREE.Matrix4();
+                matrix.setPosition(pos);
+                instancedStepsBDown.setMatrixAt(s, matrix);
             }
+            instancedStepsBDown.instanceMatrix.needsUpdate = true;
+            scene.add(instancedStepsBDown);
+            worldObjects.push(instancedStepsBDown);
+            escalatorStepsB.down[floorIndex] = instancedStepsBDown;
 
             const endEscDownGeoB = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
             const endEscDownB = new THREE.Mesh(endEscDownGeoB, materials.escalatorMaterial);
@@ -337,23 +343,26 @@ export function createEscalatorsForFloor(config) {
             escalatorStepsB.up[floorIndex] = [];
 
             // --- B-Wing Steps UP (LEFT side) --- /// was right
+            const stepBGeoUp = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
+            const instancedStepsBUp = new THREE.InstancedMesh(stepBGeoUp, materials.escalatorMaterial, stepCount);
+            instancedStepsBUp.castShadow = true;
+            instancedStepsBUp.receiveShadow = true;
             for (let s = 0; s < stepCount; s++) {
                 const y = floorY + 0.01 - (s + 1) * stepHeight + stepHeight / 2;
                 const z = NegativeZ - totalCorridorLength - 4.3 - (s / stepCount) * settings.escalatorLength;
-                const stepGeoB = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
-                const stepUpB = new THREE.Mesh(stepGeoB, materials.escalatorMaterial);
-                stepUpB.position.set(
+                const pos = new THREE.Vector3(
                     settings.corridorWidth + 0.1 + (stepWidth / 2),// was  -0.1 - (stepWidth / 2),
                     y,
                     z
                 );
-                stepUpB.castShadow = true;
-                stepUpB.receiveShadow = true;
-                stepUpB.name = `Left Escalator Step Up B ${floorIndex}-${s}`;
-                scene.add(stepUpB);
-                worldObjects.push(stepUpB);
-                escalatorStepsB.up[floorIndex].push(stepUpB);
+                const matrix = new THREE.Matrix4();
+                matrix.setPosition(pos);
+                instancedStepsBUp.setMatrixAt(s, matrix);
             }
+            instancedStepsBUp.instanceMatrix.needsUpdate = true;
+            scene.add(instancedStepsBUp);
+            worldObjects.push(instancedStepsBUp);
+            escalatorStepsB.up[floorIndex] = instancedStepsBUp;
 
             const endEscUpGeoB = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
             const endEscUpB = new THREE.Mesh(endEscUpGeoB, materials.escalatorMaterial);
