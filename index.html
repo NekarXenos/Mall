@@ -1286,7 +1286,29 @@
                     for (let y = 0; y < 256; y += 24) {
                         for (let x = 0; x < 256; x += 16) {
                             ctx.fillStyle = '#000000';
-                            const char = String.fromCharCode(0x30A0 + Math.floor(Math.random() * 96));
+                            // const char = String.fromCharCode(0x30A0 + Math.floor(Math.random() * 96));
+        const scriptRanges = [
+            { name: "Katakana", start: 0x30A0, end: 0x30FF },        // Japanese Katakana
+            //{ name: "Odia", start: 0x0B00, end: 0x0B7F },            // Odia (Oriya) script, start: 0x0B00, end: 0x0B7F 
+            //{ name: "Kannada", start: 0x0C80, end: 0x0Cff },         // Kannada script, start: 0x0C80, end: 0x0CFF 
+            { name: "Telugu", start: 0x0C2a, end: 0x0C36 },          // Telugu script , start: 0x0C00, end: 0x0C7F }, 
+            { name: "Greek", start: 0x0390, end: 0x03FF },           // Greek and Coptic, start: 0x0370, end: 0x03FF 
+            { name: "Cyrillic", start: 0x0400, end: 0x04FF }         // Cyrillic (Russian), start: 0x0400, end: 0x04FF
+        ];
+
+        // Function to get a random character from any of the defined script ranges
+        function getRandomCharacter() {
+            // Randomly select one of the script ranges
+            const selectedRange = scriptRanges[Math.floor(Math.random() * scriptRanges.length)];
+            // Calculate the size of the selected Unicode block
+            const rangeSize = selectedRange.end - selectedRange.start + 1;
+            // Generate a random code point within the selected block
+            const charCode = selectedRange.start + Math.floor(Math.random() * rangeSize);
+            // Convert the code point to a character and return it
+            return String.fromCharCode(charCode);
+        }
+                            const char = getRandomCharacter();
+                            
                             ctx.fillText(char, x, y + 18);
                         }
                     }

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive 3D Spiral Galaxy</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #info-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 10px 15px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 14px;
+            max-width: 300px;
+        }
+        h1 {
+            margin: 0 0 5px 0;
+            font-size: 18px;
+        }
+        p {
+            margin: 0;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div id="info-panel">
+        <h1>Spiral Galaxy</h1>
+        <p>Use your mouse to rotate, pan, and zoom. Use keyboard arrow keys for rotation.</p>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Basic Scene Setup ---
+        let scene, camera, renderer, controls;
+        let galaxyGroup; // An Object3D to hold our galaxy, for easy rotation
+
+        // --- Keyboard state tracking ---
+        const keyboardState = {};
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.z = 35;
+            camera.position.y = 20;
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.body.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; // an animation loop is required when either damping or auto-rotation are enabled
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            controls.minDistance = 5;
+            controls.maxDistance = 200;
+
+            // --- Galaxy Generation ---
+            galaxyGroup = new THREE.Group();
+            generateGalaxy();
+            scene.add(galaxyGroup);
+
+            // --- Event Listeners ---
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('keydown', (event) => {
+                keyboardState[event.code] = true;
+            });
+            window.addEventListener('keyup', (event) => {
+                keyboardState[event.code] = false;
+            });
+
+            // Start the animation loop
+            animate();
+        }
+
+        function generateGalaxy() {
+            const parameters = {
+                count: 100000,
+                size: 0.02,
+                radius: 15,
+                branches: 2,
+                spin: 0.5,
+                randomness: 0.5,
+                randomnessPower: 3,
+                insideColor: '#ff6030',
+                outsideColor: '#1b3984'
+            };
+
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(parameters.count * 3);
+            const colors = new Float32Array(parameters.count * 3);
+
+            const colorInside = new THREE.Color(parameters.insideColor);
+            const colorOutside = new THREE.Color(parameters.outsideColor);
+
+            for (let i = 0; i < parameters.count; i++) {
+                const i3 = i * 3;
+
+                // Position
+                const radius = Math.random() * parameters.radius;
+                const spinAngle = radius * parameters.spin;
+                const branchAngle = (i % parameters.branches) / parameters.branches * Math.PI * 2;
+
+                const randomX = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius;
+                const randomY = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius;
+                const randomZ = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius;
+
+                positions[i3] = Math.cos(branchAngle + spinAngle) * radius + randomX;
+                positions[i3 + 1] = randomY;
+                positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * radius + randomZ;
+
+                // Color
+                const mixedColor = colorInside.clone();
+                mixedColor.lerp(colorOutside, radius / parameters.radius);
+
+                colors[i3] = mixedColor.r;
+                colors[i3 + 1] = mixedColor.g;
+                colors[i3 + 2] = mixedColor.b;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            // Material
+            const material = new THREE.PointsMaterial({
+                size: parameters.size,
+                sizeAttenuation: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                vertexColors: true
+            });
+
+            const points = new THREE.Points(geometry, material);
+            galaxyGroup.add(points);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        }
+
+        function handleKeyboardControls() {
+            const rotationSpeed = 0.01;
+            if (keyboardState['ArrowUp']) {
+                galaxyGroup.rotation.x -= rotationSpeed;
+            }
+            if (keyboardState['ArrowDown']) {
+                galaxyGroup.rotation.x += rotationSpeed;
+            }
+            if (keyboardState['ArrowLeft']) {
+                galaxyGroup.rotation.y -= rotationSpeed;
+            }
+            if (keyboardState['ArrowRight']) {
+                galaxyGroup.rotation.y += rotationSpeed;
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Add a slow, constant rotation for a dynamic effect
+            galaxyGroup.rotation.y += 0.0005;
+
+            // Handle keyboard inputs for rotation
+            handleKeyboardControls();
+
+            // Update controls for damping
+            controls.update();
+
+            // Render the scene
+            renderer.render(scene, camera);
+        }
+
+        // --- Start the application ---
+        init();
+
+    </script>
+</body>
+</html>

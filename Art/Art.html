@@ -377,15 +377,6 @@
                         }))
                     },
                     {
-                        name: "Digital",
-                        subtitle: "3D Renders and Digital Creations",
-                        children: artworks.Digital.map(art => ({
-                            name: art.name,
-                            subtitle: art.dimensions,
-                            link: art.path // Could potentially open a larger view of the artwork
-                        }))
-                    },
-                    {
                         name: "Back to Main Page",
                         subtitle: "Return to the main mall area",
                         link: "../index.html"
@@ -398,8 +389,8 @@
             camera.position.y = 1.75; // Player height
 
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a202c);
-            scene.fog = new THREE.Fog(0x1a202c, 0, 75);
+            scene.background = new THREE.Color(0x222233);
+            scene.fog = new THREE.Fog(0x222233, 0, 75);
 
             const light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
             light.position.set(0.5, 1, 0.75);
@@ -408,6 +399,45 @@
             const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
             dirLight.position.set(0, 10, 0);
             scene.add(dirLight);
+
+            // --- Digital Art Screen ---
+            const digitalArtScreen = new THREE.Group();
+            scene.add(digitalArtScreen);
+
+            const screenWidth = 8;
+            const screenHeight = 4.5;
+            const screenGeo = new THREE.PlaneGeometry(screenWidth, screenHeight);
+            
+            let currentTextureIndex = 0;
+            const digitalArtTextures = artworks.Digital.map(art => new THREE.TextureLoader().load(art.path));
+
+            const screenMat = new THREE.MeshBasicMaterial({ map: digitalArtTextures[0] });
+            const screenMesh = new THREE.Mesh(screenGeo, screenMat);
+            screenMesh.position.set(0, 1.7, -roomSize / 2 + 0.2);
+            digitalArtScreen.add(screenMesh);
+
+            // Frame for the screen
+            const frameThickness = 0.1;
+            const frameMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+            const topFrame = new THREE.Mesh(new THREE.BoxGeometry(screenWidth + frameThickness * 2, frameThickness, frameThickness), frameMat);
+            topFrame.position.set(0, 1.7 + screenHeight / 2 + frameThickness / 2, -roomSize / 2 + 0.2);
+            digitalArtScreen.add(topFrame);
+            const bottomFrame = new THREE.Mesh(new THREE.BoxGeometry(screenWidth + frameThickness * 2, frameThickness, frameThickness), frameMat);
+            bottomFrame.position.set(0, 1.7 - screenHeight / 2 - frameThickness / 2, -roomSize / 2 + 0.2);
+            digitalArtScreen.add(bottomFrame);
+            const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(frameThickness, screenHeight, frameThickness), frameMat);
+            leftFrame.position.set(-screenWidth/2 - frameThickness/2, 1.7, -roomSize / 2 + 0.2);
+            digitalArtScreen.add(leftFrame);
+            const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(frameThickness, screenHeight, frameThickness), frameMat);
+            rightFrame.position.set(screenWidth/2 + frameThickness/2, 1.7, -roomSize / 2 + 0.2);
+            digitalArtScreen.add(rightFrame);
+
+            // Function to cycle through digital art textures
+            setInterval(() => {
+                currentTextureIndex = (currentTextureIndex + 1) % digitalArtTextures.length;
+                screenMat.map = digitalArtTextures[currentTextureIndex];
+                screenMat.needsUpdate = true;
+            }, 5000); // Change image every 5 seconds
 
             // Setup pointer lock controls
             controls = new PointerLockControls(camera, document.body);
@@ -448,18 +478,26 @@
             raycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 10);
             
             // Floor
-            let floorGeometry = new THREE.PlaneGeometry(200, 200, 100, 100);
+            let floorGeometry = new THREE.PlaneGeometry(20, 20, 100, 100);
             floorGeometry.rotateX(-Math.PI / 2);
-            const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x334155 });
+            const floorMaterial = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.1, roughness: 0.2 });
             const floor = new THREE.Mesh(floorGeometry, floorMaterial);
             scene.add(floor);
             objects.push(floor);
+
+            // Ceiling
+            const ceilingGeometry = new THREE.PlaneGeometry(20, 20);
+            const ceilingMaterial = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+            const ceiling = new THREE.Mesh(ceilingGeometry, ceilingMaterial);
+            ceiling.position.y = 3; // wallHeight
+            ceiling.rotation.x = Math.PI / 2;
+            scene.add(ceiling);
 
             // Walls
             const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x475569 });
             const wallHeight = 3;
             wallThickness = 0.1; // Initialize global
-            roomSize = 30; // Initialize global
+            roomSize = 20; // Initialize global
 
             const wall1 = new THREE.Mesh(new THREE.BoxGeometry(roomSize, wallHeight, wallThickness), wallMaterial);
             wall1.position.set(0, wallHeight / 2, -roomSize/2);
@@ -477,27 +515,21 @@
             wall4.position.set(roomSize/2, wallHeight/2, 0);
             scene.add(wall4); objects.push(wall4);
 
-            // Pillars along the side walls
-            const pillarMaterial = new THREE.MeshStandardMaterial({ color: 0x607080, roughness: 0.7, metalness: 0.3 });
-            const pillarRadius = 0.4;
+            // Pillars at the back of the room
+            const pillarMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.1, roughness: 0.4 });
+            const pillarRadius = 0.25;
             const pillarHeight = wallHeight;
-            const pillarGeometry = new THREE.CylinderGeometry(pillarRadius, pillarRadius, pillarHeight, 16);
+            const pillarGeometry = new THREE.CylinderGeometry(pillarRadius, pillarRadius, pillarHeight, 32);
 
-            // Positions for pillars along Z-axis
-            const pillarZPositions = [-10, 0, 10]; // Example positions, adjust as needed
+            const pillar1 = new THREE.Mesh(pillarGeometry, pillarMaterial);
+            pillar1.position.set(-5, pillarHeight / 2, -roomSize / 2 + pillarRadius);
+            scene.add(pillar1);
+            objects.push(pillar1);
 
-            // Left Wall Pillars
-            pillarZPositions.forEach(zPos => {
-                const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
-                pillar.position.set(-roomSize / 2 + pillarRadius + 0.1, pillarHeight / 2, zPos);
-                scene.add(pillar); objects.push(pillar);
-            });
-            // Right Wall Pillars
-            pillarZPositions.forEach(zPos => {
-                const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
-                pillar.position.set(roomSize / 2 - pillarRadius - 0.1, pillarHeight / 2, zPos);
-                scene.add(pillar); objects.push(pillar);
-            });
+            const pillar2 = new THREE.Mesh(pillarGeometry, pillarMaterial);
+            pillar2.position.set(5, pillarHeight / 2, -roomSize / 2 + pillarRadius);
+            scene.add(pillar2);
+            objects.push(pillar2);
 
             artworkInfoPopup = document.getElementById('artwork-info-popup'); // Initialize here
 
@@ -537,33 +569,37 @@
             }
 
             // Populate the gallery
-            const paintingWallZ = -roomSize / 2 + wallThickness + 0.1;
-            const digitalWallZ = roomSize / 2 - wallThickness - 0.1;
             const artworkY = 1.75; // Vertical position of artworks
 
-            // Paintings Department
-            if (artworks.Paintings.length > 0) {
-                const spacing = roomSize / (artworks.Paintings.length + 1);
-                artworks.Paintings.forEach((art, index) => {
-                    const xPos = -roomSize / 2 + spacing * (index + 1);
-                    createArtwork(xPos, artworkY, paintingWallZ, 0, 'painting', art);
+            // Paintings on side walls
+            const leftWallX = -roomSize / 2 + wallThickness + 0.1;
+            const rightWallX = roomSize / 2 - wallThickness - 0.1;
+
+            const paintings = artworks.Paintings;
+            if (paintings.length > 0) {
+                const half = Math.ceil(paintings.length / 2);
+                const leftWallPaintings = paintings.slice(0, half);
+                const rightWallPaintings = paintings.slice(half);
+
+                // Left Wall
+                const leftSpacing = roomSize / (leftWallPaintings.length + 1);
+                leftWallPaintings.forEach((art, index) => {
+                    const zPos = -roomSize / 2 + leftSpacing * (index + 1);
+                    createArtwork(leftWallX, artworkY, zPos, Math.PI / 2, 'painting', art);
+                });
+
+                // Right Wall
+                const rightSpacing = roomSize / (rightWallPaintings.length + 1);
+                rightWallPaintings.forEach((art, index) => {
+                    const zPos = -roomSize / 2 + rightSpacing * (index + 1);
+                    createArtwork(rightWallX, artworkY, zPos, -Math.PI / 2, 'painting', art);
                 });
             } else {
-                // One blank canvas if no paintings
-                createArtwork(0, artworkY, paintingWallZ, 0, 'painting', null);
+                // One blank canvas if no paintings, place it on the left wall
+                createArtwork(leftWallX, artworkY, 0, Math.PI / 2, 'painting', null);
             }
 
-            // Digital Department
-            if (artworks.Digital.length > 0) {
-                const spacing = roomSize / (artworks.Digital.length + 1);
-                artworks.Digital.forEach((art, index) => {
-                    const xPos = -roomSize / 2 + spacing * (index + 1);
-                    createArtwork(xPos, artworkY, digitalWallZ, Math.PI, 'digital', art); // Rotate 180 degrees
-                });
-            } else {
-                // One blank monitor if no digital artworks
-                createArtwork(0, artworkY, digitalWallZ, Math.PI, 'digital', null);
-            }
+            // Digital art is now on the screen, so we remove the old placement logic for it.
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setPixelRatio(window.devicePixelRatio);

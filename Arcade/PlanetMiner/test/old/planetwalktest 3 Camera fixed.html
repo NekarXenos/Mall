@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Third-Person Planet Explorer</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #111;
+            color: white;
+        }
+        canvas {
+            display: block;
+        }
+        #instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            padding: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            border-radius: 15px;
+            cursor: pointer;
+            border: 1px solid #444;
+        }
+        #instructions h1 {
+            margin-top: 0;
+            font-size: 1.5em;
+        }
+        #instructions p {
+            font-size: 1em;
+            margin: 0.5em 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">
+        <h1>Planet Explorer</h1>
+        <p>Click to Play</p>
+        <p><b>Controls:</b></p>
+        <p><b>W, A, S, D:</b> Move</p>
+        <p><b>Mouse:</b> Look</p>
+        <p><b>Spacebar:</b> Jump</p>
+        <p><b>ESC:</b> Release Mouse</p>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        let scene, camera, renderer, controls;
+        let player, planet;
+        const clock = new THREE.Clock();
+        
+        // Player state
+        const playerState = {
+            height: 1.7,
+            velocity: new THREE.Vector3(),
+            onGround: false,
+            jumpForce: 7.0,
+            speed: 10.0,
+        };
+
+        const keyboard = {};
+        let debug = { wireframe: false };
+        const planetRadius = 50;
+        const gravity = -20; // Acceleration in units/s^2
+
+        // Third-person camera setup
+        const cameraOffset = new THREE.Vector3(0, 3, 8); 
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111122);
+            scene.fog = new THREE.Fog(0x111122, 150, 250);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xffffee, 2);
+            sunLight.position.set(50, 80, 50);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 200;
+            const shadowCamSize = 75;
+            sunLight.shadow.camera.left = -shadowCamSize;
+            sunLight.shadow.camera.right = shadowCamSize;
+            sunLight.shadow.camera.top = shadowCamSize;
+            sunLight.shadow.camera.bottom = -shadowCamSize;
+            scene.add(sunLight);
+
+            // Planet
+            createPlanet();
+
+            // Player
+            createPlayer();
+
+            // Controls
+            setupControls();
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('keydown', (e) => {
+                keyboard[e.code] = true;
+                if (e.code === 'KeyP') {
+                    toggleWireframe();
+                }
+            });
+            document.addEventListener('keyup', (e) => (keyboard[e.code] = false));
+        }
+
+        function toggleWireframe() {
+            debug.wireframe = !debug.wireframe;
+            scene.traverse((child) => {
+                if (child.isMesh) {
+                    child.material.wireframe = debug.wireframe;
+                }
+            });
+        }
+
+        function createPlanet() {
+            const planetGeometry = new THREE.IcosahedronGeometry(planetRadius, 5); // Use Icosahedron for a more uniform sphere
+            const planetMaterial = new THREE.MeshStandardMaterial({
+                color: 0x99aaff,
+                flatShading: true,
+            });
+            planet = new THREE.Mesh(planetGeometry, planetMaterial);
+            planet.receiveShadow = true;
+            scene.add(planet);
+        }
+
+        function createPlayer() {
+            player = new THREE.Group();
+            
+            // Player Body
+            const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x5588ff });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.castShadow = true;
+            body.position.y = -0.3; // Lower center of gravity
+            player.add(body);
+
+            // Player Head
+            const headGeometry = new THREE.DodecahedronGeometry(0.5, 0);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffccaa });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.castShadow = true;
+            head.position.y = 0.8;
+            player.add(head);
+            player.head = head; // For easy access
+
+            // Player Hair
+            const hairGeometry = new THREE.BoxGeometry(0.55, 0.2, 0.55);
+            const hairMaterial = new THREE.MeshStandardMaterial({ color: 0x332211 });
+            const hair = new THREE.Mesh(hairGeometry, hairMaterial);
+            hair.position.y = 0.35; // Position on top of the head
+            hair.position.z = 0.25; // Position on back of the head
+            head.add(hair);
+
+            // Initial Position
+            player.position.set(0, planetRadius + playerState.height, 0);
+            scene.add(player);
+        }
+
+        function setupControls() {
+            controls = new PointerLockControls(camera, renderer.domElement);
+            const instructions = document.getElementById('instructions');
+
+            instructions.addEventListener('click', () => {
+                controls.lock();
+            });
+
+            controls.addEventListener('lock', () => {
+                instructions.style.display = 'none';
+            });
+
+            controls.addEventListener('unlock', () => {
+                instructions.style.display = 'block';
+            });
+
+            // This is a workaround for PointerLockControls moving the camera directly.
+            // We only want the mouse events to rotate our player.
+            controls.addEventListener('change', (e) => {
+                 if (controls.isLocked) {
+                    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+                    euler.setFromQuaternion(camera.quaternion);
+
+                    // Yaw rotation (left/right) on the whole player
+                    player.rotation.y -= e.target.camera.rotation.y;
+                    
+                    // Pitch rotation (up/down) on the head only
+                    player.head.rotation.x -= e.target.camera.rotation.x;
+                    player.head.rotation.x = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, player.head.rotation.x));
+
+                    // Reset camera rotation after applying it to the player
+                    e.target.camera.rotation.set(0, 0, 0);
+                }
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            if (controls.isLocked) {
+                updatePlayer(delta);
+            }
+            
+            updateCamera();
+            renderer.render(scene, camera);
+        }
+
+        function updatePlayer(delta) {
+            const moveSpeed = playerState.speed * delta;
+            const moveDirection = new THREE.Vector3();
+
+            // Get forward/right vectors relative to player's rotation
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
+
+            if (keyboard['KeyW']) moveDirection.add(forward);
+            if (keyboard['KeyS']) moveDirection.sub(forward);
+            if (keyboard['KeyA']) moveDirection.add(right.clone().multiplyScalar(-1));
+            if (keyboard['KeyD']) moveDirection.add(right);
+
+            // Apply gravity
+            playerState.velocity.y += gravity * delta;
+            
+            // Project movement onto the planet's tangent plane
+            const surfaceNormal = player.position.clone().normalize();
+            if (moveDirection.lengthSq() > 0) {
+                moveDirection.normalize();
+                const projectedMove = moveDirection.projectOnPlane(surfaceNormal).normalize();
+                player.position.addScaledVector(projectedMove, moveSpeed);
+            }
+            
+            // Apply vertical velocity (for jumping/gravity)
+            player.position.addScaledVector(surfaceNormal, playerState.velocity.y * delta);
+
+            // Collision with planet surface
+            const distanceToCenter = player.position.length();
+            const targetAltitude = planetRadius + playerState.height;
+
+            if (distanceToCenter < targetAltitude) {
+                player.position.setLength(targetAltitude);
+                playerState.velocity.y = 0;
+                playerState.onGround = true;
+            } else {
+                playerState.onGround = false;
+            }
+            
+            // Jumping
+            if (keyboard['Space'] && playerState.onGround) {
+                playerState.velocity.y = playerState.jumpForce;
+                playerState.onGround = false;
+            }
+
+            // Orient player to stand upright on the sphere
+            const up = new THREE.Vector3(0, 1, 0);
+            const newUp = player.position.clone().normalize();
+            const rotationQuaternion = new THREE.Quaternion().setFromUnitVectors(up, newUp);
+            
+            // Combine surface orientation with player's look direction
+            const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(newUp, player.rotation.y);
+            rotationQuaternion.multiply(yawQuaternion);
+
+            player.quaternion.slerp(rotationQuaternion, 0.1);
+        }
+        
+        function updateCamera() {
+            // Calculate the desired camera position
+            const desiredCameraPosition = player.position.clone();
+            const cameraOffsetRotated = cameraOffset.clone().applyQuaternion(player.quaternion);
+            desiredCameraPosition.add(cameraOffsetRotated);
+
+            // Smoothly move the camera to the desired position
+            camera.position.lerp(desiredCameraPosition, 0.1);
+
+            // Point the camera towards a point slightly above the player's base
+            const lookAtTarget = player.position.clone().add(new THREE.Vector3(0, 1.0, 0).applyQuaternion(player.quaternion));
+            camera.lookAt(lookAtTarget);
+        }
+
+        // Initialize and start the animation loop
+        init();
+        animate();
+
+    </script>
+</body>
+</html>

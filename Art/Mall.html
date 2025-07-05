@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Mall Scene - Three.js</title>
+    <link rel="stylesheet" href="menu.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Mobile compatibility for the menu */
+        @media (max-width: 768px) {
+            #menu-columns-wrapper {
+                flex-direction: column;
+                overflow-y: auto; /* Allow vertical scrolling for the wrapper */
+                overflow-x: hidden;
+            }
+
+            /* The script adds inline styles, so we need to override them for mobile view */
+            #menu-columns-wrapper > div {
+                margin-right: 0 !important;
+                margin-bottom: 1rem !important; /* Add space between stacked columns */
+                max-height: none !important; /* Allow columns to grow as needed */
+                overflow-y: visible !important; /* Prevent nested vertical scrollbars */
+                min-width: unset !important; /* Allow column to fill container width */
+                max-width: 100% !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        3D Mall<br/>
+        Click to Start<br/>Use mouse to look, W/A/S/D to move.
+    </div>
+
+    <div id="hover-info"></div>
+    <!-- Dot reticule -->
+    <div id="reticule"></div>
+
+    <!-- Menu Overlay (identical to Menu.html, minus the 'i') -->
+    <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+    <div id="menu-container">
+        <div class="menu-title">Main Menu</div>
+        <div id="menu-columns-wrapper">
+            <!-- Columns will be dynamically generated here -->
+        </div>
+    </div>
+
+    <script src="menu.js"></script>
+    <style>
+        #reticule {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            width: 12px;
+            height: 12px;
+            margin-left: -6px;
+            margin-top: -6px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.85);
+            box-shadow: 0 0 4px 1px rgba(0,0,0,0.18);
+            z-index: 1000;
+            pointer-events: none;
+            border: 2px solid #222233;
+        }
+        #reticule {
+            transition: opacity 0.2s;
+        }
+        #reticule.hidden {
+            opacity: 0;
+        }
+    </style>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+        import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+        import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+
+        // --- SCENE SETUP ---
+        let scene, camera, renderer, controls, clock, raycaster;
+
+        // --- MOVEMENT VARIABLES ---
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+        const playerVelocity = new THREE.Vector3();
+        const playerSpeed = 6.0; // Adjusted for a more comfortable speed
+        const playerHeight = 1.75;
+
+        // Corridor boundaries
+        const minX = -4.5;
+        const maxX = 4.5;
+        const minZ = 0.3; // Start slightly past the entrance
+        const maxZ = 19.8; // End before the far shop
+
+        // --- INTERACTION VARIABLES ---
+        const interactiveElements = []; // To store elements like shop facias and doors
+        let hoverInfoDiv;
+        let currentHoverTarget = null; // Stores userData of the currently hovered interactive element
+
+        // --- SHOP ENTRY POPUP ---
+        let shopEntryPopup = null;
+        let shopEntryTarget = null;
+
+
+        // --- WIREFRAME DEBUG MODE ---
+        let wireframeDebug = false;
+        function setWireframeMode(enabled) {
+            scene.traverse((obj) => {
+                if (obj.isMesh && obj.material) {
+                    if (Array.isArray(obj.material)) {
+                        obj.material.forEach(mat => {
+                            if ('wireframe' in mat) mat.wireframe = enabled;
+                        });
+                    } else {
+                        if ('wireframe' in obj.material) obj.material.wireframe = enabled;
+                    }
+                }
+            });
+        }
+
+        function setReticuleVisible(visible) {
+            const reticule = document.getElementById('reticule');
+            if (reticule) {
+                if (visible) {
+                    reticule.classList.remove('hidden');
+                } else {
+                    reticule.classList.add('hidden');
+                }
+            }
+        }
+
+        function createShopEntryPopup() {
+            let popup = document.createElement('div');
+            popup.id = 'shop-entry-popup';
+            popup.style.position = 'fixed';
+            popup.style.left = '50%';
+            popup.style.top = '50%';
+            popup.style.transform = 'translate(-50%, -50%)';
+            popup.style.background = 'rgba(20, 20, 40, 0.95)';
+            popup.style.border = '2px solid #0088ff';
+            popup.style.borderRadius = '15px';
+            popup.style.color = 'white';
+            popup.style.padding = '32px 32px 24px 32px';
+            popup.style.textAlign = 'center';
+            popup.style.fontSize = '1.3rem';
+            popup.style.zIndex = '2000';
+            popup.style.display = 'none';
+            popup.innerHTML = '<span id="shop-entry-message"></span><br><br><button id="shop-entry-continue" style="background:#0088ff;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:1.1rem;cursor:pointer;">Continue</button>';
+            document.body.appendChild(popup);
+            return popup;
+        }
+
+        function showShopEntryPopup(shopName, onContinue) {
+            if (!shopEntryPopup) shopEntryPopup = createShopEntryPopup();
+            document.getElementById('shop-entry-message').textContent = `You are about to enter '${shopName}'. Click to continue.`;
+            shopEntryPopup.style.display = 'block';
+            function handler(e) {
+                e.stopPropagation();
+                hideShopEntryPopup();
+                if (onContinue) onContinue();
+            }
+            document.getElementById('shop-entry-continue').onclick = handler;
+            // Also allow clicking anywhere to continue
+            setTimeout(() => {
+                document.addEventListener('pointerdown', handler, { once: true });
+            }, 0);
+        }
+        function hideShopEntryPopup() {
+            if (shopEntryPopup) shopEntryPopup.style.display = 'none';
+        }
+
+        function isShopHitbox(obj) {
+            return obj && obj.userData && obj.userData.message && obj.userData.action && obj.geometry && obj.geometry.type === 'BoxGeometry';
+        }
+
+        function init() {
+            clock = new THREE.Clock();
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x222233);
+            scene.fog = new THREE.Fog(0x222233, 20, 50);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            // Initial position and orientation will be set on controls.getObject()
+
+            // Controls
+            controls = new PointerLockControls(camera, document.body);
+            controls.getObject().position.set(0, playerHeight, 0.5); // Start position
+            controls.getObject().rotation.y = Math.PI; // Look towards positive Z (down the corridor)
+            scene.add(controls.getObject());
+
+            // Interaction elements
+            raycaster = new THREE.Raycaster();
+            hoverInfoDiv = document.getElementById('hover-info');
+
+            const infoDiv = document.getElementById('info');
+            document.body.addEventListener('click', function () {
+                if (shopEntryTarget) {
+                    // If popup is up, clicking anywhere continues
+                    shopEntryTarget.action();
+                    shopEntryTarget = null;
+                    hideShopEntryPopup();
+                    return;
+                }
+                if (controls.isLocked) { // If already locked, check for interaction
+                    if (currentHoverTarget && currentHoverTarget.action) {
+                        currentHoverTarget.action(); // Execute the action (e.g., navigate)
+                    }
+                } else { // If not locked, lock controls
+                    controls.lock();
+                }
+            });
+            controls.addEventListener('lock', function () {
+                infoDiv.style.display = 'none';
+                setReticuleVisible(true);
+                // When locking controls (resuming game), hide the menu:
+                if (typeof toggleMenu === 'function') toggleMenu(false);
+            });
+            controls.addEventListener('unlock', function () {
+                infoDiv.style.display = 'block';
+                infoDiv.innerHTML = 'Paused - Click to Resume<br/>Use mouse to look, W/A/S/D to move.';
+                setReticuleVisible(false);
+                // Show the menu overlay when paused
+                if (typeof toggleMenu === 'function') toggleMenu(true);
+            });
+
+            // --- LIGHTING ---
+            const ambientLight = new THREE.AmbientLight(0x607070, 2);
+            scene.add(ambientLight);
+
+            const skylight = new THREE.DirectionalLight(0xffffff, 3);
+            skylight.position.set(0, 10, 15);
+            skylight.castShadow = true;
+            skylight.shadow.mapSize.width = 1024;
+            skylight.shadow.mapSize.height = 1024;
+            skylight.shadow.camera.near = 0.5;
+            skylight.shadow.camera.far = 50;
+            scene.add(skylight);
+            
+            for (let i = 0; i < 4; i++) {
+                const light = new THREE.PointLight(0xffeedd, 0.5, 20);
+                light.position.set(0, 3.5, 5 + i * 7);
+                scene.add(light);
+            }
+
+            // --- MATERIALS ---
+           const aluminumMaterial = new THREE.MeshStandardMaterial({
+                color: 0xaaaaaa,
+                metalness: 0.9,
+                roughness: 0.4,
+            });
+            const glassMaterial = new THREE.MeshStandardMaterial({
+                color: 0xaaffff,
+                metalness: 0.1,
+                roughness: 0.1,
+                transparent: true,
+                opacity: 0.25
+            });
+
+            const wallMaterial = new THREE.MeshStandardMaterial({color: 0xffffff});
+            const ceilingMaterial = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+             const skylightGlassMaterial = new THREE.MeshStandardMaterial({
+                color: 0xaaffff,
+                emissive: 0xaaffff,
+                emissiveIntensity: 0.3,
+                transparent: true,
+                opacity: 0.5
+            });
+
+            // --- MALL STRUCTURE ---
+            // Floor (Checkerboard with textures)
+            const textureLoader = new THREE.TextureLoader();
+            const marbleTextureA = textureLoader.load('images/MarbleWhiteA.png');
+            const marbleTextureB = textureLoader.load('images/MarbleWhiteB.png');
+
+            // Set wrapping mode for textures to repeat
+            marbleTextureA.wrapS = THREE.RepeatWrapping;
+            marbleTextureA.wrapT = THREE.RepeatWrapping;
+            marbleTextureB.wrapS = THREE.RepeatWrapping;
+            marbleTextureB.wrapT = THREE.RepeatWrapping;
+
+            // Determine tile size based on the original shader's visual density (4 tiles across 30 units)
+            const tileSize = 4; 
+            const floorWidth = 30;
+            const floorDepth = 30; // The floor spans from -15 to 15 in X, and 0 to 30 in Z
+
+            const tileGeometry = new THREE.PlaneGeometry(tileSize, tileSize); // Geometry for a single tile
+
+            // Function to get a pseudo-random rotation (0, 90, 180, 270 degrees)
+            function getRandomRotation() {
+                return Math.PI / 2 * Math.floor(Math.random() * 4);
+            }
+
+            // Create individual tiles in a grid
+            for (let x = -floorWidth / 2; x < floorWidth / 2; x += tileSize) {
+                for (let z = 0; z < floorDepth; z += tileSize) {
+                    // Determine which texture to use based on checkerboard pattern
+                    // Adjusting indices for the coordinate system: x from -15 to 15, z from 0 to 30
+                    const tileXIndex = Math.floor((x + floorWidth / 2) / tileSize);
+                    const tileZIndex = Math.floor(z / tileSize);
+                    const useTextureA = (tileXIndex + tileZIndex) % 2 === 0;
+
+                    const material = new THREE.MeshStandardMaterial({
+                        map: useTextureA ? marbleTextureA : marbleTextureB,
+                        metalness: 0.0, // Marble is not metallic
+                        roughness: 0.1, // Adjust for desired shininess (lower is shinier)
+                        side: THREE.DoubleSide, // Render both sides of the plane
+                    });
+
+                    const tile = new THREE.Mesh(tileGeometry, material);
+                    tile.rotation.x = -Math.PI / 2; // Lay flat on the XZ plane
+                    tile.rotation.z = getRandomRotation(); // Apply random 90-degree rotation
+                    // Position each tile, centering it within its grid cell
+                    tile.position.set(x + tileSize / 2, -0.1, z + tileSize / 2); 
+                    tile.receiveShadow = true; // Allow the tile to receive shadows
+                    scene.add(tile);
+                }
+            }
+
+            const ceilingGeometry = new THREE.PlaneGeometry(10, 20);
+            const ceiling = new THREE.Mesh(ceilingGeometry, ceilingMaterial);
+            ceiling.position.set(0, 4, 10);
+            ceiling.rotation.x = Math.PI / 2;
+            ceiling.receiveShadow = true;
+            scene.add(ceiling);
+            
+            const skylightGeometry = new THREE.PlaneGeometry(4, 16);
+            const skylightMesh = new THREE.Mesh(skylightGeometry, skylightGlassMaterial);
+            skylightMesh.position.set(0, 4.01, 10);
+            skylightMesh.rotation.x = Math.PI / 2;
+            scene.add(skylightMesh);
+
+            const backWallGeometry = new THREE.BoxGeometry(10, 4, 0.2);
+            const backWall = new THREE.Mesh(backWallGeometry, wallMaterial);
+            backWall.position.set(0, 2, -0.1);
+            backWall.castShadow = true;
+            scene.add(backWall);
+
+
+            // --- ART GALLERY EASEL PAINTINGS DATA ---
+            // These should match the paintings in Art/Art.html
+            const artGalleryPaintings = [
+                { name: "Bassist", path: "Paintings/Bassist.jpg" },
+                { name: "BlueBass", path: "Paintings/BlueBass.jpg" },
+                { name: "buskers 1.2mx1m", path: "Paintings/buskers_1_2mx1m.jpg" },
+                { name: "funky Duel", path: "Paintings/funky Duel.jpg" },
+                { name: "Jazz Trio", path: "Paintings/Jazz Trio.jpg" },
+                { name: "saxplayer2016", path: "Paintings/saxplayer2016.jpg" },
+                { name: "sonflower_acrylic", path: "Paintings/sonflower_acrylic.jpg" },
+                { name: "Summer Blue Butterfly", path: "Paintings/Summer Blue Butterfly.jpg" }
+            ];
+
+            // Helper to pick 2 random, different paintings
+            function pickTwoRandomPaintings() {
+                const idxs = [...Array(artGalleryPaintings.length).keys()];
+                for (let i = idxs.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [idxs[i], idxs[j]] = [idxs[j], idxs[i]];
+                }
+                return [artGalleryPaintings[idxs[0]], artGalleryPaintings[idxs[1]]];
+            }
+
+            // --- FONT LOADING AND SHOP CREATION ---
+            const fontLoader = new FontLoader();
+            const fontPaths = {
+                helvetiker: 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_regular.typeface.json',
+                helvetiker_bold: 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json',
+                optimer: 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/optimer_regular.typeface.json',
+                optimer_bold: 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/optimer_bold.typeface.json',
+                gentilis: 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/gentilis_regular.typeface.json'
+            };
+            const loadedFonts = {};
+            const fontPromises = [];
+
+            for (const name in fontPaths) {
+                fontPromises.push(
+                    new Promise((resolve, reject) => {
+                        fontLoader.load(fontPaths[name], (font) => {
+                            loadedFonts[name] = font;
+                            resolve();
+                        }, undefined, (error) => {
+                            console.error(`Failed to load font: ${name}`, error);
+                                                        reject(error);
+                        });
+                    })
+                );
+            }
+
+            Promise.all(fontPromises).then(() => {
+                const shopsData = {
+                    "The Sci-Fi Bookshop": createShop("The Sci-Fi Bookshop", new THREE.Vector3(10, 0, 5), loadedFonts.gentilis),
+                    "Art by Gerhard": createShop("Art by Gerhard", new THREE.Vector3(10, 0, 15), loadedFonts.helvetiker),
+                    "GO 3Design": createShop("GO 3Design", new THREE.Vector3(0, 0, 25), loadedFonts.helvetiker),
+                    "NX Dev": createShop("NX Dev", new THREE.Vector3(-10, 0, 15), loadedFonts.gentilis),
+                    "X-Arcade": createShop("X-Arcade", new THREE.Vector3(-10, 0, 5), loadedFonts.optimer)
+                };
+
+                // --- Add cylindrical pillars in the back corners of the art gallery ---
+                // Pillar geometry/material (shared for all pillars)
+                const pillarRadius = 0.25;
+                const pillarHeight = 5;
+                const pillarGeo = new THREE.CylinderGeometry(pillarRadius, pillarRadius, pillarHeight, 32);
+                const pillarMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.1, roughness: 0.4 });
+
+                // Helper to create and add a pillar instance at a given (x, z)
+                function addPillar(x, z) {
+                    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+                    pillar.position.set(x, pillarHeight / 2, z);
+                    pillar.castShadow = true;
+                    pillar.receiveShadow = true;
+                    scene.add(pillar);
+                    return pillar;
+                }
+
+                // Art gallery back corners (using correct positions for the gallery at (10, 0, 15), width 10, depth 10)
+                addPillar(14, 18); // right back
+                addPillar(14, 12);  // left back
+
+                // --- Mall pillars ---
+                // (X:4, Z:19), (X:-4, Z:19), (X:4, Z:1), (X:-4, Z:1)
+                addPillar(4, 19);
+                addPillar(-4, 19);
+                addPillar(4, 1);
+                addPillar(-4, 1);
+
+     
+
+                
+
+                // --- Add invisible hitbox links for each shop ---
+                const shopHitboxes = [
+                    {
+                        name: "The Sci-Fi Bookshop",
+                        position: new THREE.Vector3(5, 1.5, 5),
+                        size: [0.1, 3, 10],
+                        url: 'Books/SciFiBookshop.html'
+                    },
+                    {
+                        name: "Art by Gerhard",
+                        position: new THREE.Vector3(5, 1.5, 15),
+                        size: [0.1, 3, 10],
+                        url: 'Art/Art.html'
+                    },
+                    {
+                        name: "GO 3Design",
+                        position: new THREE.Vector3(0, 1.5, 20),
+                        size: [9.9, 3, 0.1],
+                        url: 'go3Design/go3design.html'
+                    },
+                    {
+                        name: "NX Dev",
+                        position: new THREE.Vector3(-5, 1.5, 15),
+                        size: [0.1, 3, 10],
+                        url: 'NX_Dev/nxdev.html'
+                    },
+                    {
+                        name: "X-Arcade",
+                        position: new THREE.Vector3(-5, 1.5, 5),
+                        size: [0.1, 3, 10],
+                        url: 'Arcade/Arcade.html'
+                    }
+                ];
+                shopHitboxes.forEach(hitbox => {
+                    const geometry = new THREE.BoxGeometry(...hitbox.size);
+                    const material = new THREE.MeshStandardMaterial({
+                        color: 0xaaffff,
+                        metalness: 0.1,
+                        roughness: 0.01,
+                        transparent: true,
+                        opacity: 0.1
+                    });  // THREE.MeshBasicMaterial({  visible: false });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.position.copy(hitbox.position);
+                    mesh.userData = {
+                        message: `Enter ${hitbox.name}`,
+                        action: () => { window.location.href = hitbox.url; }
+                    };
+                    interactiveElements.push(mesh);
+                    scene.add(mesh);
+                });
+
+                // Specifically tag X-Arcade elements for interaction
+                const xArcadeShop = shopsData["X-Arcade"];
+                if (xArcadeShop && xArcadeShop.facia) {
+                    xArcadeShop.facia.userData = {
+                    type: 'facia',
+                    shopName: "X-Arcade",
+                    message: "X-Arcade - Alpha testing",
+                    action: () => {
+                        window.location.href = 'Arcade/Arcade.html';
+                    }
+                };
+
+                    interactiveElements.push(xArcadeShop.facia);
+                }
+                if (xArcadeShop && xArcadeShop.doorGlass) {
+                    xArcadeShop.doorGlass.userData = {
+                        type: 'door',
+                        shopName: "X-Arcade",
+                        message: "Click to enter",
+                        action: () => {
+                            window.location.href = 'Arcade/Arcade.html';
+                        }
+                    };
+                    interactiveElements.push(xArcadeShop.doorGlass);
+                }
+
+
+                // Specifically tag Art Gallery elements for interaction
+                const artGallery = shopsData["Art by Gerhard"];
+                if (artGallery && artGallery.facia) {
+                    artGallery.facia.userData = {
+                        type: 'facia',
+                        shopName: "Art by Gerhard",
+                        message: "Paintings and Digital Art by Gerhard - Click to enter",
+                        action: () => {
+                            window.location.href = 'Art/Art.html';
+                        }
+                    };
+                    interactiveElements.push(artGallery.facia);
+                }
+                if (artGallery && artGallery.doorGlass) {
+                    artGallery.doorGlass.userData = {
+                        type: 'door',
+                        shopName: "Art by Gerhard",
+                        message: "Art by Gerhard - Click to enter",
+                        action: () => {
+                            window.location.href = 'Art/Art.html';
+                        }
+                    };
+                    interactiveElements.push(artGallery.doorGlass);
+                }
+
+                // --- EASELS IN ART GALLERY WINDOWS ---
+                // Place two easels in the left and right window of the art gallery
+                function createEaselWithPainting(painting, position, rotationY = 0) {
+                    // Easel geometry
+                    const easelGroup = new THREE.Group();
+                    // Painting and box sizing
+                    const loader = new THREE.TextureLoader();
+                    loader.load(painting.path, function(texture) {
+                        // Calculate aspect ratio
+                        const aspect = texture.image.width / texture.image.height;
+                        // Determine canvas size so that the longest side is 1.2 units (or 2 units for Jazz Trio.jpg)
+                        let maxSide = 1.2;
+                        if (painting.name === "Jazz Trio" || painting.name === "Jazz Trio.jpg") {
+                            maxSide = 2.0;
+                        }
+                        let canvasWidth, canvasHeight;
+                        if (aspect >= 1) {
+                            // Landscape or square
+                            canvasWidth = maxSide;
+                            canvasHeight = maxSide / aspect;
+                        } else {
+                            // Portrait
+                            canvasHeight = maxSide;
+                            canvasWidth = maxSide * aspect;
+                        }
+
+                        // White box ("frame") behind the painting
+                        const boxDepth = 0.035;
+                        const boxGeo = new THREE.BoxGeometry(canvasWidth, canvasHeight, boxDepth);
+                        const boxMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                        const boxMesh = new THREE.Mesh(boxGeo, boxMat);
+                        boxMesh.position.set(0, 0.68 + canvasHeight/2, 0.11 - boxDepth/2); // Place on easel
+                        boxMesh.castShadow = true;
+                        boxMesh.receiveShadow = true;
+                        easelGroup.add(boxMesh);
+
+                        // Painting (canvas)
+                        const canvasGeo = new THREE.PlaneGeometry(canvasWidth, canvasHeight);
+                        const canvasMat = new THREE.MeshStandardMaterial({ map: texture });
+                        const canvasMesh = new THREE.Mesh(canvasGeo, canvasMat);
+                        canvasMesh.position.set(0, 0.68 + canvasHeight/2, 0.11 + 0.001); // Slightly in front of box
+                        canvasMesh.castShadow = true;
+                        easelGroup.add(canvasMesh);
+                    });
+
+                    // Easel legs (resize to fit new painting size)
+                    // Make the easel a bit taller than the painting
+                    const legHeight = 0.68 + 1.2 + 0.2; // base + painting + margin
+                    const legWidth = 0.05, legDepth = 0.05, spread = 0.4;
+                    const legGeo = new THREE.BoxGeometry(legWidth, legHeight, legDepth);
+                    const legMat = new THREE.MeshStandardMaterial({ color: 0x8B5C2A, roughness: 0.7 });
+                    // Left leg
+                    const leftLeg = new THREE.Mesh(legGeo, legMat);
+                    leftLeg.position.set(-spread/2, legHeight/2, 0.08);
+                    leftLeg.rotation.z = -0.07;
+                    easelGroup.add(leftLeg);
+                    // Right leg
+                    const rightLeg = new THREE.Mesh(legGeo, legMat);
+                    rightLeg.position.set(spread/2, legHeight/2, 0.08);
+                    rightLeg.rotation.z = 0.07;
+                    easelGroup.add(rightLeg);
+                    // Back leg
+                    const backLeg = new THREE.Mesh(legGeo, legMat);
+                    backLeg.position.set(0, legHeight/2, -0.13);
+                    backLeg.rotation.x = 0.25;
+                    easelGroup.add(backLeg);
+                    // Crossbar (raise to just below the painting)
+                    const crossbarGeo = new THREE.BoxGeometry(spread, 0.04, 0.04);
+                    const crossbar = new THREE.Mesh(crossbarGeo, legMat);
+                    crossbar.position.set(0, 0.68 - 0.05, 0.08);
+                    easelGroup.add(crossbar);
+
+                    easelGroup.position.copy(position);
+                    easelGroup.rotation.y = rotationY;
+                    // Tilt the whole easel (with artwork) back by 5 degrees
+                    //easelGroup.rotation.x = -Math.PI / 36; // ~5 degrees back
+                    scene.add(easelGroup);
+                }
+                // Pick two random, different paintings for easels
+                const idxs = [...Array(artGalleryPaintings.length).keys()];
+                for (let i = idxs.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [idxs[i], idxs[j]] = [idxs[j], idxs[i]];
+                }
+                const painting1 = artGalleryPaintings[idxs[0]];
+                const painting2 = artGalleryPaintings[idxs[1]];
+                // Left window
+                createEaselWithPainting(painting1, new THREE.Vector3(10 - 4.2, 0, 15 + 2.2), -Math.PI/2);
+                // Right window
+                createEaselWithPainting(painting2, new THREE.Vector3(10 - 4.2, 0, 15 - 2.2), -Math.PI/2);
+
+                // --- Add random artworks to the gallery walls (no duplicates with easels) ---
+                // Remove easel paintings from pool
+                const wallArtworks = artGalleryPaintings.filter(p => p !== painting1 && p !== painting2);
+                // Shuffle wall artworks
+                for (let i = wallArtworks.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [wallArtworks[i], wallArtworks[j]] = [wallArtworks[j], wallArtworks[i]];
+                }
+                // Place up to 3 on the back wall, spaced evenly
+                const wallY = 1.5;
+                const backWallZ = 15 - 4.8; // back wall of gallery
+                const frontWallZ = 15 + 4.8; // opposite (front) wall of gallery
+                const wallXStart = 10 - 3.5;
+                // Place up to 3 on the back wall, spaced evenly
+                const numBackWall = Math.min(3, wallArtworks.length);
+                for (let i = 0; i < numBackWall; i++) {
+                    const art = wallArtworks[i];
+                    const loader = new THREE.TextureLoader();
+                    loader.load(art.path, function(texture) {
+                        const aspect = texture.image.width / texture.image.height;
+                        let maxSide = 1.5;
+                        let width, height;
+                        if (aspect >= 1) {
+                            width = maxSide;
+                            height = maxSide / aspect;
+                        } else {
+                            height = maxSide;
+                            width = maxSide * aspect;
+                        }
+                        const frameGeo = new THREE.BoxGeometry(width, height, 0.04);
+                        const frameMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                        const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+                        frameMesh.position.set(wallXStart + i * 3.5, wallY, backWallZ - 0.02);
+                        frameMesh.castShadow = true;
+                        frameMesh.receiveShadow = true;
+                        scene.add(frameMesh);
+                        const artGeo = new THREE.PlaneGeometry(width, height);
+                        const artMat = new THREE.MeshStandardMaterial({ map: texture });
+                        const artMesh = new THREE.Mesh(artGeo, artMat);
+                        artMesh.position.set(wallXStart + i * 3.5, wallY, backWallZ + 0.001);
+                        scene.add(artMesh);
+                    });
+                }
+
+                // Place remaining artworks (if any) on the opposite/front wall, spaced evenly, no duplication
+                const numFrontWall = wallArtworks.length - numBackWall;
+                for (let i = 0; i < numFrontWall; i++) {
+                    const art = wallArtworks[numBackWall + i];
+                    const loader = new THREE.TextureLoader();
+                    loader.load(art.path, function(texture) {
+                        const aspect = texture.image.width / texture.image.height;
+                        let maxSide = 1.5;
+                        let width, height;
+                        if (aspect >= 1) {
+                            width = maxSide;
+                            height = maxSide / aspect;
+                        } else {
+                            height = maxSide;
+                            width = maxSide * aspect;
+                        }
+                        const frameGeo = new THREE.BoxGeometry(width, height, 0.04);
+                        const frameMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                        const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+                        frameMesh.position.set(wallXStart + i * 3.5, wallY, frontWallZ + 0.02);
+                        frameMesh.rotation.y = Math.PI; // Rotate 180 degrees to face into the room
+                        frameMesh.castShadow = true;
+                        frameMesh.receiveShadow = true;
+                        scene.add(frameMesh);
+                        const artGeo = new THREE.PlaneGeometry(width, height);
+                        const artMat = new THREE.MeshStandardMaterial({ map: texture });
+                        const artMesh = new THREE.Mesh(artGeo, artMat);
+                        artMesh.position.set(wallXStart + i * 3.5, wallY, frontWallZ - 0.001);
+                        artMesh.rotation.y = Math.PI; // Rotate 180 degrees to face into the room
+                        scene.add(artMesh);
+                    });
+                }
+
+                // Specifically tag GO 3Design elements for interaction
+                const go3Design = shopsData["GO 3Design"];
+                if (go3Design && go3Design.facia) {
+                    go3Design.facia.userData = {
+                    type: 'facia',
+                    shopName: "GO 3Design",
+                    message: "Design & 3d by Gerhard Oosthuizen",
+                    action: () => {
+                        window.location.href = 'go3Design/go3design.html';
+                    }
+                };
+
+                    interactiveElements.push(go3Design.facia);
+                }
+                if (go3Design && go3Design.doorGlass) {
+                    go3Design.doorGlass.userData = {
+                        type: 'door',
+                        shopName: "GO 3Design",
+                        message: "Design & 3d by Gerhard Oosthuizen - Click to enter",
+                        action: () => {
+                            window.location.href = 'go3Design/go3design.html';
+                        }
+                    };
+                    interactiveElements.push(go3Design.doorGlass);
+                }
+
+                // Specifically tag X-Arcade elements for interaction
+                const nxDev = shopsData["NX Dev"];
+                if (nxDev && nxDev.facia) {
+                    nxDev.facia.userData = {
+                    type: 'facia',
+                    shopName: "NX Dev",
+                    message: "NX Dev Studio - Click to enter",
+                    action: () => {
+                        window.location.href = 'NX_Dev/nxdev.html';
+                    }
+                };
+
+                    interactiveElements.push(nxDev.facia);
+                }
+                if (nxDev && nxDev.doorGlass) {
+                    nxDev.doorGlass.userData = {
+                        type: 'door',
+                        shopName: "NX Dev",
+                        message: "Click to enter NX Dev",
+                        action: () => {
+                            window.location.href = 'NX_Dev/nxdev.html';
+                        }
+                    };
+                    interactiveElements.push(nxDev.doorGlass);
+                }
+
+
+                // Add interaction for The Sci-Fi Bookshop
+                const sciFiShop = shopsData["The Sci-Fi Bookshop"];
+                if (sciFiShop) {
+                    if (sciFiShop.facia) {
+                        sciFiShop.facia.userData = {
+                            type: 'facia',
+                            shopName: "The Sci-Fi Bookshop",
+                            message: "The Sci-Fi Bookshop - Browse Books",
+                            action: () => {
+                                window.location.href = 'Books/SciFiBookshop.html';
+                            }
+                        };
+                        interactiveElements.push(sciFiShop.facia);
+                    }
+                    if (sciFiShop.doorGlass) {
+                        sciFiShop.doorGlass.userData = {
+                            type: 'door',
+                            shopName: "The Sci-Fi Bookshop",
+                            message: "Click to enter The Sci-Fi Bookshop",
+                            action: () => {
+                                window.location.href = 'Books/SciFiBookshop.html';
+                            }
+                        };
+                        interactiveElements.push(sciFiShop.doorGlass);
+                    }
+                }
+
+                xArcadeShop.shopGroup.traverse((child) => {
+                    if (child.isMesh) {
+                        child.userData = {
+                            message: "X-Arcade - Alpha testing",
+                            action: () => {
+                                window.location.href = 'Arcade/Arcade.html';
+                            }
+                        };
+                        interactiveElements.push(child);
+                    }
+                });
+
+                artGallery.shopGroup.traverse((child) => {
+                    if (child.isMesh) {
+                        child.userData = {
+                            message: "Art by Gerhard",
+                            action: () => {
+                                window.location.href = 'Art/Art.html';
+                            }
+                        };
+                        interactiveElements.push(child);
+                    }
+                });
+
+                if (go3Design) {
+                    go3Design.shopGroup.traverse((child) => {
+                        if (child.isMesh) {
+                            child.userData = {
+                                message: "Design & 3d by Gerhard",
+                                action: () => {
+                                    window.location.href = 'go3Design/go3design.html';
+                                }
+                            };
+                            interactiveElements.push(child);
+                        }
+                    });
+                }
+
+                 nxDev.shopGroup.traverse((child) => {
+                    if (child.isMesh) {
+                        child.userData = {
+                            message: "NX Dev Studio - Click to enter",
+                            action: () => {
+                                window.location.href = 'NX_Dev/nxdev.html';
+                            }
+                        };
+                        interactiveElements.push(child);
+                    }
+                });
+
+
+                sciFiShop.shopGroup.traverse((child) => {
+                    if (child.isMesh) {
+                        child.userData = {
+                            message: "Gerhard's Sci-Fi Bookshop",
+                            action: () => {
+                                window.location.href = 'Books/SciFiBookshop.html';
+                            }
+                        };
+                        interactiveElements.push(child);
+                    }
+                });
+
+            }).catch(error => {
+                console.error("One or more fonts failed to load:", error);
+            });
+            createEntranceDoor();
+
+  
+            function createConstructionSign() {
+                const signWidth = 1;
+                const signHeight = 1.2;
+                const signAngle = Math.PI / 9; // 20 degrees tilt
+
+                const textureLoader = new THREE.TextureLoader();
+                // Assuming the image is in an 'images' folder
+                const signTexture = textureLoader.load('images/Construction.jpg');
+                const signMaterial = new THREE.MeshStandardMaterial({ map: signTexture });
+
+                const signGeometry = new THREE.PlaneGeometry(signWidth, signHeight);
+
+                const signYellow = new THREE.MeshStandardMaterial({ color: 0xffff00, side: THREE.DoubleSide });
+                const signBackGeometry = new THREE.PlaneGeometry(signWidth, signHeight);
+                const signBack = new THREE.Mesh(signBackGeometry, signYellow);
+                signBack.position.y = signHeight / 2;
+                signBack.rotation.x = -signAngle;
+                signBack.position.z = -(signHeight / 2) * Math.sin(signAngle);
+                
+                const signGroup = new THREE.Group();
+
+                // One face of the A-frame
+                const signFace1 =   new THREE.Mesh(signBackGeometry, signYellow);
+                signFace1.position.y = signHeight / 2; // Lift it so the bottom is at y=0
+                signFace1.rotation.x = -signAngle;
+                signFace1.position.z = (signHeight / 2) * Math.sin(signAngle);
+                signFace1.castShadow = true;
+
+                // The other face
+                const signFace2 = new THREE.Mesh(signGeometry, signMaterial);
+                signFace2.position.y = signHeight / 2;
+                signFace2.rotation.x = signAngle;
+                signFace2.position.z = -(signHeight / 2) * Math.sin(signAngle);
+                signFace2.rotation.y = Math.PI; // Flip texture for the back
+                signFace2.castShadow = true;
+
+                signGroup.add(signFace1);
+                signGroup.add(signFace2);
+
+                return signGroup;
+            }
+          
+
+            
+
+            function createArcadeMachine(position, rotationY = 0) {
+                const arcadeGroup = new THREE.Group();
+
+                const machineBaseMaterial = new THREE.MeshStandardMaterial({ color: 0x001122, metalness: 0.5, roughness: 0.1 });
+
+                // Main Box
+                const mainBoxGeometry = new THREE.BoxGeometry(0.9, 1.75, 0.56);
+                const mainBox = new THREE.Mesh(mainBoxGeometry, machineBaseMaterial);
+                mainBox.position.set(0, 0.875, 0); // Adjust position
+                arcadeGroup.add(mainBox);
+
+                // Play Table
+                const playTableGeometry = new THREE.BoxGeometry(0.9, 1, 0.5);
+                const playTable = new THREE.Mesh(playTableGeometry, machineBaseMaterial);
+                playTable.position.set(0, 0.5, -0.2); // Adjust position
+                playTable.rotation.x = -15 * (Math.PI / 180);
+                arcadeGroup.add(playTable);
+
+                // Top
+                const topGeometry = new THREE.BoxGeometry(0.9, 0.15, 0.75);
+                const top = new THREE.Mesh(topGeometry, machineBaseMaterial);
+                top.position.set(0, 1.675, -0.095); // Adjust position
+                arcadeGroup.add(top);
+
+                // Joystick
+                const joystickGeometry = new THREE.SphereGeometry(0.04, 16, 16);
+                const joystickMaterial = new THREE.MeshStandardMaterial({ color: 0xee0000, roughness: 0 }); // Red
+                const joystick = new THREE.Mesh(joystickGeometry, joystickMaterial);
+                joystick.position.set(0.22, 1, -0.45); // Adjust position
+                arcadeGroup.add(joystick);
+
+                // Stick
+                const stickGeometry = new THREE.CylinderGeometry(0.01, 0.01, 0.1, 16);
+                const stickMaterial = new THREE.MeshStandardMaterial({ color: 0x999999, metalness:1, roughness:0 }); // grey
+                const stick = new THREE.Mesh(stickGeometry, stickMaterial);
+                stick.position.set(0.22, .95, -0.45); // Adjust position
+                arcadeGroup.add(stick);
+
+                // Buttons
+                const buttonGeometry = new THREE.CylinderGeometry(0.04, 0.04, 0.1, 16);
+                const buttonMaterial = new THREE.MeshStandardMaterial({ color: 0xee0000, roughness: 0 }); // Dark Grey
+                const button = new THREE.Mesh(buttonGeometry, buttonMaterial);
+                button.position.set(-0.22, 0.93, -0.43); // Adjust position
+                button.rotation.x = -15 * (Math.PI / 180);
+                arcadeGroup.add(button);
+
+                // Screen
+                const screenGeometry = new THREE.PlaneGeometry(0.8, 0.6);
+                const screenMaterial = new THREE.MeshStandardMaterial({ color: 0x1F51FF }); // UV Blue
+                const screen = new THREE.Mesh(screenGeometry, screenMaterial);
+                screen.rotation.y = 180 * (Math.PI / 180);
+                screen.position.set(0, 1.3, -0.29); // Adjust position
+                arcadeGroup.add(screen);
+
+                arcadeGroup.position.copy(position);
+                arcadeGroup.rotation.y = rotationY;
+                scene.add(arcadeGroup);
+
+                return arcadeGroup;
+            }
+
+            function createShop(name, position, font) {
+                const shopGroup = new THREE.Group();
+                shopGroup.position.copy(position);
+                scene.add(shopGroup);
+
+                const shopWidth = 10;
+                const shopHeight = 3;
+                const shopDepth = 10;
+                const frameThickness = 0.2;
+
+                const shopInteriorGeo = new THREE.BoxGeometry(shopWidth, shopHeight, shopDepth);
+                const shopInteriorMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, side: THREE.BackSide });
+                const shopInterior = new THREE.Mesh(shopInteriorGeo, shopInteriorMat);
+                shopInterior.position.y = shopHeight / 2;
+                shopGroup.add(shopInterior);
+
+                const shopLight = new THREE.PointLight(0xfff5e1, 1, shopDepth * 0.9, 2);
+                shopLight.position.set(0, shopHeight * 0.8, shopDepth * 0.25);
+                shopGroup.add(shopLight);
+
+                const frontGroup = new THREE.Group();
+                shopGroup.add(frontGroup);
+
+                if (position.x < 0) {
+                    frontGroup.position.x = shopWidth / 2;
+                    frontGroup.rotation.y = -Math.PI / 2;
+                } else if (position.x > 0) {
+                    frontGroup.position.x = -shopWidth / 2;
+                    frontGroup.rotation.y = Math.PI / 2;
+                } else {
+                    frontGroup.position.z = -shopDepth / 2;
+                }
+
+                const doorWidth = 1.5;
+                const doorHeight = 2.2;
+                const glassPanelWidth = (shopWidth - doorWidth) / 2;
+
+                createFrame(frontGroup, new THREE.Vector3(- (doorWidth / 2 + glassPanelWidth / 2), shopHeight / 2, 0), glassPanelWidth, shopHeight);
+                createFrame(frontGroup, new THREE.Vector3((doorWidth / 2 + glassPanelWidth / 2), shopHeight / 2, 0), glassPanelWidth, shopHeight);
+
+                const doorGroup = new THREE.Group();
+                doorGroup.position.set(0, doorHeight/2, 0);
+                frontGroup.add(doorGroup);
+                const doorFrameDetails = createFrame(doorGroup, new THREE.Vector3(0,0,0), doorWidth, doorHeight, true);
+                
+                
+                // Add a construction sign inside the shop
+                const constructionSign = createConstructionSign();
+                constructionSign.position.set(0, 0, 2); // Position it 2 units "behind" the door frame
+                frontGroup.add(constructionSign);
+                
+
+                // Add a single transom window above the door
+                // Calculate the height of the space above the door
+                const transomWindowHeight = shopHeight - doorHeight; // (e.g., 3 - 2.2 = 0.8 units high)
+                // The transom window will have the same width as the door
+                const transomWidth = doorWidth;
+                // Calculate the center Y position for these transom windows
+                const transomYPosition = doorHeight + transomWindowHeight / 2; // (e.g., 2.2 + 0.8/2 = 2.6 units from floor)
+
+                // Create the single transom window, centered above the door
+                createFrame(frontGroup, new THREE.Vector3(0, transomYPosition, 0), transomWidth, transomWindowHeight);
+
+                const faciaGeo = new THREE.BoxGeometry(shopWidth, 4 - shopHeight, frameThickness);
+                const faciaMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                const faciaBoard = new THREE.Mesh(faciaGeo, faciaMat);
+                faciaBoard.position.set(0, shopHeight + (4 - shopHeight) / 2, 0);
+                faciaBoard.castShadow = true;
+                frontGroup.add(faciaBoard);
+
+                const textGeometry = new TextGeometry(name, {
+                    font: font,
+                    size: 0.4,
+                    height: 0.01,
+                });
+                textGeometry.center();
+                const textMaterial = new THREE.MeshStandardMaterial({ color: 0xaa9911, metalness: 0.75, roughness: 0.3 });
+                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+                textMesh.position.set(0, 3.5, -(frameThickness/2 + 0.06));
+                textMesh.rotation.y = Math.PI;
+                textMesh.castShadow = true;
+                frontGroup.add(textMesh);
+
+                // --- Add Desk for GO 3Design ---
+                if (name === "GO 3Design") {
+                // Desk parameters from go3design.html, rotated 180 degrees
+                const deskHeight = 0.75;
+                const deskGroup = new THREE.Group();
+                const deskMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                    roughness: 0.7,
+                    metalness: 0.1
+                });
+                    // Main desk shape using ExtrudeGeometry
+                    const shape = new THREE.Shape();
+                    shape.moveTo(-1, 0);
+                    shape.absarc(0, 0, 1.5, Math.PI, 0, true);
+                    shape.absarc(0, 0, 0.5, 0, Math.PI, false);
+                    const extrudeSettings = {
+                        depth: deskHeight, // Corrected from 0.6
+                        bevelEnabled: false
+                    };
+                    const mainDeskGeom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                    mainDeskGeom.rotateX(-Math.PI / 2);
+                    mainDeskGeom.translate(0, 0, -deskHeight/2);
+                    const mainDesk = new THREE.Mesh(mainDeskGeom, deskMaterial);
+                    mainDesk.castShadow = true;
+                    mainDesk.receiveShadow = true;
+                    // Side cylinders
+                    const sideCylinderGeom = new THREE.CylinderGeometry(0.52, 0.52, deskHeight, 32);
+                    const leftCylinder = new THREE.Mesh(sideCylinderGeom, deskMaterial);
+                    leftCylinder.position.set(-1, deskHeight * 0.499, -0.5);
+                    leftCylinder.castShadow = true;
+                    const rightCylinder = new THREE.Mesh(sideCylinderGeom, deskMaterial);
+                    rightCylinder.position.set(1, deskHeight * 0.499, -0.5);
+                    rightCylinder.castShadow = true;
+                    deskGroup.add(mainDesk);
+                    deskGroup.add(leftCylinder);
+                    deskGroup.add(rightCylinder);
+                    deskGroup.position.set(-1.5, 0, 0);
+                    deskGroup.rotation.y = -Math.PI/2;
+                    shopGroup.add(deskGroup);
+
+                    // --- Desk Monitors, Keyboard, Mouse ---
+                    const deskItemGrp = new THREE.Group();
+                    const deskTopY = deskHeight;
+                    const textureLoader = new THREE.TextureLoader();
+                    const monitorMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
+                    const blueprintTexture = textureLoader.load('go3Design/images/blueprint.jpg');
+                    const screenMaterial = new THREE.MeshStandardMaterial({ map: blueprintTexture });
+                    for(let i = -1; i <= 1; i++) {
+                        const monitor = new THREE.Group();
+                        const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.2, 16), monitorMaterial);
+                        stand.position.y = deskTopY + 0.1;
+                        stand.position.z = -0.03;
+
+                        const screen = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.45, 0.02), monitorMaterial);
+                        screen.position.y = deskTopY + 0.3;
+                        
+                        const display = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.43), screenMaterial);
+                        display.position.z = 0.011;
+                        screen.add(display);
+
+                        monitor.add(stand);
+                        monitor.add(screen);
+                        monitor.position.x = i * 0.9;
+                        monitor.position.z = 0.5* Math.abs(i);
+                        monitor.rotation.y = -i;
+                        monitor.castShadow = true;
+                        deskItemGrp.add(monitor);
+                    }
+                    const keyboardGeom = new THREE.BoxGeometry(0.5, 0.02, 0.18);
+                    const keyboard = new THREE.Mesh(keyboardGeom, monitorMaterial);
+                    keyboard.position.set(0, deskTopY + 0.01, 0.3);
+                    deskItemGrp.add(keyboard);
+                    const mouseGeom = new THREE.BoxGeometry(0.07, 0.02, 0.12);
+                    const mouse = new THREE.Mesh(mouseGeom, monitorMaterial);
+                    mouse.position.set(0.35, deskTopY + 0.01, 0.3);
+                    deskItemGrp.add(mouse);
+                    deskItemGrp.rotation.y = -Math.PI/2;
+                    deskItemGrp.position.z = 0;
+                    deskItemGrp.traverse(obj => {
+                        if(obj.isMesh) {
+                            obj.castShadow = true;
+                            obj.receiveShadow = true;
+                        }
+                    });
+                    shopGroup.add(deskItemGrp);
+
+                    // --- Wall Screens (static images from designImages) ---
+                    const designImages = [
+                        'go3Design/images/Furai-Vision 002.jpg',
+                        'go3Design/images/Furai-Vision 003.jpg',
+                        'go3Design/images/Furai-Vision 004.jpg',
+                        'go3Design/images/Furai-Vision 005.jpg',
+                        'go3Design/images/Furai-Vision 007.jpg',
+                    ];
+                    function getRandomImages(arr, n) {
+                        const shuffled = arr.slice().sort(() => 0.5 - Math.random());
+                        return shuffled.slice(0, n);
+                    }
+                    const wallImages = getRandomImages(designImages, 3);
+                    
+                    // Right wall screen
+                    const rightScreenMat = new THREE.MeshBasicMaterial({ map: textureLoader.load(wallImages[0]) });
+                    const rightScreenGeom = new THREE.PlaneGeometry(4, 2.25);
+                    const rightScreen = new THREE.Mesh(rightScreenGeom, rightScreenMat);
+                    rightScreen.position.set(shopWidth/2 - 0.01, 1.6, 0);
+                    rightScreen.rotation.y = -Math.PI / 2;
+                    shopGroup.add(rightScreen);
+
+                    // Back wall screen
+                    textureLoader.load('images/Bass.png', (texture) => {
+                        const aspectRatio = texture.image.width / texture.image.height;
+                        const posterHeight = 2;
+                        const posterWidth = posterHeight * aspectRatio;
+
+                        const posterGeometry = new THREE.PlaneGeometry(posterWidth, posterHeight);
+                        const posterMaterial = new THREE.MeshStandardMaterial({ map: texture });
+                        const centerScreen = new THREE.Mesh(posterGeometry, posterMaterial);
+
+                        
+                        centerScreen.position.set(0, 1.6, shopDepth - 5 - 0.01);
+                        centerScreen.rotation.y = Math.PI;
+                        shopGroup.add(centerScreen);
+                    });
+
+                    // Left wall screen
+                    const leftScreenMat = new THREE.MeshBasicMaterial({ map: textureLoader.load(wallImages[2]) });
+                    const leftScreenGeom = new THREE.PlaneGeometry(2.25, 2.25);
+                    const leftScreen = new THREE.Mesh(leftScreenGeom, leftScreenMat);
+                    leftScreen.position.set(-shopWidth/2 + 0.01, 1.6, 0);
+                    leftScreen.rotation.y = Math.PI / 2;
+                    shopGroup.add(leftScreen);
+                }
+
+                if (name === "X-Arcade") {
+                    // Checkered texture for X-Arcade shop interior: two shades of dark grey
+                    const checkerCanvas = document.createElement('canvas');
+                    checkerCanvas.width = 64;
+                    checkerCanvas.height = 64;
+                    const ctx = checkerCanvas.getContext('2d');
+                    const colorA = '#111213'; // dark grey
+                    const colorB = '#111111'; // slightly lighter dark grey
+                    for (let y = 0; y < 8; y++) {
+                        for (let x = 0; x < 8; x++) {
+                            ctx.fillStyle = (x + y) % 2 === 0 ? colorA : colorB;
+                            ctx.fillRect(x * 32, y * 32, 32, 32);
+                        }
+                    }
+                    const checkerTexture = new THREE.CanvasTexture(checkerCanvas);
+                    checkerTexture.wrapS = THREE.RepeatWrapping;
+                    checkerTexture.wrapT = THREE.RepeatWrapping;
+                    checkerTexture.repeat.set(8, 8);
+                    shopGroup.traverse(obj => {
+                        if (obj.isMesh && obj.material && obj.material.color && obj.material.color.getHex() === 0xaaaaaa) {
+                            obj.material.map = checkerTexture;
+                            obj.material.color.set(0xffffff);
+                            obj.material.needsUpdate = true;
+                        }
+                    });
+                    createArcadeMachine(new THREE.Vector3(-7, 0, 1), Math.PI );
+                    createArcadeMachine(new THREE.Vector3(-10, 0, 1), Math.PI );
+                    createArcadeMachine(new THREE.Vector3(-7, 0, 9), 2*Math.PI);
+                    createArcadeMachine(new THREE.Vector3(-10, 0, 9), 2*Math.PI);
+                }
+
+                // --- NX Dev: Cyan Matrix Effect with UNDER CONSTRUCTION ---
+                if (name === "NX Dev") {
+                    // Cyan matrix effect for all shop interior walls
+                    // Replace shopInterior material
+                    const matrixTextureCanvas = document.createElement('canvas');
+                    matrixTextureCanvas.width = 256;
+                    matrixTextureCanvas.height = 256;
+                    const ctx = matrixTextureCanvas.getContext('2d');
+                    // Fill with cyan background
+                    ctx.fillStyle = '#003344';
+                    ctx.fillRect(0, 0, 256, 256);
+                    // Draw matrix-like random characters
+                    ctx.font = 'bold 18px monospace';
+                    for (let y = 0; y < 256; y += 24) {
+                        for (let x = 0; x < 256; x += 16) {
+                            ctx.fillStyle = '#00ffff';
+                            const char = String.fromCharCode(0x30A0 + Math.floor(Math.random() * 96));
+                            ctx.fillText(char, x, y + 18);
+                        }
+                    }
+                    // Create texture
+                    const matrixTexture = new THREE.CanvasTexture(matrixTextureCanvas);
+                    matrixTexture.wrapS = THREE.RepeatWrapping;
+                    matrixTexture.wrapT = THREE.RepeatWrapping;
+                    matrixTexture.repeat.set(4, 2);
+                    // Apply to shop interior
+                    shopGroup.traverse(obj => {
+                        if (obj.isMesh && obj.material && obj.material.color && obj.material.color.getHex() === 0xaaaaaa) {
+                            obj.material.map = matrixTexture;
+                            obj.material.color.set(0xffffff);
+                            obj.material.needsUpdate = true;
+                        }
+                    });
+                    // Add UNDER CONSTRUCTION text on facia with Helvetiker Bold font
+                    const helvetikerBoldFont = loadedFonts.helvetiker_bold;
+                    const ucTextGeometry = new TextGeometry('UNDER CONSTRUCTION', {
+                        font: helvetikerBoldFont,
+                        size: 0.5,
+                        height: 0.01,
+                    });
+                    ucTextGeometry.center();
+                    const ucTextMaterial = new THREE.MeshStandardMaterial({ color: 0xffee00, metalness: 0.1, roughness: 0.5 });
+                    const ucTextMesh = new THREE.Mesh(ucTextGeometry, ucTextMaterial);
+                    ucTextMesh.position.set(0, 1.5, 1);
+                    ucTextMesh.rotation.y = Math.PI;
+                    ucTextMesh.castShadow = true;
+                    frontGroup.add(ucTextMesh);
+                }
+
+                // --- Sci-Fi Bookshop: Inverse Matrix Effect with UNDER CONSTRUCTION ---
+                if (name === "The Sci-Fi Bookshop") {
+                    // Inverse matrix effect: black text on white background
+                    const matrixTextureCanvas = document.createElement('canvas');
+                    matrixTextureCanvas.width = 256;
+                    matrixTextureCanvas.height = 256;
+                    const ctx = matrixTextureCanvas.getContext('2d');
+                    // Fill with white background
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, 256, 256);
+                    // Draw matrix-like random characters (black)
+                    ctx.font = 'bold 18px monospace';
+                    for (let y = 0; y < 256; y += 24) {
+                        for (let x = 0; x < 256; x += 16) {
+                            ctx.fillStyle = '#000000';
+                            const char = String.fromCharCode(0x30A0 + Math.floor(Math.random() * 96));
+                            ctx.fillText(char, x, y + 18);
+                        }
+                    }
+                    // Create texture
+                    const matrixTexture = new THREE.CanvasTexture(matrixTextureCanvas);
+                    matrixTexture.wrapS = THREE.RepeatWrapping;
+                    matrixTexture.wrapT = THREE.RepeatWrapping;
+                    matrixTexture.repeat.set(4, 2);
+                    // Apply to shop interior
+                    shopGroup.traverse(obj => {
+                        if (obj.isMesh && obj.material && obj.material.color && obj.material.color.getHex() === 0xaaaaaa) {
+                            obj.material.map = matrixTexture;
+                            obj.material.color.set(0xffffff);
+                            obj.material.needsUpdate = true;
+                        }
+                    });
+                    // Add UNDER CONSTRUCTION text on facia with Helvetiker Bold font
+                    const helvetikerBoldFont = loadedFonts.helvetiker_bold;
+                    const ucTextGeometry = new TextGeometry('UNDER CONSTRUCTION', {
+                        font: helvetikerBoldFont,
+                        size: 0.5,
+                        height: 0.01,
+                    });
+                    ucTextGeometry.center();
+                    const ucTextMaterial = new THREE.MeshStandardMaterial({ color: 0xffee00, metalness: 0.1, roughness: 0.5 });
+                    const ucTextMesh = new THREE.Mesh(ucTextGeometry, ucTextMaterial);
+                    ucTextMesh.position.set(0, 1.5, 1);
+                    ucTextMesh.rotation.y = Math.PI;
+                    ucTextMesh.castShadow = true;
+                    frontGroup.add(ucTextMesh);
+                }
+
+                return {
+                    shopGroup: shopGroup,
+                    facia: faciaBoard,
+                    doorGlass: doorFrameDetails.glassPanel // Return the glass panel of the door
+                };
+            }
+
+            function createFrame(parent, position, width, height, isDoor = false) {
+                const frameGroup = new THREE.Group();
+                frameGroup.position.copy(position);
+                parent.add(frameGroup);
+                
+                const frameThickness = 0.15;
+
+                const topBottomGeo = new THREE.BoxGeometry(width, frameThickness, frameThickness);
+                const topBeam = new THREE.Mesh(topBottomGeo, aluminumMaterial);
+                topBeam.position.y = height / 2 - frameThickness / 2;
+                frameGroup.add(topBeam);
+                const bottomBeam = new THREE.Mesh(topBottomGeo, aluminumMaterial);
+                bottomBeam.position.y = -height / 2 + frameThickness / 2;
+                frameGroup.add(bottomBeam);
+                
+                const sideGeo = new THREE.BoxGeometry(frameThickness, height, frameThickness);
+                const leftBeam = new THREE.Mesh(sideGeo, aluminumMaterial);
+                leftBeam.position.x = -width / 2 + frameThickness / 2;
+                frameGroup.add(leftBeam);
+                const rightBeam = new THREE.Mesh(sideGeo, aluminumMaterial);
+                rightBeam.position.x = width / 2 + frameThickness / 2;
+                frameGroup.add(rightBeam);
+                
+                const glassWidth = width - frameThickness;
+                const glassHeight = height - frameThickness;
+                const glassGeo = new THREE.PlaneGeometry(glassWidth, glassHeight);
+                const glassPanel = new THREE.Mesh(glassGeo, glassMaterial);
+                frameGroup.add(glassPanel);
+
+                [topBeam, bottomBeam, leftBeam, rightBeam].forEach(beam => {
+                    beam.castShadow = true;
+                    beam.receiveShadow = true;
+                });
+                return { frameGroup, glassPanel }; // Return glassPanel for potential interaction
+            }
+
+            function createEntranceDoor() {
+                const doorGroup = new THREE.Group();
+                scene.add(doorGroup);
+                doorGroup.position.set(0, 0, 0);
+
+                const doorWidth = 4;
+                const doorHeight = 2.5;
+
+                const doorFrameGroup = new THREE.Group();
+                doorFrameGroup.position.set(0, doorHeight/2, 0.1);
+                doorGroup.add(doorFrameGroup);
+
+                createFrame(doorFrameGroup, new THREE.Vector3(0,0,0), doorWidth, doorHeight, true);
+            }
+
+            window.addEventListener('resize', onWindowResize, false);
+
+            // Keyboard controls
+            const onKeyDown = function (event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        moveForward = true;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        moveLeft = true;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        moveBackward = true;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        moveRight = true;
+                        break;
+                }
+            };
+            const onKeyUp = function (event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        moveForward = false;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        moveLeft = false;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        moveBackward = false;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        moveRight = false;
+                        break;
+                }
+            };
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+
+            // Wireframe debug mode toggle (P key)
+            document.addEventListener('keydown', function (event) {
+                if (event.code === 'KeyP' && !event.repeat) {
+                    wireframeDebug = !wireframeDebug;
+                    setWireframeMode(wireframeDebug);
+                }
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            if (controls.isLocked === true) {
+                // Damping
+                playerVelocity.x -= playerVelocity.x * 10.0 * delta;
+                playerVelocity.z -= playerVelocity.z * 10.0 * delta;
+
+                // Raycasting for hover messages and interactions
+                raycaster.setFromCamera({ x: 0, y: 0 }, camera); // Ray from center of screen
+                const intersects = raycaster.intersectObjects(interactiveElements, false); // false for non-recursive
+
+                let foundShopHitbox = null;
+                let foundShopName = null;
+                let foundShopAction = null;
+                let foundShopObj = null;
+                let foundShopDist = null;
+                if (intersects.length > 0) {
+                    for (let i = 0; i < intersects.length; i++) {
+                        const obj = intersects[i].object;
+                        if (isShopHitbox(obj) && intersects[i].distance < 0.5) {
+                            foundShopHitbox = obj;
+                            foundShopName = obj.userData.message.replace(/^Enter /, '');
+                            foundShopAction = obj.userData.action;
+                            foundShopObj = obj;
+                            foundShopDist = intersects[i].distance;
+                            break;
+                        }
+                    }
+                }
+                if (foundShopHitbox && !shopEntryTarget) {
+                    // Show popup and block movement
+                    shopEntryTarget = foundShopHitbox.userData;
+                    showShopEntryPopup(foundShopName, foundShopAction);
+                    // Optionally, you could freeze movement here
+                } else if (!foundShopHitbox && shopEntryTarget) {
+                    // Hide popup if player moves away
+                    shopEntryTarget = null;
+                    hideShopEntryPopup();
+                }
+
+                // If popup is up, don't show hover info or allow movement
+                if (shopEntryTarget) {
+                    hoverInfoDiv.style.display = 'none';
+                    currentHoverTarget = null;
+                    renderer.render(scene, camera);
+                    return;
+                }
+
+                if (intersects.length > 0) {
+                    const firstIntersect = intersects[0];
+                    if (firstIntersect.distance < 7) {
+                        const intersectedObject = firstIntersect.object;
+                        if (intersectedObject.userData && intersectedObject.userData.message) {
+                            hoverInfoDiv.innerHTML = intersectedObject.userData.message;
+                            hoverInfoDiv.style.display = 'block';
+                            currentHoverTarget = intersectedObject.userData; // Store full userData
+                        } else {
+                            hoverInfoDiv.style.display = 'none';
+                            currentHoverTarget = null;
+                        }
+                    } else {
+                        hoverInfoDiv.style.display = 'none';
+                        currentHoverTarget = null;
+                    }
+                } else {
+                    hoverInfoDiv.style.display = 'none';
+                    currentHoverTarget = null;
+                }
+
+                const accelerationFactor = playerSpeed * 8.0; // How quickly player reaches full speed
+
+                if (moveForward) playerVelocity.z -= accelerationFactor * delta;
+                if (moveBackward) playerVelocity.z += accelerationFactor * delta;
+                if (moveLeft) playerVelocity.x -= accelerationFactor * delta;
+                if (moveRight) playerVelocity.x += accelerationFactor * delta;
+
+                const playerObject = controls.getObject();
+
+                // Apply movement relative to player's orientation
+                playerObject.translateX(playerVelocity.x * delta);
+                playerObject.translateZ(playerVelocity.z * delta);
+
+                // Collision detection and response
+                if (playerObject.position.x < minX) {
+                    playerObject.position.x = minX;
+                    playerVelocity.x = 0;
+                } else if (playerObject.position.x > maxX) {
+                    playerObject.position.x = maxX;
+                    playerVelocity.x = 0;
+                }
+                if (playerObject.position.z < minZ) {
+                    playerObject.position.z = minZ;
+                    playerVelocity.z = 0;
+                } else if (playerObject.position.z > maxZ) {
+                    playerObject.position.z = maxZ;
+                    playerVelocity.z = 0;
+                }
+                playerObject.position.y = playerHeight; // Keep player at constant height
+            }
+            renderer.render(scene, camera);
+        }
+
+        // Hide reticule by default (menu/paused)
+        setReticuleVisible(false);
+        init();
+        animate();
+    </script>
+</body>
+</html>
