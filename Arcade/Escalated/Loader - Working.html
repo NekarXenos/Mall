@@ -4,10 +4,6 @@ Escalated Mayhem loader: <!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Animated Loader</title>
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Ultra&family=Yellowtail&display=swap" rel="stylesheet">
     <!-- Tailwind CSS for basic body styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -63,7 +59,7 @@ Escalated Mayhem loader: <!DOCTYPE html>
             z-index: 2; /* Ensure it's above other characters */
             text-shadow:  0 0 20px #1F51FF; /* Stronger glow */
             position: relative; /* Ensure z-index works */
-            font-family: 'Ultra', 'Consolas', 'Monaco', 'Lucida Console', monospace, sans-serif; /* Default wide monospace */
+            font-family: 'Consolas', 'Monaco', 'Lucida Console', monospace, sans-serif; /* Default wide monospace */
             letter-spacing: 0.02em;      /* Reduced horizontal spacing */
             line-height: 0.7;            /* Tighter vertical spacing */
             padding-top: 0;
@@ -73,7 +69,7 @@ Escalated Mayhem loader: <!DOCTYPE html>
         /* Landscape: Use a wider font and increase letter spacing */
         @media (orientation: landscape) {
             .matrix-cell.elevated-char {
-                font-family: 'Ultra', 'Arial Black', 'Consolas', 'Impact', 'Monaco', 'Lucida Console', monospace, sans-serif;
+                font-family: 'Arial Black', 'Consolas', 'Impact', 'Monaco', 'Lucida Console', monospace, sans-serif;
                 letter-spacing: 0.12em;  /* Still less than before */
                 line-height: 0.7;
             }
@@ -85,7 +81,7 @@ Escalated Mayhem loader: <!DOCTYPE html>
             right: 5%; /* Position from right, responsive */
             color: #ADD8E6; /* UV Blue color */
             font-size: clamp(3em, 10vw, 6em); /* Doubled size */
-            font-family: 'Yellowtail', cursive; /* Use Yellowtail font */
+            font-family: 'Brush Script MT', cursive; /* Script font with fallback */
             text-shadow: 0 0 20px #1F51FF; /* Stronger glow for larger text */
             z-index: 10; /* Ensure it's above everything */
             pointer-events: none; /* Allow clicks to pass through */

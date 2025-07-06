@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESCALATED Mayhem - Loading...</title>
+    <style>
+        /* --- Basic Setup --- */
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #0d0d0d; /* Slightly off-black for Three.js scene */
+            overflow: hidden;
+            font-family: 'Press Start 2P', cursive; /* The quintessential retro gaming font */
+        }
+
+        /* --- Loader Styles --- */
+        #loader-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 9999;
+            transition: opacity 1s ease-out;
+        }
+
+        .title-container {
+            text-align: center;
+        }
+
+        #title-top, #title-bottom {
+            font-size: clamp(2rem, 10vw, 5rem); /* Responsive font size */
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            text-shadow: 4px 4px 0px #000; /* Subtle shadow for depth */
+        }
+        
+        /* --- "ESCALATED" Styles (Top Word) --- */
+        #title-top {
+            color: #ff4500; /* Red-orange */
+            position: relative;
+            overflow: hidden;
+            /* Hide the text initially before animation */
+            visibility: hidden;
+        }
+        
+        /* The scanline wipe effect element */
+        #title-top::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                to bottom,
+                rgba(255, 69, 0, 0.9) 0%,
+                rgba(255, 100, 50, 0.7) 20%,
+                rgba(255, 69, 0, 0.9) 40%,
+                transparent 40.5%
+            );
+            background-size: 100% 10px; /* Creates the scanline look */
+            animation: scan-wipe 0.6s steps(10, end) forwards;
+        }
+
+        /* --- "Mayhem" Styles (Bottom Word) --- */
+        #title-bottom {
+            color: #ffd700; /* Bright yellow */
+            margin-top: 1rem;
+        }
+
+        /* Hide letters of "Mayhem" initially */
+        .char {
+            opacity: 0;
+            display: inline-block; /* Needed for transform */
+            transform: scale(0.8);
+            transition: opacity 0.1s;
+        }
+
+        /* --- Copyright and Game Status --- */
+        #status-text {
+            color: #00ffff; /* Cyan */
+            font-size: 1rem;
+            margin-top: 4rem;
+            letter-spacing: 0.1em;
+            visibility: hidden; /* Hidden until main animation starts */
+        }
+
+        /* --- Keyframe Animations --- */
+        @keyframes scan-wipe {
+            from {
+                transform: translateY(-100%);
+            }
+            to {
+                transform: translateY(0);
+            }
+        }
+        
+        /* Class to trigger fade out */
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="loader-container">
+        <div class="title-container">
+            <div id="title-top">ESCALATED</div>
+            <div id="title-bottom"></div> </div>
+        <div id="status-text">(C) YOUR-NAME-HERE 2025</div>
+    </div>
+
+    <canvas id="three-canvas"></canvas>
+
+    <script>
+        // --- Placeholder for your Three.js game logic ---
+        function initializeThreeJSGame() {
+            console.log("Three.js game is starting now!");
+            // Example: To show that the game is "running", we'll just change the background color.
+            // In a real scenario, you would initialize your scene, camera, renderer, etc. here.
+            document.body.style.backgroundColor = '#1a1a2a'; // A dark blue to signify the game has loaded
+            const canvas = document.getElementById('three-canvas');
+            // Mock drawing on canvas
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.font = "24px 'Press Start 2P'";
+            ctx.textAlign = 'center';
+            ctx.fillText('Game Initialized!', canvas.width / 2, canvas.height / 2);
+
+        }
+
+        // --- Loader Animation Logic ---
+        window.addEventListener('load', () => {
+            const loaderContainer = document.getElementById('loader-container');
+            const titleTop = document.getElementById('title-top');
+            const titleBottom = document.getElementById('title-bottom');
+            const statusText = document.getElementById('status-text');
+
+            const bottomWord = "Mayhem";
+            
+            // 1. Split "Mayhem" into individual character spans
+            titleBottom.innerHTML = bottomWord
+                .split('')
+                .map(char => `<span class="char">${char}</span>`)
+                .join('');
+
+            const chars = document.querySelectorAll('.char');
+
+            // --- Animation Sequence ---
+            // This function orchestrates the entire animation.
+            function startAnimation() {
+                // Make status text visible
+                statusText.style.visibility = 'visible';
+                
+                // 2. Reveal "ESCALATED" with the scan-wipe animation.
+                // The animation is CSS-based, we just need to make the element visible to trigger it.
+                titleTop.style.visibility = 'visible';
+
+                // 3. After the top title animation is done, reveal "Mayhem" letter by letter.
+                setTimeout(() => {
+                    chars.forEach((char, index) => {
+                        setTimeout(() => {
+                            char.style.opacity = '1';
+                            char.style.transform = 'scale(1)';
+                        }, index * 120); // 120ms delay between each letter
+                    });
+                }, 600); // Wait for the 0.6s 'scan-wipe' animation to finish
+
+                // 4. After all animations are complete, hide the loader.
+                const totalAnimationTime = 600 + (chars.length * 120) + 1500; // Animation time + pause
+                setTimeout(() => {
+                    loaderContainer.classList.add('hidden');
+                    // 5. Initialize the Three.js game
+                    // A small delay ensures the fade-out is smooth before any potential game lag.
+                    setTimeout(initializeThreeJSGame, 1000); 
+                }, totalAnimationTime);
+            }
+
+            // Start the sequence
+            startAnimation();
+            
+            // Resize canvas placeholder
+            const canvas = document.getElementById('three-canvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            window.addEventListener('resize', () => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            });
+        });
+    </script>
+</body>
+</html>

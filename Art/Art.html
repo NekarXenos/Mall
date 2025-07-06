@@ -6,6 +6,9 @@
     <title>Three.js Art Gallery</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Damion&family=Doto:wght@100..900&display=swap" rel="stylesheet">
     <style>
         body {
             margin: 0;
@@ -96,8 +99,16 @@
             overflow: hidden;
         }
         #artwork-info-popup {
-            transform: translateX(-50%); /* Center horizontally relative to its left edge */
+            position: absolute;
+            background-color: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px;
+            border-radius: 5px;
+            display: none;
+            pointer-events: none;
+            z-index: 999;
             white-space: nowrap; /* Prevent text from wrapping */
+            transform: translateX(-50%); /* Center horizontally relative to its left edge */
         }
 
         /* Styles for the new artwork modal */
@@ -152,6 +163,23 @@
         #modal-close-btn:hover {
             background-color: rgba(255, 255, 255, 0.2);
         }
+
+        /* Styles for the back wall popup */
+        #back-wall-popup {
+            position: fixed;
+            left: 50%;
+            top: 30%;
+            transform: translate(-50%, -50%);
+            background: rgba(20, 20, 40, 0.95);
+            border: 2px solid #0088ff;
+            border-radius: 15px;
+            color: white;
+            padding: 32px 32px 24px 32px;
+            text-align: center;
+            font-size: 1.3rem;
+            z-index: 2000;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -175,8 +203,7 @@
     </div>
 
     <!-- Artwork Info Popup -->
-    <div id="artwork-info-popup" style="position: absolute; background-color: rgba(0,0,0,0.7); color: white; padding: 8px; border-radius: 5px; display: none; pointer-events: none; z-index: 999;"></div>
-
+    <div id="artwork-info-popup"></div>
 
     <!-- Artwork Modal -->
     <div id="artwork-modal">
@@ -185,6 +212,9 @@
             <button id="modal-close-btn">&times;</button>
         </div>
     </div>
+
+    <!-- Back Wall Popup (for redirect notice) -->
+    <div id="back-wall-popup"></div>
 
     <script>
         // --- PointerLockControls Class (embedded) ---
@@ -291,15 +321,38 @@
         let raycaster, menuData;
         
         // FPS Player state
-        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false, canJump = false;
-        let velocity = new THREE.Vector3();
-        let direction = new THREE.Vector3();
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        const playerVelocity = new THREE.Vector3();
+        const playerSpeed = 6.0; // Match Mall.html
+        const playerHeight = 1.75;
         let prevTime = performance.now();
         let artworkInfoPopup; // Declare globally
         let currentHoveredArtwork = null; // Declare globally
         let wallThickness, roomSize; // Declare globally
         let interactiveArtworks = []; // To store artwork meshes for raycasting
         const objects = []; // For collision detection
+
+        let digitalSwitchingImagePlane; // Declare globally
+        let currentDigitalImageIndex = 0; // Declare globally
+        let digitalArtworkInfoMesh; // New: Three.js mesh for digital art info
+
+        // New global variables for shuffled playback
+        let shuffledDigitalArtIndices = [];
+        let currentShuffledIndex = 0;
+
+        // Global variables for digital screen dimensions
+        const digitalScreenWidth = 2.667;
+        const digitalScreenHeight = 2.0;
+
+        // New global variables for scrolling text and image flipping control
+        let textCanvas, textCanvasContext;
+        let currentInfoText = "";
+        let textScrollOffset = 0;
+        const textScrollSpeed = 0.5; // units per second (adjust as needed)
+        let textWidth = 0; // Actual pixel width of the text
+        let isTextScrolling = false; // Flag to indicate if text is currently scrolling
+        let lastScrollFinishTime = 0; // Time when the text finished scrolling
+        const delayAfterScroll = 2000; // 2 seconds delay after text finishes scrolling before next image (in ms)
 
         const menuContainer = document.getElementById('menu-container');
         const blocker = document.getElementById('blocker');
@@ -317,25 +370,25 @@
         const artworks = {
             Paintings: [
                 { name: "Bassist", path: "Paintings/Bassist.jpg" },
-                { name: "BlueBass", path: "Paintings/BlueBass.jpg" },
-                { name: "buskers 1.2mx1m", dimensions: "1.2m x 1m", path: "Paintings/buskers_1_2mx1m.jpg" },
-                { name: "funky Duel", path: "Paintings/funky Duel.jpg" },
+                { name: "Blue Bass", path: "Paintings/BlueBass.jpg" },
+                { name: "Busker", dimensions: "1.2m x 1m", path: "Paintings/buskers_1_2mx1m.jpg" },
+                { name: "Funky Duel", path: "Paintings/funky Duel.jpg" },
                 { name: "Jazz Trio", path: "Paintings/Jazz Trio.jpg" },
-                { name: "saxplayer2016", path: "Paintings/saxplayer2016.jpg" },
-                { name: "sonflower_acrylic", path: "Paintings/sonflower_acrylic.jpg" },
+                { name: "Sax Player", path: "Paintings/saxplayer2016.jpg" },
+                { name: "Sunflower", path: "Paintings/sonflower_acrylic.jpg" },
                 { name: "Summer Blue Butterfly", path: "Paintings/Summer Blue Butterfly.jpg" }
             ],
             Digital: [
-                { name: "Bass Still", path: "Digital/Bass Still.jpg" },
-                { name: "Buskers", path: "Digital/Buskers.jpg" },
-                { name: "funky shadows", path: "Digital/funky_shadows.jpg" },
-                { name: "Fuzion paint", path: "Digital/Fuzion paint.png" },
-                { name: "GO bass", path: "Digital/GO_bass.jpg" },
-                { name: "jazz funk", path: "Digital/jazz_funk.jpg" },
-                { name: "Sunny in the Shade", path: "Digital/Sunny in the Shade.jpg" },
-                { name: "superstars", path: "Digital/superstars abstract.png" },
-                { name: "The abstract buskers", path: "Digital/The abstract buskers.jpg" },
-                { name: "the Colours of Music", path: "Digital/the Colours of Music.png" }
+                { name: "• Bass Still", path: "Digital/Bass Still.jpg", artist: "Gerhard", year: 2006, medium: "Pov-Ray Render" },
+                { name: "• Buskers", path: "Digital/Buskers.jpg", artist: "Gerhard", year: 2013, medium: "Pov-Ray Render" },
+                { name: "• Funky Shadows", path: "Digital/funky_shadows.jpg", artist: "Gerhard", year: 2007, medium: "Pov-Ray Render" },
+                { name: "• Fuzion Paint", path: "Digital/Fuzion paint.png", artist: "Gerhard", year: 2015, medium: "Pov-Ray Render" },
+                { name: "• Bass", path: "Digital/GO_bass.jpg", artist: "Gerhard", year: 2004, medium: "Pov-Ray Render" },
+                { name: "• Jazz Funk", path: "Digital/jazz_funk.jpg", artist: "Gerhard", year: 2007, medium: "Pov-Ray Render" },
+                { name: "• Sunny in the Shade", path: "Digital/Sunny in the Shade.jpg", artist: "Gerhard", year: 2012, medium: "Pov-Ray Render" },
+                { name: "• SuperStars", path: "Digital/superstars abstract.png", artist: "Gerhard", year: 2013, medium: "Pov-Ray Render" },
+                { name: "• The abstract buskers", path: "Digital/The abstract buskers.jpg", artist: "Gerhard", year: 2013, medium: "Pov-Ray Render" },
+                { name: "• The Colours of Music", path: "Digital/the Colours of Music.png", artist: "Gerhard", year: 2013, medium: "Pov-Ray Render" }
             ]
         };
 
@@ -360,7 +413,33 @@
             return parsedMenu;
         }
 
+        function addCeilingLights() {
+            const lightSpacing = 4; // Distance between lights
+            const lightIntensity = 0.3; // Adjust intensity to not overpower spotlights
+            const lightColor = 0xffffff; // White light
+            const lightHeight = 2.9; // Just below the ceiling
+
+            // Calculate the number of lights along each axis
+            const numLightsX = Math.floor(roomSize / lightSpacing);
+            const numLightsZ = Math.floor(roomSize / lightSpacing);
+
+            for (let i = 0; i <= numLightsX; i++) {
+                for (let j = 0; j <= numLightsZ; j++) {
+                    const x = -roomSize / 2 + i * lightSpacing;
+                    const z = -roomSize / 2 + j * lightSpacing;
+
+                    const pointLight = new THREE.PointLight(lightColor, lightIntensity, lightSpacing * 2);
+                    pointLight.position.set(x, lightHeight, z);
+                    scene.add(pointLight);
+                }
+            }
+        }
+
         function init() {
+            // Get the artwork info popup element
+            artworkInfoPopup = document.getElementById('artwork-info-popup');
+
+
             // Create a simple menu structure for the art gallery
             // This is a simplified version compared to the original XML parsing
             menuData = {
@@ -392,52 +471,12 @@
             scene.background = new THREE.Color(0x222233);
             scene.fog = new THREE.Fog(0x222233, 0, 75);
 
-            const light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
+            // Ambient light to provide some fill light, but much dimmer
+            const light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.2);
             light.position.set(0.5, 1, 0.75);
             scene.add(light);
+
             
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
-            dirLight.position.set(0, 10, 0);
-            scene.add(dirLight);
-
-            // --- Digital Art Screen ---
-            const digitalArtScreen = new THREE.Group();
-            scene.add(digitalArtScreen);
-
-            const screenWidth = 8;
-            const screenHeight = 4.5;
-            const screenGeo = new THREE.PlaneGeometry(screenWidth, screenHeight);
-            
-            let currentTextureIndex = 0;
-            const digitalArtTextures = artworks.Digital.map(art => new THREE.TextureLoader().load(art.path));
-
-            const screenMat = new THREE.MeshBasicMaterial({ map: digitalArtTextures[0] });
-            const screenMesh = new THREE.Mesh(screenGeo, screenMat);
-            screenMesh.position.set(0, 1.7, -roomSize / 2 + 0.2);
-            digitalArtScreen.add(screenMesh);
-
-            // Frame for the screen
-            const frameThickness = 0.1;
-            const frameMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-            const topFrame = new THREE.Mesh(new THREE.BoxGeometry(screenWidth + frameThickness * 2, frameThickness, frameThickness), frameMat);
-            topFrame.position.set(0, 1.7 + screenHeight / 2 + frameThickness / 2, -roomSize / 2 + 0.2);
-            digitalArtScreen.add(topFrame);
-            const bottomFrame = new THREE.Mesh(new THREE.BoxGeometry(screenWidth + frameThickness * 2, frameThickness, frameThickness), frameMat);
-            bottomFrame.position.set(0, 1.7 - screenHeight / 2 - frameThickness / 2, -roomSize / 2 + 0.2);
-            digitalArtScreen.add(bottomFrame);
-            const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(frameThickness, screenHeight, frameThickness), frameMat);
-            leftFrame.position.set(-screenWidth/2 - frameThickness/2, 1.7, -roomSize / 2 + 0.2);
-            digitalArtScreen.add(leftFrame);
-            const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(frameThickness, screenHeight, frameThickness), frameMat);
-            rightFrame.position.set(screenWidth/2 + frameThickness/2, 1.7, -roomSize / 2 + 0.2);
-            digitalArtScreen.add(rightFrame);
-
-            // Function to cycle through digital art textures
-            setInterval(() => {
-                currentTextureIndex = (currentTextureIndex + 1) % digitalArtTextures.length;
-                screenMat.map = digitalArtTextures[currentTextureIndex];
-                screenMat.needsUpdate = true;
-            }, 5000); // Change image every 5 seconds
 
             // Setup pointer lock controls
             controls = new PointerLockControls(camera, document.body);
@@ -453,7 +492,7 @@
                     case 'ArrowLeft': case 'KeyA': moveLeft = true; break;
                     case 'ArrowDown': case 'KeyS': moveBackward = true; break;
                     case 'ArrowRight': case 'KeyD': moveRight = true; break;
-                    case 'Space': if (canJump === true) velocity.y += 350; canJump = false; break;
+                    case 'Space': /* if (canJump === true) velocity.y += 1; canJump = false; */ break; // Removed jump logic as per Mall.html
                     case 'Escape': // Handle Escape key
                         if (artworkModal.style.display === 'flex') {
                             hideArtworkModal(); // If artwork modal is open, close it first
@@ -477,16 +516,52 @@
 
             raycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 10);
             
-            // Floor
-            let floorGeometry = new THREE.PlaneGeometry(20, 20, 100, 100);
-            floorGeometry.rotateX(-Math.PI / 2);
-            const floorMaterial = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.1, roughness: 0.2 });
-            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-            scene.add(floor);
-            objects.push(floor);
+            // Floor (Checkerboard with textures from Mall.html)
+            const textureLoader = new THREE.TextureLoader();
+            const marbleTextureA = textureLoader.load('images/MarbleWhiteA.png');
+            const marbleTextureB = textureLoader.load('images/MarbleWhiteB.png');
+
+            // Set wrapping mode for textures to repeat
+            marbleTextureA.wrapS = THREE.RepeatWrapping;
+            marbleTextureA.wrapT = THREE.RepeatWrapping;
+            marbleTextureB.wrapS = THREE.RepeatWrapping;
+            marbleTextureB.wrapT = THREE.RepeatWrapping;
+
+            const tileSize = 4; 
+            const floorWidth = 10;
+            const floorDepth = 10;
+
+            const tileGeometry = new THREE.PlaneGeometry(tileSize, tileSize);
+
+            function getRandomRotation() {
+                return Math.PI / 2 * Math.floor(Math.random() * 4);
+            }
+
+            for (let x = -floorWidth / 2; x < floorWidth / 2; x += tileSize) {
+                for (let z = -floorDepth / 2; z < floorDepth / 2; z += tileSize) {
+                    const tileXIndex = Math.floor((x + floorWidth / 2) / tileSize);
+                    const tileZIndex = Math.floor((z + floorDepth / 2) / tileSize);
+                    const useTextureA = (tileXIndex + tileZIndex) % 2 === 0;
+
+                    const material = new THREE.MeshStandardMaterial({
+                        map: useTextureA ? marbleTextureA : marbleTextureB,
+                        metalness: 0.0,
+                        roughness: 0.1,
+                        side: THREE.DoubleSide,
+                    });
+
+                    const tile = new THREE.Mesh(tileGeometry, material);
+                    tile.rotation.x = -Math.PI / 2;
+                    tile.rotation.z = getRandomRotation();
+                    tile.position.set(x + tileSize / 2, 0, z + tileSize / 2); 
+                    tile.receiveShadow = true;
+                    scene.add(tile);
+                    objects.push(tile);
+                }
+            }
 
             // Ceiling
-            const ceilingGeometry = new THREE.PlaneGeometry(20, 20);
+            const ceilingGeometry = new THREE.PlaneGeometry(10, 10);
             const ceilingMaterial = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
             const ceiling = new THREE.Mesh(ceilingGeometry, ceilingMaterial);
             ceiling.position.y = 3; // wallHeight
@@ -494,44 +569,207 @@
             scene.add(ceiling);
 
             // Walls
-            const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x475569 });
             const wallHeight = 3;
             wallThickness = 0.1; // Initialize global
-            roomSize = 20; // Initialize global
+            roomSize = 10; // Initialize global
 
-            const wall1 = new THREE.Mesh(new THREE.BoxGeometry(roomSize, wallHeight, wallThickness), wallMaterial);
-            wall1.position.set(0, wallHeight / 2, -roomSize/2);
-            scene.add(wall1); objects.push(wall1);
+            // Wall Materials (Marble)
+            const blueMarbleTextures = [
+                'images/BlueMarble(1).png',
+                'images/BlueMarble(2).png',
+                'images/BlueMarble(3).png',
+                'images/BlueMarble(4).png',
+                'images/BlueMarble(5).png'
+            ];
 
-            const wall2 = new THREE.Mesh(new THREE.BoxGeometry(roomSize, wallHeight, wallThickness), wallMaterial);
-            wall2.position.set(0, wallHeight / 2, roomSize/2);
-            scene.add(wall2); objects.push(wall2);
-            
-            const wall3 = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, roomSize), wallMaterial);
-            wall3.position.set(-roomSize/2, wallHeight / 2, 0);
-            scene.add(wall3); objects.push(wall3);
+            function loadAllTextures(paths, callback) {
+                let loaded = 0;
+                const textures = [];
+                paths.forEach((path, i) => {
+                    textureLoader.load(path, function(tex) {
+                        textures[i] = tex;
+                        loaded++;
+                        if (loaded === paths.length) callback(textures);
+                    });
+                });
+            }
 
-            const wall4 = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, roomSize), wallMaterial);
-            wall4.position.set(roomSize/2, wallHeight/2, 0);
-            scene.add(wall4); objects.push(wall4);
+            function getRandomWallMaterialsForSet(count, loadedTextures) {
+                const indices = [];
+                const available = [...Array(loadedTextures.length).keys()];
+                for (let i = 0; i < count; i++) {
+                    const pick = Math.floor(Math.random() * available.length);
+                    indices.push(available.splice(pick, 1)[0]);
+                }
+                return indices.map(idx => {
+                    const origTex = loadedTextures[idx];
+                    if (!origTex.image) return new THREE.MeshStandardMaterial({ color: 0x222244 });
+                    const texClone = new THREE.Texture(origTex.image);
+                    texClone.needsUpdate = true;
+                    const rotations = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2];
+                    texClone.rotation = rotations[Math.floor(Math.random() * rotations.length)];
+                    texClone.center.set(0.5, 0.5);
+                    return new THREE.MeshStandardMaterial({
+                        map: texClone,
+                        metalness: 0.1,
+                        roughness: 0.4,
+                        side: THREE.DoubleSide
+                    });
+                });
+            }
+
+            // Helper to create a wall from 4 segments
+            function createWallSegments({
+                start, // Vector3 start position (center of first segment)
+                dir,   // Vector3 direction to step for each segment
+                segmentWidth, // width of each segment
+                wallHeight,
+                wallThickness,
+                rotation, // Euler rotation for each segment
+                loadedTextures
+            }) {
+                const materials = getRandomWallMaterialsForSet(4, loadedTextures);
+                for (let i = 0; i < 4; i++) {
+                    // Use PlaneGeometry for correct texture mapping
+                    const segmentGeo = new THREE.PlaneGeometry(segmentWidth, wallHeight);
+                    const segment = new THREE.Mesh(segmentGeo, materials[i]);
+                    segment.receiveShadow = true; // Allow walls to receive shadows
+                    // Position the plane so its center is at the correct spot
+                    segment.position.copy(start).add(dir.clone().multiplyScalar(i));
+                    segment.rotation.copy(rotation);
+                    scene.add(segment);
+                    objects.push(segment);
+                }
+            }
+
+            loadAllTextures(blueMarbleTextures, function(loadedTextures) {
+                const segmentCount = 4;
+                const segmentWidth = roomSize / segmentCount;
+                const halfRoom = roomSize / 2;
+                const halfSeg = segmentWidth / 2;
+                // Back wall (Z = -halfRoom)
+                createWallSegments({
+                    start: new THREE.Vector3(-halfRoom + halfSeg, wallHeight / 2, -halfRoom),
+                    dir: new THREE.Vector3(segmentWidth, 0, 0),
+                    segmentWidth,
+                    wallHeight,
+                    wallThickness,
+                    rotation: new THREE.Euler(0, Math.PI, 0),
+                    loadedTextures
+                });
+                // Front wall (Z = +halfRoom)
+                createWallSegments({
+                    start: new THREE.Vector3(-halfRoom + halfSeg, wallHeight / 2, halfRoom),
+                    dir: new THREE.Vector3(segmentWidth, 0, 0),
+                    segmentWidth,
+                    wallHeight,
+                    wallThickness,
+                    rotation: new THREE.Euler(0, 0, 0),
+                    loadedTextures
+                });
+                // Left wall (X = -halfRoom)
+                createWallSegments({
+                    start: new THREE.Vector3(-halfRoom, wallHeight / 2, -halfRoom + halfSeg),
+                    dir: new THREE.Vector3(0, 0, segmentWidth),
+                    segmentWidth,
+                    wallHeight,
+                    wallThickness,
+                    rotation: new THREE.Euler(0, Math.PI / 2, 0),
+                    loadedTextures
+                });
+                // Right wall (X = +halfRoom)
+                createWallSegments({
+                    start: new THREE.Vector3(halfRoom, wallHeight / 2, -halfRoom + halfSeg),
+                    dir: new THREE.Vector3(0, 0, segmentWidth),
+                    segmentWidth,
+                    wallHeight,
+                    wallThickness,
+                    rotation: new THREE.Euler(0, -Math.PI / 2, 0),
+                    loadedTextures
+                });
+            });
 
             // Pillars at the back of the room
-            const pillarMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.1, roughness: 0.4 });
+            const pillarTexture = textureLoader.load('images/Marble2.png');
+            pillarTexture.wrapS = THREE.RepeatWrapping;
+            pillarTexture.wrapT = THREE.RepeatWrapping;
+            pillarTexture.repeat.set(1,1); // Adjust tiling to look good
+
+            const pillarMaterial = new THREE.MeshStandardMaterial({
+                map: pillarTexture,
+                metalness: 0.1,
+                roughness: 0.2
+            });
             const pillarRadius = 0.25;
             const pillarHeight = wallHeight;
             const pillarGeometry = new THREE.CylinderGeometry(pillarRadius, pillarRadius, pillarHeight, 32);
 
             const pillar1 = new THREE.Mesh(pillarGeometry, pillarMaterial);
-            pillar1.position.set(-5, pillarHeight / 2, -roomSize / 2 + pillarRadius);
+            pillar1.position.set(-3, pillarHeight / 2, -roomSize / 2 + pillarRadius);
+            pillar1.rotation.y = Math.PI / 2; // Rotate to hide seam toward the wall
+            pillar1.castShadow = true;
             scene.add(pillar1);
             objects.push(pillar1);
 
             const pillar2 = new THREE.Mesh(pillarGeometry, pillarMaterial);
-            pillar2.position.set(5, pillarHeight / 2, -roomSize / 2 + pillarRadius);
+            pillar2.position.set(3, pillarHeight / 2, -roomSize / 2 + pillarRadius);
+            pillar2.rotation.y = Math.PI / 2; // Rotate to hide seam toward the wall
+            pillar2.castShadow = true;
             scene.add(pillar2);
             objects.push(pillar2);
 
-            artworkInfoPopup = document.getElementById('artwork-info-popup'); // Initialize here
+            // Digital Artwork Screen (Switching Image)
+            const digitalImagePaths = artworks.Digital.map(art => art.path);
+
+            // Remove any previous digital art screen (only use digitalSwitchingImagePlane)
+            if (typeof digitalSwitchingImagePlane !== 'undefined' && digitalSwitchingImagePlane) {
+                scene.remove(digitalSwitchingImagePlane);
+                digitalSwitchingImagePlane = undefined;
+            }
+
+            // Create the switching image plane (2.667 x 2.0 units)
+            const digitalSwitchingImageMaterial = new THREE.MeshBasicMaterial({
+                map: new THREE.TextureLoader().load(digitalImagePaths[0]),
+                side: THREE.DoubleSide
+            });
+            const digitalSwitchingImageGeometry = new THREE.PlaneGeometry(digitalScreenWidth, digitalScreenHeight);
+            digitalSwitchingImagePlane = new THREE.Mesh(digitalSwitchingImageGeometry, digitalSwitchingImageMaterial);
+            digitalSwitchingImagePlane.position.set(0, pillarHeight / 2, -roomSize / 2 + pillarRadius + 0.05);
+            scene.add(digitalSwitchingImagePlane);
+
+            // Add black box behind the digital screen (monitor frame)
+            const monitorFrameGeometry = new THREE.PlaneGeometry(digitalScreenWidth + 0.01, digitalScreenHeight + 0.01);
+            const monitorFrameMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            const monitorFrame = new THREE.Mesh(monitorFrameGeometry, monitorFrameMaterial);
+            monitorFrame.position.copy(digitalSwitchingImagePlane.position);
+            monitorFrame.position.z -= 0.011; // Slightly behind the screen
+            scene.add(monitorFrame);
+
+            // NEW: Digital Artwork Info Text as a Three.js object
+            // Create a canvas for the text texture
+            textCanvas = document.createElement('canvas'); // Global variable
+            textCanvasContext = textCanvas.getContext('2d'); // Global variable
+            textCanvas.width = 1024; // Larger resolution for better text quality
+            textCanvas.height = 128; // Adjust height as needed for text
+
+            const textTexture = new THREE.CanvasTexture(textCanvas);
+            const textMaterial = new THREE.MeshBasicMaterial({ map: textTexture, transparent: true, side: THREE.DoubleSide });
+            const textGeometry = new THREE.PlaneGeometry(digitalScreenWidth, 0.3); // Adjust height to fit above monitor
+            digitalArtworkInfoMesh = new THREE.Mesh(textGeometry, textMaterial);
+
+            // Position the info mesh just above the monitor screen
+            digitalArtworkInfoMesh.position.set(
+                digitalSwitchingImagePlane.position.x,
+                digitalSwitchingImagePlane.position.y + digitalScreenHeight / 2 + 0.2, // Above the screen
+                digitalSwitchingImagePlane.position.z
+            );
+            scene.add(digitalArtworkInfoMesh);
+
+            // Initial setup for digital artwork info and scrolling
+            shuffleDigitalArtworks(); // Create the first shuffled list
+            const initialArtworkIndex = shuffledDigitalArtIndices[currentShuffledIndex];
+            updateDigitalSwitchingImage(initialArtworkIndex); // Load the first artwork
+            // Removed setInterval for digital artwork flipping, now controlled in animate()
 
             // Function to create and position artworks
             function createArtwork(x, y, z, rotationY, type, art) {
@@ -539,37 +777,109 @@
 
                 const loader = new THREE.TextureLoader();
                 loader.load(art.path, function (texture) {
-                    const img = texture.image;
-                    const naturalWidth = img.width;
-                    const naturalHeight = img.height;
+                    const artworkGroup = new THREE.Group();
 
-                    let targetWidth, targetHeight;
-                    if (naturalWidth >= naturalHeight) {
-                        // Landscape: width = 1.2 units
-                        targetWidth = 1.2;
-                        targetHeight = (naturalHeight / naturalWidth) * targetWidth;
-                    } else {
-                        // Portrait: height = 1.2 units
-                        targetHeight = 1.2;
-                        targetWidth = (naturalWidth / naturalHeight) * targetHeight;
+                    // Sizing and thickness logic from Mall.html
+                    const aspect = texture.image.width / texture.image.height;
+                    let maxSide = 1.5; // Default max size for wall art from Mall.html
+                    if (art.name === "Jazz Trio") { // Special case from Mall.html
+                        maxSide = 2.0;
+                    }
+                    let artworkWidth, artworkHeight;
+                    if (aspect >= 1) { // Landscape or square
+                        artworkWidth = maxSide;
+                        artworkHeight = maxSide / aspect;
+                    } else { // Portrait
+                        artworkHeight = maxSide;
+                        artworkWidth = maxSide * aspect;
                     }
 
-                    const geometry = new THREE.PlaneGeometry(targetWidth, targetHeight);
-                    const material = new THREE.MeshBasicMaterial({ map: texture });
-                    const mesh = new THREE.Mesh(geometry, material);
+                    // Frame with thickness
+                    const frameDepth = 0.04;
+                    const frameGeo = new THREE.BoxGeometry(artworkWidth, artworkHeight, frameDepth);
+                    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a202c }); // Dark frame to match background
+                    const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+                    frameMesh.castShadow = true;
+                    frameMesh.receiveShadow = true;
+                    
+                    // The artwork plane itself
+                    const artGeo = new THREE.PlaneGeometry(artworkWidth, artworkHeight);
+                    const artMat = new THREE.MeshBasicMaterial({ map: texture }); // Using BasicMaterial as in original Art.html
+                    const artMesh = new THREE.Mesh(artGeo, artMat);
+                    artMesh.position.z = frameDepth / 2 + 0.001; // Position slightly in front of the frame
 
-                    // Set artwork at eye height (centered at 1.5 units)
-                    mesh.position.set(x, 1.5, z);
-                    mesh.rotation.y = rotationY;
-                    mesh.userData.targetHeight = targetHeight; // Store the calculated height for popup positioning
-                    mesh.userData.artworkData = art; // Store the full artwork data
-                    interactiveArtworks.push(mesh); // Add to the interactive list
-                    scene.add(mesh);
+                    // Add frame and art to the group
+                    artworkGroup.add(frameMesh);
+                    artworkGroup.add(artMesh);
+
+                    // Create and position the gold plaque below the painting
+                    const plaqueWidth = 0.7; // Fixed width for the plaque
+                    const plaqueHeight = 0.12; // Fixed height for the plaque
+                    const plaqueDepth = 0.02; // Thin plaque
+
+                    const plaqueGeometry = new THREE.BoxGeometry(plaqueWidth, plaqueHeight, plaqueDepth);
+                    const plaqueMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700, metalness: 0.5, roughness: 0.3 }); // Gold color
+
+                    const plaqueMesh = new THREE.Mesh(plaqueGeometry, plaqueMaterial);
+                    plaqueMesh.castShadow = true;
+                    plaqueMesh.receiveShadow = false;
+
+                    // Position plaque below the artwork
+                    plaqueMesh.rotation.x = - Math.PI / 20; // Rotate plaque to face viewer
+                    plaqueMesh.position.y = -artworkHeight / 2 - plaqueHeight / 2 - 0.1; // Below artwork, with a small gap
+                    plaqueMesh.position.z = frameDepth / 2; //  + 0.001; // Same Z as artwork for alignment
+
+                    artworkGroup.add(plaqueMesh); // Add plaque to the artwork group
+
+                    // Create text for the plaque
+                    const plaqueTextCanvas = document.createElement('canvas');
+                    const plaqueTextContext = plaqueTextCanvas.getContext('2d');
+                    plaqueTextCanvas.width = 512; // High resolution for text rendering
+                    plaqueTextCanvas.height = 64; // High resolution for text rendering
+
+                    plaqueTextContext.font = 'Bold 30px "Inter"'; // Keep font size consistent on canvas
+                    plaqueTextContext.fillStyle = '#151000'; // Dark text on gold
+                    plaqueTextContext.textAlign = 'center';
+                    plaqueTextContext.textBaseline = 'middle';
+                    plaqueTextContext.fillText(art.name, plaqueTextCanvas.width / 2, plaqueTextCanvas.height / 2);
+
+                    const plaqueTextTexture = new THREE.CanvasTexture(plaqueTextCanvas);
+                    const plaqueTextMaterial = new THREE.MeshBasicMaterial({ map: plaqueTextTexture, transparent: true, side: THREE.DoubleSide });
+
+                    // Define the world dimensions for the text plane to control its visual size
+                    const textPlaneHeightInWorldUnits = 0.08; // Desired visual height of the text
+                    const textPlaneWidthInWorldUnits = textPlaneHeightInWorldUnits * (plaqueTextCanvas.width / plaqueTextCanvas.height);
+
+                    const plaqueTextPlane = new THREE.Mesh(new THREE.PlaneGeometry(textPlaneWidthInWorldUnits, textPlaneHeightInWorldUnits), plaqueTextMaterial);
+                    
+                    plaqueTextPlane.position.y = plaqueMesh.position.y; // Same Y as plaque
+                    plaqueTextPlane.position.z = plaqueMesh.position.z + plaqueDepth / 2 + 0.002; // Slightly in front of plaque
+
+                    artworkGroup.add(plaqueTextPlane); // Add text plane to artwork group
+                    
+                    // Position and rotate the entire group
+                    artworkGroup.position.set(x, y, z);
+                    artworkGroup.rotation.y = rotationY;
+
+                    // Add a spotlight for each painting
+                    const spotLight = new THREE.SpotLight(0xffffff, 0.8, 10, Math.PI / 8, 0.5, 2);
+                    spotLight.position.set(x, 3, z); // Position spotlight on the ceiling
+                    spotLight.target = artworkGroup; // Aim the spotlight at the artwork
+                    spotLight.castShadow = true;
+                    scene.add(spotLight);
+                    scene.add(spotLight.target);
+
+                    // Store data on the interactive part (the visible artwork plane) for popups
+                    artMesh.userData.targetHeight = artworkHeight;
+                    artMesh.userData.artworkData = art;
+                    interactiveArtworks.push(artMesh); // Add plane to interactive list for hover detection
+
+                    scene.add(artworkGroup);
                 });
             }
 
             // Populate the gallery
-            const artworkY = 1.75; // Vertical position of artworks
+            const artworkY = 1.6; // Vertical position of artworks
 
             // Paintings on side walls
             const leftWallX = -roomSize / 2 + wallThickness + 0.1;
@@ -601,7 +911,11 @@
 
             // Digital art is now on the screen, so we remove the old placement logic for it.
 
+            addCeilingLights();
+
             renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.getElementById('threejs-container').appendChild(renderer.domElement);
@@ -701,11 +1015,151 @@
             }
         }
         
+        function formatArtworkInfo(artwork) {
+            if (!artwork) return "";
+            let info = `${artwork.name}`; 
+            if (artwork.artist) info += ` by ${artwork.artist}`;
+            if (artwork.year) info += `, ${artwork.year}`;
+            if (artwork.medium) info += `, ${artwork.medium}`;
+            return info;
+        }
+
+        // Function to draw the scrolling text on the canvas
+        function drawScrollingText() {
+            if (!textCanvasContext) return;
+
+            // Clear previous text
+            textCanvasContext.clearRect(0, 0, textCanvas.width, textCanvas.height);
+
+            // Set text properties
+            textCanvasContext.font = '700 60px "Doto"';
+            textCanvasContext.fillStyle = '#0AAFFF';
+            textCanvasContext.textAlign = 'left'; // Align left for scrolling
+            textCanvasContext.textBaseline = 'middle';
+
+            // Add text shadow for glow effect
+            textCanvasContext.shadowColor = '#0AAFFF';
+            textCanvasContext.shadowBlur = 8;
+            textCanvasContext.shadowOffsetX = 0;
+            textCanvasContext.shadowOffsetY = 0;
+
+            // Draw text at the current scroll offset
+            // If text is wider than canvas, draw it twice for seamless looping
+            if (textWidth > digitalScreenWidth * (textCanvas.width / digitalArtworkInfoMesh.geometry.parameters.width)) { // Compare pixel width with effective screen pixel width
+                textCanvasContext.fillText(currentInfoText, textScrollOffset, textCanvas.height / 2);
+                // Draw a second instance of the text after the first one, with some spacing
+                const spacing = 50; // Pixels between repeated text
+                textCanvasContext.fillText(currentInfoText, textScrollOffset + textWidth + spacing, textCanvas.height / 2);
+            } else {
+                // If text fits, just center it
+                textCanvasContext.textAlign = 'center';
+                textCanvasContext.fillText(currentInfoText, textCanvas.width / 2, textCanvas.height / 2);
+            }
+
+            // Update the texture
+            digitalArtworkInfoMesh.material.map.needsUpdate = true;
+        }
+
+        function shuffleDigitalArtworks() {
+            // Create an array of indices [0, 1, 2, ...]
+            shuffledDigitalArtIndices = Array.from(artworks.Digital.keys());
+
+            // Fisher-Yates (aka Knuth) Shuffle
+            for (let i = shuffledDigitalArtIndices.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffledDigitalArtIndices[i], shuffledDigitalArtIndices[j]] = [shuffledDigitalArtIndices[j], shuffledDigitalArtIndices[i]];
+            }
+            currentShuffledIndex = 0;
+        }
+
+        // Function to update the digital switching image and the Three.js info text
+        function updateDigitalSwitchingImage(artworkIndex) {
+            if (!digitalSwitchingImagePlane || !digitalArtworkInfoMesh) return;
+
+            const digitalImagePaths = artworks.Digital.map(art => art.path);
+            const loader = new THREE.TextureLoader();
+            loader.load(digitalImagePaths[artworkIndex], function (texture) {
+                if (!digitalSwitchingImagePlane) return; // Check again in case it was removed
+                digitalSwitchingImagePlane.material.map = texture;
+                digitalSwitchingImagePlane.material.needsUpdate = true;
+
+                // Update the Three.js text mesh
+                const art = artworks.Digital[artworkIndex];
+                currentInfoText = formatArtworkInfo(art); // Store the current text
+
+                // Measure text width
+                textCanvasContext.font = '700 60px "Doto"'; // Ensure font is set for measurement
+                const metrics = textCanvasContext.measureText(currentInfoText);
+                textWidth = metrics.width; // Store actual text width
+
+                // Reset scroll offset when new text loads
+                // Start text from the right edge of the canvas if it needs to scroll, otherwise center
+                if (textWidth > digitalScreenWidth * (textCanvas.width / digitalArtworkInfoMesh.geometry.parameters.width)) {
+                    textScrollOffset = textCanvas.width;
+                    isTextScrolling = true; // Text will start scrolling
+                } else {
+                    textScrollOffset = 0; // Not scrolling, centered
+                    isTextScrolling = false; // Text does not need to scroll
+                    lastScrollFinishTime = performance.now(); // Set finish time immediately if no scroll
+                }
+                
+                // Initial draw
+                drawScrollingText();
+            });
+        }
+
+        let backWallPopupShown = false;
+        let backWallForwardStart = null;
+        const backWallPopup = document.getElementById('back-wall-popup');
+
+        function showBackWallPopup() {
+            if (backWallPopup) {
+                backWallPopup.textContent = 'Going back to the Mall';
+                backWallPopup.style.display = 'block';
+                backWallPopupShown = true;
+            }
+        }
+        function hideBackWallPopup() {
+            if (backWallPopup) {
+                backWallPopup.style.display = 'none';
+                backWallPopupShown = false;
+            }
+        }
+
         function animate() {
             requestAnimationFrame(animate);
             const time = performance.now();
+            const delta = (time - prevTime) / 1000;
 
             if (controls.isLocked === true) {
+                // Scrolling text logic
+                const effectiveScreenWidthPixels = digitalScreenWidth * (textCanvas.width / digitalArtworkInfoMesh.geometry.parameters.width);
+                const totalTextWidthWithSpacing = textWidth + 50; // textWidth + spacing from drawScrollingText
+
+                if (isTextScrolling) {
+                    textScrollOffset -= textScrollSpeed * 100 * delta; // Multiply by 100 to convert from world units to canvas pixels
+                    
+                    // Check if text has scrolled past its full length (plus spacing)
+                    if (textScrollOffset < -totalTextWidthWithSpacing) {
+                        // If it's the end of a full cycle for looping text, set scrolling to false
+                        // This condition ensures the text completes one full pass before stopping or signaling completion
+                        textScrollOffset = effectiveScreenWidthPixels; // Reset to start from right for next loop
+                        isTextScrolling = false; // Signal that scrolling has completed a cycle
+                        lastScrollFinishTime = time; // Record time when scrolling finished
+                    }
+                    drawScrollingText(); // Redraw text with new offset
+                }
+
+                // Digital artwork screen flipping logic (only if text is not scrolling OR text fits)
+                if (!isTextScrolling && (time - lastScrollFinishTime > delayAfterScroll)) {
+                    currentShuffledIndex++;
+                    if (currentShuffledIndex >= shuffledDigitalArtIndices.length) {
+                        shuffleDigitalArtworks(); // Reshuffle when the list is exhausted
+                    }
+                    const nextArtworkIndex = shuffledDigitalArtIndices[currentShuffledIndex];
+                    updateDigitalSwitchingImage(nextArtworkIndex); // This will reset scrollOffset and set isTextScrolling=true if needed
+                }
+
                 // Raycasting for artwork hover
                 raycaster.setFromCamera({ x: 0, y: 0 }, camera); // Ray from center of screen
                 const intersects = raycaster.intersectObjects(interactiveArtworks, false); // Only check artworks
@@ -731,59 +1185,70 @@
                         const x = (artworkTopCenterWorldPosition.x * 0.5 + 0.5) * window.innerWidth;
                         const y = (-artworkTopCenterWorldPosition.y * 0.5 + 0.5) * window.innerHeight;
 
-                        artworkInfoPopup.style.left = `${x + 15}px`; // Offset slightly to the right
-                        artworkInfoPopup.style.top = `${y - 15}px`; // Offset slightly upwards
-                        artworkInfoPopup.textContent = artworkData.name;
-                        artworkInfoPopup.style.display = 'block';
+                        // Ensure artworkInfoPopup is defined before accessing its style
+                        if (artworkInfoPopup) {
+                            artworkInfoPopup.style.left = `${x + 15}px`; // Offset slightly to the right
+                            artworkInfoPopup.style.top = `${y - 15}px`; // Offset slightly upwards
+                            artworkInfoPopup.textContent = artworkData.name;
+                            artworkInfoPopup.style.display = 'block';
+                        }
                     }
                 } else {
-                    if (currentHoveredArtwork) {
+                    // Ensure artworkInfoPopup is defined before accessing its style
+                    if (currentHoveredArtwork && artworkInfoPopup) {
                         artworkInfoPopup.style.display = 'none';
                         currentHoveredArtwork = null;
                     }
                 }
 
-                raycaster.ray.origin.copy(controls.getObject().position);
-                raycaster.ray.origin.y -= 1.75;
-                const intersections = raycaster.intersectObjects(objects, false);
-                const onObject = intersections.length > 0;
-                const delta = (time - prevTime) / 1000;
+                // --- Player movement logic from Mall.html ---
+                // No gravity, no jumping, no Y velocity
+                // Damping
+                playerVelocity.x -= playerVelocity.x * 10.0 * delta;
+                playerVelocity.z -= playerVelocity.z * 10.0 * delta;
 
-                velocity.x -= velocity.x * 10.0 * delta;
-                velocity.z -= velocity.z * 10.0 * delta;
-                velocity.y -= 9.8 * 100.0 * delta; // gravity
+                // Acceleration
+                const accelerationFactor = playerSpeed * 8.0;
+                if (moveForward) playerVelocity.z -= accelerationFactor * delta;
+                if (moveBackward) playerVelocity.z += accelerationFactor * delta;
+                if (moveLeft) playerVelocity.x -= accelerationFactor * delta;
+                if (moveRight) playerVelocity.x += accelerationFactor * delta;
 
-                direction.z = Number(moveForward) - Number(moveBackward);
-                direction.x = Number(moveRight) - Number(moveLeft);
-                direction.normalize();
-
-                if (moveForward || moveBackward) velocity.z -= direction.z * 150.0 * delta; // Reduced speed
-                if (moveLeft || moveRight) velocity.x -= direction.x * 150.0 * delta; // Reduced speed
-
-                if (onObject === true) {
-                    velocity.y = Math.max(0, velocity.y);
-                    canJump = true;
-                }
-
-                controls.moveRight(-velocity.x * delta);
-                controls.moveForward(-velocity.z * delta);
-                controls.getObject().position.y += (velocity.y * delta);
-
-                if (controls.getObject().position.y < 1.75) {
-                    velocity.y = 0;
-                    controls.getObject().position.y = 1.75;
-                    canJump = true;
-                }
+                const playerObject = controls.getObject();
+                playerObject.translateX(playerVelocity.x * delta);
+                playerObject.translateZ(playerVelocity.z * delta);
+                playerObject.position.y = playerHeight; // Keep player at constant height
 
                 // Prevent moving outside the room (wall collision)
-                const camPos = controls.getObject().position;
+                const camPos = playerObject.position;
                 const buffer = wallThickness + 0.1; // A small buffer to prevent getting stuck
                 const minBound = -roomSize / 2 + buffer;
                 const maxBound = roomSize / 2 - buffer;
                 camPos.x = Math.max(minBound, Math.min(maxBound, camPos.x));
                 camPos.z = Math.max(minBound, Math.min(maxBound, camPos.z));
+
+                // --- Front wall detection and redirect logic ---
+                // Front wall is at z = +roomSize/2
+                const frontWallZ = roomSize / 2;
+                const closeToFrontWall = (frontWallZ - camPos.z) < (buffer + 0.05);
+                // Facing the wall: camera looks within 45deg of +Z
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                const facingFrontWall = forward.z > 0.7; // cos(45deg) ~ 0.7
+                if (closeToFrontWall && facingFrontWall && moveForward) {
+                    if (!backWallPopupShown) {
+                        showBackWallPopup();
+                        backWallForwardStart = time;
+                    } else {
+                        // If popup is already shown and player keeps pressing W, check duration
+                        if (backWallForwardStart && (time - backWallForwardStart > 1.0)) {
+                            window.location.href = '../index.html';
+                        }
+                    }
+                } else {
+                    hideBackWallPopup();
+                    backWallForwardStart = null;
+                }
             }
-            
             prevTime = time;
             renderer.render(scene, camera);
         }

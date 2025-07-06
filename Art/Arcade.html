@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-Arcade</title>
+    <link rel="stylesheet" href="menu.css">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    </head>
+<body>
+    <div style="position: absolute; top: 10px; left: 10px; z-index: 999;">
+        <a href="../index.html" style="color: white; text-decoration: none; background-color: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px;">Back to Main</a>
+    </div>
+    <div id="menu">
+        <h3>Games & Apps</h3>
+        <div id="game-list">
+            </div>
+    </div>
+
+    <div id="popup">
+        <h4 id="popup-title"></h4>
+        <p id="popup-stage"></p>
+        <p id="popup-description"></p>
+    </div>
+
+    <div id="context-menu">
+         <h4>Games & Apps</h4>
+         <div id="context-game-list">
+             </div>
+     </div>
+
+
+    <div id="threejs-container"></div>
+        <!-- Menu Overlay (identical to Menu.html, minus the 'i') -->
+    <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+    <div id="menu-container">
+        <div class="menu-title">Main Menu</div>
+        <div id="menu-columns-wrapper">
+            <!-- Columns will be dynamically generated here -->
+        </div>
+    </div>
+    <script src="menu.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/lights/RectAreaLightUniformsLib.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/FontLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/geometries/TextGeometry.js"></script>
+
+
+    <script>
+        // --- Three.js Setup ---
+        let scene, camera, renderer;
+        // Store all interactive meshes here (cubes and individual parts of groups)
+        let interactiveMeshes = [];
+        // Store the top-level arcade machine objects (groups or cubes) with game data
+        let arcadeMachineObjects = [];
+        let raycaster;
+        let mouse = new THREE.Vector2();
+        let hoveredMachine = null; // Store the arcadeMachineObject that is hovered
+        const popup = document.getElementById('popup');
+        const popupTitle = document.getElementById('popup-title');
+        const popupStage = document.getElementById('popup-stage');
+        const popupDescription = document.getElementById('popup-description');
+
+        // Context Menu elements
+        const contextMenu = document.getElementById('context-menu');
+        const contextGameListDiv = document.getElementById('context-game-list');
+
+        // Loaded fonts for 3D text
+        let signFont = null;
+        let machineTitleFont = null;
+        let fontsLoaded = 0;
+        const totalFontsToLoad = 2;
+
+
+        // Game data with added colors
+        const games = [
+            { id: 'pacman', title: '3d Pac-Man', stage: 'Alpha', description: 'A classic maze game in 3D.', type: 'normal', link: 'Pac3d/3dPacMan.html', machineColor: 0xaa9900, textColor: 0x7F00FF }, // Yellow machine, purple text
+            { id: 'elevator', title: 'ESCALAT3D Mayhem', stage: 'In development', description: '3d Elevator Action game set in a high-rise with escalators.', type: 'normal', link: 'Escalated/escalatedMayhem.html', machineColor: 0x112244, textColor: 0xff2211 }, // Navy blue machine, orange text
+            { id: 'pacsnake', title: 'Pac-Snake', stage: 'In development', description: 'A mashup of Pac-Man and Snake.', type: 'normal', link: 'PacSnake/PacSnake.html', machineColor: 0x220055, textColor: 0xcc9911 }, // purple machine, yellow text
+            { id: 'voxelminer', title: 'Planet Miner', stage: 'In development', description: 'Explore and mine voxel planets.', type: 'normal', link: 'PlanetMiner/PlanetMiner.html', machineColor: 0xcaa5500, textColor: 0x111111 }, // Golden Yellow machine, Black text
+            { id: 'flightsim', title: 'Flying Art', stage: 'In development', description: 'Fly and paint in a 3D environment.', type: 'flight', link: 'PaintFlyer/PaintFlight.html', machineColor: 0x0088aa, textColor: 0x111111 }, // Sky blue machine, black text
+            { id: 'paintsim', title: 'Paint Sim', stage: 'In development', description: 'A realistic painting simulation.', type: 'art', link: 'Paint/Paint.html',  machineColor: 0xaaaaaa, textColor: 0x990000 }, // Light grey Machine, red text
+            { id: 'drivingsim', title: '3d Road-Painter', stage: 'In development', description: 'Get behind the wheel and fly away, leaving a road trail.', type: 'driving', link: 'trackFlyer/FlyingTracks.html', machineColor: 0x990000, textColor: 0x111111 }, // Red machine, black text
+        ];
+
+        // Sort games by stage (Alpha first, then In development)
+        games.sort((a, b) => {
+            if (a.stage === 'Alpha' && b.stage !== 'Alpha') return -1;
+            if (a.stage !== 'Alpha' && b.stage === 'Alpha') return 1;
+            return 0;
+        });
+
+        // --- FPS Controls Variables ---
+        let isPointerLocked = false;
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+        const cameraSpeed = 0.1; // Adjusted speed for smoother movement
+        const lookSpeed = 0.002; // Mouse look sensitivity
+        let pitch = 0; // Vertical camera rotation
+        let yaw = 0; // Horizontal camera rotation
+
+        // --- Room and Machine Placement Variables ---
+        const roomSize = 17; // Size of the square room
+        const machineSpacing = 2; // Spacing between machines
+        const wallThickness = 0.5; // Thickness of the walls
+        const counterDepth = 2; // Depth of the counter
+        const counterWidth = 4; // Width of the counter
+        const counterHeight = 1.3; // Height of the counter
+        const signHeight = 1.5; // Height of the sign text
+        const signWidth = 8; // Width of the sign text
+
+        // Back-left corner reference point
+        const backLeftCorner = new THREE.Vector3(-roomSize / 2, 0, -roomSize / 2);
+
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x222222); // Dark grey background
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            // Initial camera position: front-right corner
+            camera.position.set(roomSize / 4, 1.6, roomSize / 4); // Position slightly inside the corner
+            // Initial camera view: looking towards the back-left corner
+            camera.lookAt(backLeftCorner.x, camera.position.y, backLeftCorner.z);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            const container = document.getElementById('threejs-container');
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x030303); // Soft white light
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            directionalLight.position.set(1, 1, 1).normalize();
+            scene.add(directionalLight);
+
+            // Ground
+            createCheckeredFloor();
+
+            // Walls (with gradient material)
+            const wallHeight = 4; // Assuming wall height is 4 based on ceiling position
+            const gradientTexture = createGradientTexture(); // Removed height parameter
+            const wallMaterial = new THREE.MeshStandardMaterial({ map: gradientTexture });
+
+            // Back Wall
+            const backWall = new THREE.Mesh(new THREE.BoxGeometry(roomSize, wallHeight, wallThickness), wallMaterial);
+            backWall.position.set(0, wallHeight / 2, -roomSize / 2 - wallThickness / 2);
+            scene.add(backWall);
+            // Left Wall
+            const leftWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, roomSize + wallThickness), wallMaterial);
+            leftWall.position.set(-roomSize / 2 - wallThickness / 2, wallHeight / 2, 0);
+            scene.add(leftWall);
+             // Right Wall
+            const rightWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, roomSize + wallThickness), wallMaterial);
+            rightWall.position.set(roomSize / 2 + wallThickness / 2, wallHeight / 2, 0);
+            scene.add(rightWall);
+            // Front Wall
+            const frontWall = new THREE.Mesh(new THREE.BoxGeometry(roomSize, wallHeight, wallThickness), wallMaterial);
+            frontWall.position.set(0, wallHeight / 2, roomSize / 2 + wallThickness / 2);
+            scene.add(frontWall);
+             // Ceiling (material remains the same)
+            const ceilingGeometry = new THREE.PlaneGeometry(roomSize, roomSize);
+            const ceilingMaterial = new THREE.MeshStandardMaterial({ color: 0x555555 }); // Keep ceiling dark grey
+            const ceiling = new THREE.Mesh(ceilingGeometry, ceilingMaterial);
+            ceiling.rotation.x = Math.PI / 2; // Rotate to be horizontal
+            ceiling.position.y = wallHeight /* - wallThickness / 2 */;
+
+            scene.add(ceiling);
+
+
+            // Load the fonts
+            const loader = new THREE.FontLoader();
+
+            // Load font for the main sign
+            loader.load('https://threejs.org/examples/fonts/gentilis_bold.typeface.json', function (font) {
+                signFont = font;
+                addCounterAndSign(signFont); // Add sign AFTER its font is loaded
+                fontsLoaded++;
+                checkFontsLoaded();
+            }, undefined, function(error) { console.error("Error loading sign font:", error); fontsLoaded++; checkFontsLoaded(); }); // Add error handling
+
+            // Load font for machine titles
+            loader.load('https://threejs.org/examples/fonts/optimer_bold.typeface.json', function (font) {
+                machineTitleFont = font;
+                fontsLoaded++;
+                checkFontsLoaded();
+            }, undefined, function(error) { console.error("Error loading machine title font:", error); fontsLoaded++; checkFontsLoaded(); }); // Add error handling
+
+
+            // Raycaster for interactions
+            raycaster = new THREE.Raycaster();
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            document.addEventListener('click', onClick, false);
+            document.addEventListener('keydown', onKeyDown, false);
+            document.addEventListener('keyup', onKeyUp, false);
+            // Prevent default right-click context menu
+            document.addEventListener('contextmenu', onContextMenu, false);            
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'm' || event.key === 'M' || event.key === 'Escape') {
+                    event.preventDefault();
+                    toggleMenu(true); // Ensure the menu is shown
+                }
+            });
+            // Add click listener to the document for pointer lock request
+            document.addEventListener('click', () => {
+                if (!isPointerLocked && !contextMenu.contains(event.target) && !document.getElementById('menu').contains(event.target)) {
+                     renderer.domElement.requestPointerLock();
+                }
+            });
+
+            document.addEventListener('pointerlockchange', onPointerLockChange, false);
+            document.addEventListener('pointerlockerror', onPointerLockError, false);
+
+            // Populate Menu and Context Menu
+            populateMenu();
+            populateContextMenu();
+
+            // Start animation loop
+            animate();
+
+            // Add ceiling lights
+            addCeilingLights();
+        }
+
+        // Function to create a vertical gradient texture
+        function createGradientTexture() { // Removed height parameter
+            const canvas = document.createElement('canvas');
+            canvas.width = 1; // Only need 1 pixel width for a vertical gradient
+            canvas.height = 256; // Height for the gradient resolution
+
+            const context = canvas.getContext('2d');
+
+            const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#7F00FF'); // Top: Neon Ultra Violet
+            gradient.addColorStop(0.3, '#111111'); // Towards middle: Dark Grey
+            gradient.addColorStop(0.7, '#111111'); // Towards middle: Dark Grey
+            gradient.addColorStop(1, '#7F00FF'); // Bottom: Neon Ultra Violet
+
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            // Ensure the texture is not flipped vertically by default (BoxGeometry UVs might be inverted)
+            texture.flipY = false;
+            // Repeat horizontally across the wall width, and repeat vertically once for the full height
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(roomSize, 1); // Repeat horizontally, cover height once
+
+            return texture;
+        }
+
+
+        function checkFontsLoaded() {
+            if (fontsLoaded === totalFontsToLoad) {
+                // Both fonts are loaded, now add the arcade machines
+                addArcadeMachines();
+            }
+        }
+
+
+        function addCounterAndSign(font) { // Accept font as parameter
+            // Create a group to hold the counter and sign
+            const counterGroup = new THREE.Group();
+
+            // Counter (Black Box)
+            const counterGeometry = new THREE.BoxGeometry(counterWidth, counterHeight, counterDepth);
+            const counterMaterial = new THREE.MeshStandardMaterial({ color: 0x111111 }); // Black
+            const counter = new THREE.Mesh(counterGeometry, counterMaterial);
+            // Position the counter relative to the group
+            counter.position.set(0, counterHeight / 2, 0);
+            counterGroup.add(counter);
+
+            // Sign (Black Box)
+            const signGeometry = new THREE.BoxGeometry(signWidth, signHeight, 0.2);
+            const signMaterial = new THREE.MeshStandardMaterial({ color: 0x111111 }); // Black
+            const signBox = new THREE.Mesh(signGeometry, signMaterial);
+            // Position the sign relative to the group
+            signBox.position.set(0, counterHeight * 2 + signHeight / 2 + 0.1, 0);
+            counterGroup.add(signBox);
+
+            // "MY ARCADE" Text (Ultraviolet-like Purple)
+            // Use the passed loaded font
+            if (font) { // Check if font is provided
+                const textGeometry = new THREE.TextGeometry('X-ARCADE', {
+                    font: font, // Use the passed font
+                    size: signHeight / 2, // Height of the letters
+                    height: 0.2, // Thickness of the letters
+                    curveSegments: 12,
+                    bevelEnabled: true,
+                    bevelThickness: 0.05,
+                    bevelSize: 0.02,
+                    bevelOffset: 0,
+                    bevelSegments: 5
+                });
+
+                const textMaterial = new THREE.MeshStandardMaterial({ color: 0x1F51FF }); // Ultraviolet-like Purple
+                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+
+                // Center the text geometry
+                textGeometry.computeBoundingBox();
+                const textWidth = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
+                const textHeightActual = textGeometry.boundingBox.max.y - textGeometry.boundingBox.min.y;
+
+                // Position the text above the counter and centered on its front face
+                textMesh.position.set(
+                    -textWidth / 2, // Center horizontally
+                    counterHeight * 2 + textHeightActual / 2 + 0.1, // Above the counter
+                    0.2 // Slightly in front of the counter
+                );
+
+                counterGroup.add(textMesh);
+            } else {
+                console.warn("Sign font not loaded. Cannot add 'MY ARCADE' text.");
+            }
+
+
+            // Position the group in the back-left corner
+            counterGroup.position.set(
+                backLeftCorner.x + counterWidth / 2 + wallThickness / 2,
+                0,
+                backLeftCorner.z + counterDepth  + wallThickness / 2
+            );
+
+            // Rotate the group 45 degrees towards the front-right direction
+            counterGroup.rotation.y = Math.PI / 4;
+
+            // Add the group to the scene
+            scene.add(counterGroup);
+        }
+
+        // Pass game data and loaded font to machine creation functions
+        function createArcadeMachine(game, font) {
+            const arcadeGroup = new THREE.Group();
+
+            // Store game data on the group
+            arcadeGroup.userData.game = game;
+
+            // Use game.machineColor for the main machine parts
+            const machineBaseMaterial = new THREE.MeshStandardMaterial({ color: game.machineColor , roughness:0.2 , metalness: 0.1 });
+
+            // Main Box
+            const mainBoxGeometry = new THREE.BoxGeometry(0.9, 1.75, 0.56);
+            const mainBox = new THREE.Mesh(mainBoxGeometry, machineBaseMaterial);
+            mainBox.position.set(0, 0.875, 0); // Adjust position
+            mainBox.userData.parentGroup = arcadeGroup; // Reference to the parent group
+            arcadeGroup.add(mainBox);
+            interactiveMeshes.push(mainBox); // Add to interactive meshes list
+
+            // Play Table
+            const playTableGeometry = new THREE.BoxGeometry(0.9, 1, 0.5);
+            const playTable = new THREE.Mesh(playTableGeometry, machineBaseMaterial);
+            playTable.position.set(0, 0.5, -0.2); // Adjust position
+            playTable.rotation.x = THREE.MathUtils.degToRad(-15); // Rotate -15 degrees
+            playTable.userData.parentGroup = arcadeGroup; // Reference to the parent group
+            arcadeGroup.add(playTable);
+            interactiveMeshes.push(playTable); // Add to interactive meshes list
+
+            // Top
+            const topGeometry = new THREE.BoxGeometry(0.9, 0.15, 0.75);
+            const top = new THREE.Mesh(topGeometry, machineBaseMaterial);
+            top.position.set(0, 1.675, -0.095); // Adjust position
+            top.userData.parentGroup = arcadeGroup; // Reference to the parent group
+            arcadeGroup.add(top);
+            interactiveMeshes.push(top); // Add to interactive meshes list
+
+            // Joystick (Keep original color)
+            const joystickGeometry = new THREE.SphereGeometry(0.04, 16, 16);
+            const joystickMaterial = new THREE.MeshStandardMaterial({ color: 0xee0000, roughness:0 }); // Red
+            const joystick = new THREE.Mesh(joystickGeometry, joystickMaterial);
+            joystick.position.set(0.22, 1, -0.45); // Adjust position
+            joystick.userData.parentGroup = arcadeGroup; // Reference to the parent group
+            arcadeGroup.add(joystick);
+            interactiveMeshes.push(joystick); // Add to interactive meshes list
+
+            // Stick (Keep original color)
+            const stickGeometry = new THREE.CylinderGeometry(0.01, 0.01, 0.1, 16);
+            const stickMaterial = new THREE.MeshStandardMaterial({ color: 0x999999, metalness:1, roughness:0 }); // grey
+            const stick = new THREE.Mesh(stickGeometry, stickMaterial);
+            stick.position.set(0.22, .95, -0.45); // Adjust position
+            stick.userData.parentGroup = arcadeGroup; // Reference to the parent group
+            arcadeGroup.add(stick);
+            interactiveMeshes.push(stick); // Add to interactive meshes list
+
+            // Buttons (Keep original color)
+            const buttonGeometry = new THREE.CylinderGeometry(0.04, 0.04, 0.1, 16);
+            const buttonMaterial = new THREE.MeshStandardMaterial({ color: 0xee0000, roughness:0 }); // Dark Grey
+            const button = new THREE.Mesh(buttonGeometry, buttonMaterial);
+            button.position.set(-0.22, 0.93, -0.43); // Adjust position
+            button.rotation.x = THREE.MathUtils.degToRad(-15); // Rotate -15 degrees
+            button.userData.parentGroup = arcadeGroup; // Reference to the parent group
+            arcadeGroup.add(button);
+            interactiveMeshes.push(button); // Add to interactive meshes list
+
+
+            // Screen (Interactive part)
+            const screenGeometry = new THREE.PlaneGeometry(0.8, 0.6);
+            const screenMaterial = new THREE.MeshStandardMaterial({ color: 0x1F51FF }); // UV Blue
+            const screen = new THREE.Mesh(screenGeometry, screenMaterial);
+            screen.rotation.y = THREE.MathUtils.degToRad(180); // Rotate 180 degrees
+            screen.position.set(0, 1.3, -0.29); // Adjust position
+            screen.userData.parentGroup = arcadeGroup; // Reference to the parent group
+            arcadeGroup.add(screen);
+            interactiveMeshes.push(screen); // Add screen to interactive meshes list
+
+
+            // Placeholder for PNG image on the screen
+            // --- PacSnake playable screen integration ---
+            if (game.id === 'pacsnake') {
+                // Only use in-arcade projection for non-mobile devices
+                function isMobile() {
+                    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                }
+                if (!isMobile()) {
+                    (function() {
+                        const pacSnakeCanvas = document.createElement('canvas');
+                        pacSnakeCanvas.width = 400;
+                        pacSnakeCanvas.height = 400;
+                        // Create a Three.js texture from the canvas
+                        const pacSnakeTexture = new THREE.CanvasTexture(pacSnakeCanvas);
+                        screen.material.map = pacSnakeTexture;
+                        screen.material.needsUpdate = true;
+
+                        // Load PacSnake game code dynamically
+                        fetch('PacSnake/PacSnake.html')
+                            .then(function(response) { return response.text(); })
+                            .then(function(html) {
+                                // Use RegExp constructor to avoid literal issues
+                                var scriptRe = new RegExp('<script>([\s\S]*?)<\/script>', 'm');
+                                var scriptMatch = html.match(scriptRe);
+                                if (scriptMatch) {
+                                    var pacSnakeCode = scriptMatch[1];
+                                    // Replace document.getElementById('gameCanvas') with our canvas
+                                    pacSnakeCode = pacSnakeCode.replace(/const canvas = document.getElementById\('gameCanvas'\);/, 'const canvas = pacSnakeCanvas;');
+                                    // Remove document.addEventListener('keydown', handleKeyPress);
+                                    pacSnakeCode = pacSnakeCode.replace(/document.addEventListener\('keydown', handleKeyPress\);/g, '');
+                                    // Patch alert('Game Over!') to a non-blocking message
+                                    pacSnakeCode = pacSnakeCode.replace(/alert\('Game Over!'\);/, 'console.log("Game Over!");');
+                                    // Wrap the code in a function for isolation
+                                    pacSnakeCode = 'window.pacSnakeGame = (function(pacSnakeCanvas, inputQueue) {\n' + pacSnakeCode + '\nreturn { handleDirectionChange, handleKeyPress, draw, moveSnake, gameOver };\n});';
+                                    // Evaluate the patched code
+                                    eval(pacSnakeCode);
+                                    // Set up input queue for direction changes
+                                    var inputQueue = [];
+                                    // Create the game instance
+                                    var gameInstance = window.pacSnakeGame(pacSnakeCanvas, inputQueue);
+                                    // Animation loop to update the texture
+                                    function updatePacSnake() {
+                                        if (inputQueue.length > 0) {
+                                            var dir = inputQueue.shift();
+                                            gameInstance.handleDirectionChange(dir);
+                                        } else {
+                                            gameInstance.draw();
+                                        }
+                                        pacSnakeTexture.needsUpdate = true;
+                                        requestAnimationFrame(updatePacSnake);
+                                    }
+                                    updatePacSnake();
+                                    // Expose a way to send input from the 3D arcade context
+                                    screen.userData.pacSnakeInput = function(dir) {
+                                        inputQueue.push(dir);
+                                    };
+                                }
+                            });
+                    })();
+                } else {
+                    // On mobile, clicking the machine should open PacSnake.html as before
+                    screen.userData.pacSnakeMobile = true;
+                }
+                // Default: show placeholder image
+                const textureLoader = new THREE.TextureLoader();
+                textureLoader.load('https://placehold.co/800x600/000000/FFFFFF?text=Game+Screen', (texture) => {
+                    screen.material.map = texture;
+                    screen.material.needsUpdate = true;
+                }, undefined, (error) => {
+                    console.error('Error loading screen texture:', error);
+                });
+            }
+
+            // Add 3D Title Text using the machine title font and game.textColor
+            if (font) {
+                 const textGeometry = new THREE.TextGeometry(game.title.toUpperCase(), {
+                    font: font,
+                    size: 0.2, // Initial size, will scale if needed
+                    height: 0.05, // Thickness of the letters
+                    curveSegments: 5,
+                    bevelEnabled: true,
+                    bevelThickness: 0.01,
+                    bevelSize: 0.01,
+                    bevelOffset: 0,
+                    bevelSegments: 3
+                });
+
+                const textMaterial = new THREE.MeshStandardMaterial({ color: game.textColor }); // Use game.textColor
+                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+                textMesh.rotation.y = THREE.MathUtils.degToRad(180); // Rotate 180 degrees to face the player
+
+                textGeometry.computeBoundingBox();
+                let textWidth = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
+                const maxWidth = 0.8; // Max width for the text (slightly less than machine width)
+
+                // Scale down text if it's too wide
+                if (textWidth > maxWidth) {
+                    const scaleFactor = maxWidth / textWidth;
+                    textMesh.scale.set(scaleFactor, scaleFactor, 1);
+                    textWidth *= scaleFactor; // Update textWidth after scaling
+                }
+
+                // Position the text on the front of the machine, towards the top
+                textMesh.position.set(
+                    textWidth / 2, // Center horizontally
+                    1.62, // Towards the top of the machine
+                    -0.42 // Slightly in front of the machine
+                );
+
+                textMesh.userData.parentGroup = arcadeGroup; // Reference to the parent group
+                arcadeGroup.add(textMesh);
+                interactiveMeshes.push(textMesh); // Add text mesh to interactive meshes
+            }
+
+
+            return arcadeGroup;
+        }
+
+        // Update the addArcadeMachines function to use the new arcade machine group
+        function addArcadeMachines() {
+            // Only add machines if both fonts are loaded
+            if (!signFont || !machineTitleFont) {
+                console.warn("Fonts not fully loaded yet. Cannot add arcade machines.");
+                return;
+            }
+
+            const normalMachines = games.filter(game => game.type === 'normal');
+            const otherMachines = games.filter(game => game.type !== 'normal');
+
+            // Define starting offsets to make space for the counter
+            const startOffsetLeftWall = counterWidth + 1.5; // Minimum spacing of 1.5 along Z for left wall machines
+            const startOffsetBackWall = counterWidth + 2; // Minimum spacing of 1.5 along X for back wall machines
+
+            let currentZOffset = startOffsetLeftWall; // Track Z offset for left wall machines
+            let currentXOffset = startOffsetBackWall; // Track X offset for back wall machines
+
+            // Place normal machines along the left wall (left of the back-left corner)
+            normalMachines.forEach((game) => {
+                // Pass game object and font
+                const arcadeMachine = createArcadeMachine(game, machineTitleFont);
+                arcadeMachine.rotation.y = THREE.MathUtils.degToRad(-90); // Rotate to face into the room from the left wall
+                arcadeMachine.position.set(backLeftCorner.x + wallThickness / 2 + 0.5, 0, backLeftCorner.z + currentZOffset);
+                scene.add(arcadeMachine);
+                arcadeMachineObjects.push(arcadeMachine); // Store the top-level group
+                currentZOffset += 1.75 + 1; // Update Z offset based on machine height and spacing
+            });
+
+            // Place other machines along the back wall (right of the back-left corner)
+            otherMachines.forEach((game) => {
+                const size = getPlaceholderSize(game.type);
+                const positionX = backLeftCorner.x + currentXOffset + size.x / 2; // Center machine based on its width
+                 // Pass game object, size, color, and font
+                const machineGroup = addCubePlaceholder(positionX, 0, backLeftCorner.z + wallThickness / 2 + 0.5, game, size, game.machineColor, machineTitleFont);
+                 arcadeMachineObjects.push(machineGroup); // Store the top-level group
+                currentXOffset += size.x + 1; // Update X offset based on machine size
+            });
+        }
+
+         function getPlaceholderSize(type) {
+             switch (type) {
+                 case 'driving': return new THREE.Vector3(2, 1.5, 2.5); // Wider
+                 case 'flight': return new THREE.Vector3(1.5, 2, 2); // Larger screen area
+                 case 'art': return new THREE.Vector3(1.5, 2, 0.5); // Flatter
+                 default: return new THREE.Vector3(1, 1.5, 1); // Default size
+             }
+         }
+
+         // This function is no longer strictly needed as colors are in game data, but kept for clarity
+         function getPlaceholderColor(type) {
+              switch (type) {
+                 case 'driving': return 0x1122aa; // Blue
+                 case 'flight': return 0x1166aa; // Green
+                 case 'art': return 0xccbb11; // Yellow
+                 default: return 0xcccccc; // Grey
+             }
+         }
+
+
+        // Modified to accept game data and font
+        function addCubePlaceholder(x, y, z, game, size, color, font) {
+            const machineGroup = new THREE.Group();
+            machineGroup.userData.game = game; // Store game data on the group
+
+            const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+            // Use the machineColor from game data
+            const material = new THREE.MeshStandardMaterial({ color: game.machineColor });
+            const cube = new THREE.Mesh(geometry, material);
+            cube.position.set(0, size.y / 2 + y, 0); // Position relative to group
+            cube.userData.parentGroup = machineGroup; // Reference to parent group
+            machineGroup.add(cube);
+            interactiveMeshes.push(cube); // Add cube mesh to interactive meshes list
+
+            // Add 3D Title Text using the machine title font and game.textColor
+            if (font) {
+                 const textGeometry = new THREE.TextGeometry(game.title.toUpperCase(), {
+                    font: font,
+                    size: 0.2, // Initial size
+                    height: 0.05, // Thickness
+                    curveSegments: 5,
+                    bevelEnabled: true,
+                    bevelThickness: 0.01,
+                    bevelSize: 0.01,
+                    bevelOffset: 0,
+                    bevelSegments: 3
+                });
+
+                // Use the textColor from game data
+                const textMaterial = new THREE.MeshStandardMaterial({ color: game.textColor });
+                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+
+                textGeometry.computeBoundingBox();
+                let textWidth = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
+                const maxWidth = size.x - 0.1; // Max width is cube width minus a small margin
+
+                // Scale down text if it's too wide
+                if (textWidth > maxWidth) {
+                    const scaleFactor = maxWidth / textWidth;
+                    textMesh.scale.set(scaleFactor, scaleFactor, 1);
+                    textWidth *= scaleFactor; // Update textWidth after scaling
+                }
+
+                // Position the text on the front face of the cube
+                textMesh.position.set(
+                    -textWidth / 2, // Center horizontally relative to group origin
+                    size.y + y - 0.3, // Towards the top of the cube
+                    size.z / 2 - 0.04 // Slightly in front of the cube's front face
+                );
+
+                textMesh.userData.parentGroup = machineGroup; // Reference to parent group
+                machineGroup.add(textMesh);
+                interactiveMeshes.push(textMesh); // Add text mesh to interactive meshes
+            }
+
+            // Position the group in the scene
+            machineGroup.position.set(x, 0, z);
+
+            scene.add(machineGroup);
+            return machineGroup; // Return the group
+        }
+
+
+        function populateMenu() {
+            const gameListDiv = document.getElementById('game-list');
+            populateGameList(gameListDiv);
+        }
+
+        function populateContextMenu() {
+             populateGameList(contextGameListDiv);
+        }
+
+        function populateGameList(containerDiv) {
+             // Clear existing content
+             containerDiv.innerHTML = '';
+
+            let currentStage = '';
+
+            games.forEach(game => {
+                if (game.stage !== currentStage) {
+                    currentStage = game.stage;
+                    const stageHeader = document.createElement('h4');
+                    stageHeader.textContent = currentStage;
+                    containerDiv.appendChild(stageHeader);
+                    const stageList = document.createElement('ul');
+                    stageList.id = `list-${currentStage.replace(/\s+/g, '-').toLowerCase()}-${containerDiv.id}`; // Unique ID
+                    containerDiv.appendChild(stageList);
+                }
+
+                const listItem = document.createElement('li');
+                const link = document.createElement('a');
+                link.href = game.link; // Set the link
+                link.textContent = game.title;
+                link.style.color = '#ffffff'; // White text for links
+                link.textDecoration = 'none'; // No underline
+                link.onmouseover = function() { this.style.textDecoration = 'underline'; };
+                link.onmouseout = function() { this.style.textDecoration = 'none'; };
+                 // Close context menu when a link is clicked
+                 link.onclick = hideContextMenu;
+
+
+                listItem.appendChild(link);
+                document.getElementById(`list-${currentStage.replace(/\s+/g, '-').toLowerCase()}-${containerDiv.id}`).appendChild(listItem);
+            });
+        }
+
+
+        // --- FPS Controls Implementation ---
+// --- PacSnake Visual Indicator Overlay ---
+let pacSnakeIndicator = null;
+function showPacSnakeIndicator() {
+    if (!pacSnakeIndicator) {
+        pacSnakeIndicator = document.createElement('div');
+        pacSnakeIndicator.id = 'pacsnake-indicator';
+        pacSnakeIndicator.style.position = 'fixed';
+        pacSnakeIndicator.style.top = '20px';
+        pacSnakeIndicator.style.left = '50%';
+        pacSnakeIndicator.style.transform = 'translateX(-50%)';
+        pacSnakeIndicator.style.background = 'rgba(0,0,0,0.8)';
+        pacSnakeIndicator.style.color = '#FFD700';
+        pacSnakeIndicator.style.fontSize = '1.5em';
+        pacSnakeIndicator.style.fontFamily = 'monospace, sans-serif';
+        pacSnakeIndicator.style.padding = '12px 32px';
+        pacSnakeIndicator.style.borderRadius = '12px';
+        pacSnakeIndicator.style.zIndex = '9999';
+        pacSnakeIndicator.style.boxShadow = '0 2px 12px #000';
+        pacSnakeIndicator.innerText = 'PacSnake Input Active! Use Arrow Keys. Press Escape to exit.';
+        document.body.appendChild(pacSnakeIndicator);
+    } else {
+        pacSnakeIndicator.style.display = 'block';
+    }
+}
+function hidePacSnakeIndicator() {
+    if (pacSnakeIndicator) pacSnakeIndicator.style.display = 'none';
+}
+        function onMouseMove(event) {
+            // Update mouse position for raycasting (for hover popup)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            // Handle camera rotation if pointer is locked
+            if (isPointerLocked) {
+                const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
+                const movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
+
+                yaw -= movementX * lookSpeed;
+                pitch -= movementY * lookSpeed;
+
+                // Limit vertical rotation (pitch) to prevent flipping
+                pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+
+                // Apply rotation to the camera
+                camera.rotation.set(pitch, yaw, 0, 'YXZ'); // YXZ order prevents gimbal lock
+            }
+
+            // Update the raycaster
+            raycaster.setFromCamera(mouse, camera);
+
+            // Check for intersections with ALL interactive meshes
+            const intersects = raycaster.intersectObjects(interactiveMeshes);
+
+            let foundMachine = null;
+
+            if (intersects.length > 0) {
+                const intersectedObject = intersects[0].object;
+
+                // Find the top-level arcade machine object (Group)
+                let currentObject = intersectedObject;
+                while (currentObject) {
+                    if (currentObject.userData && currentObject.userData.game) {
+                        // Found an object with game data (the top-level group)
+                        foundMachine = currentObject;
+                        break; // Stop traversing up
+                    }
+                    if (currentObject.userData && currentObject.userData.parentGroup) {
+                         // Found a child mesh with a parent group reference
+                         foundMachine = currentObject.userData.parentGroup;
+                         break; // Stop traversing up
+                    }
+                    currentObject = currentObject.parent;
+                }
+            }
+
+            if (foundMachine && hoveredMachine !== foundMachine) {
+                // New machine hovered
+                hoveredMachine = foundMachine;
+                // Get game data from the found machine object's userData
+                const gameData = foundMachine.userData.game;
+                showPopup(event.clientX, event.clientY, gameData);
+                hideContextMenu(); // Hide context menu if hovering over a machine
+            } else if (!foundMachine && hoveredMachine) {
+                 // No machine hovered, hide popup
+                hidePopup();
+                hoveredMachine = null; // Clear the hovered machine
+            }
+        }
+
+let pacSnakeActive = false;
+let pacSnakeScreen = null;
+function onClick(event) {
+    // Request pointer lock on left click
+    if (!isPointerLocked) {
+        renderer.domElement.requestPointerLock();
+        return; // Don't process click for interaction until pointer is locked
+    }
+
+    // Calculate mouse position in normalized device coordinates (-1 to +1)
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    // Update the raycaster
+    raycaster.setFromCamera(mouse, camera);
+
+    // Check for intersections with ALL interactive meshes
+    const intersects = raycaster.intersectObjects(interactiveMeshes);
+
+    let clickedMachine = null;
+    let clickedScreen = null;
+
+    if (intersects.length > 0) {
+        const intersectedObject = intersects[0].object;
+
+        // Find the top-level arcade machine object (Group)
+        let currentObject = intersectedObject;
+        while (currentObject) {
+            if (currentObject.userData && currentObject.userData.game) {
+                // Found an object with game data (the top-level group)
+                clickedMachine = currentObject;
+                break; // Stop traversing up
+            }
+            if (currentObject.userData && currentObject.userData.parentGroup) {
+                // Found a child mesh with a parent group reference
+                if (currentObject.geometry && currentObject.geometry.type === 'PlaneGeometry') {
+                    clickedScreen = currentObject;
+                }
+                clickedMachine = currentObject.userData.parentGroup;
+                break; // Stop traversing up
+            }
+            currentObject = currentObject.parent;
+        }
+    }
+
+    // If PacSnake screen is clicked, activate PacSnake input mode
+
+    // PacSnake: desktop in-arcade mode
+    if (
+        clickedMachine &&
+        clickedMachine.userData &&
+        clickedMachine.userData.game &&
+        clickedMachine.userData.game.id === 'pacsnake'
+    ) {
+        // If mobile, open PacSnake.html as before
+        if (clickedScreen && clickedScreen.userData && clickedScreen.userData.pacSnakeMobile) {
+            window.location.href = 'PacSnake/PacSnake.html';
+            return;
+        }
+        // Desktop: activate in-arcade input mode
+        if (clickedScreen && typeof clickedScreen.userData.pacSnakeInput === 'function') {
+            pacSnakeActive = true;
+            pacSnakeScreen = clickedScreen;
+            showPacSnakeIndicator();
+            hideContextMenu();
+            hidePopup();
+            return;
+        }
+    }
+
+    // If already in PacSnake mode and click elsewhere, deactivate
+    if (pacSnakeActive) {
+        pacSnakeActive = false;
+        pacSnakeScreen = null;
+        hidePacSnakeIndicator();
+    }
+
+    if (clickedMachine && clickedMachine.userData.game && clickedMachine.userData.game.link) {
+        // Link to the placeholder page
+        window.location.href = clickedMachine.userData.game.link;
+        hideContextMenu(); // Hide context menu if a machine is clicked
+    } else {
+        // Toggle context menu visibility if no machine was clicked
+        if (contextMenu.style.display === 'block') {
+            hideContextMenu();
+        } else {
+            showContextMenu(event.clientX, event.clientY);
+        }
+        hidePopup(); // Hide hover popup if showing context menu
+    }
+}
+
+        function onKeyDown(event) {
+    if (pacSnakeActive && pacSnakeScreen && typeof pacSnakeScreen.userData.pacSnakeInput === 'function') {
+        switch (event.code) {
+            case 'ArrowUp':
+                pacSnakeScreen.userData.pacSnakeInput('up');
+                event.preventDefault();
+                break;
+            case 'ArrowDown':
+                pacSnakeScreen.userData.pacSnakeInput('down');
+                event.preventDefault();
+                break;
+            case 'ArrowLeft':
+                pacSnakeScreen.userData.pacSnakeInput('left');
+                event.preventDefault();
+                break;
+            case 'ArrowRight':
+                pacSnakeScreen.userData.pacSnakeInput('right');
+                event.preventDefault();
+                break;
+            case 'Escape':
+                pacSnakeActive = false;
+                pacSnakeScreen = null;
+                hidePacSnakeIndicator();
+                event.preventDefault();
+                break;
+        }
+        return;
+    }
+            // ...existing code for FPS controls...
+            if (isPointerLocked) {
+                switch (event.code) {
+                    case 'KeyW':
+                    case 'ArrowUp':
+                        moveForward = true;
+                        break;
+                    case 'KeyS':
+                    case 'ArrowDown':
+                        moveBackward = true;
+                        break;
+                    case 'KeyA':
+                        moveLeft = true; // 'A' sets moveLeft
+                        break;
+                    case 'KeyD':
+                        moveRight = true; // 'D' sets moveRight
+                        break;
+                    case 'ArrowLeft': // ArrowLeft now controls moveRight
+                        moveLeft = true;
+                        break;
+                    case 'ArrowRight': // ArrowRight now controls moveLeft
+                        moveLeft = true;
+                        break;
+                }
+             }
+        }
+
+        function onKeyUp(event) {
+    if (pacSnakeActive && pacSnakeScreen && typeof pacSnakeScreen.userData.pacSnakeInput === 'function') {
+        // Prevent default for arrow keys while active
+        switch (event.code) {
+            case 'ArrowUp':
+            case 'ArrowDown':
+            case 'ArrowLeft':
+            case 'ArrowRight':
+                event.preventDefault();
+                break;
+        }
+        return;
+    }
+    // ...existing code for FPS controls...
+    if (isPointerLocked) {
+        switch (event.code) {
+            case 'KeyW':
+            case 'ArrowUp':
+                moveForward = false;
+                break;
+            case 'KeyS':
+            case 'ArrowDown':
+                moveBackward = false;
+                break;
+            case 'KeyA':
+                moveLeft = false; // 'A' sets moveLeft
+                break;
+            case 'KeyD':
+                moveRight = false; // 'D' sets moveRight
+                break;
+            case 'ArrowLeft': // ArrowLeft now controls moveRight
+                moveLeft = false;
+                break;
+            case 'ArrowRight': // ArrowRight now controls moveLeft
+                moveLeft = false;
+                break;
+        }
+    }
+        }
+
+        // --- Collision Detection Helper ---
+        function checkCollision(newPosition, radius = 0.3) {
+            // Check room boundaries (walls)
+            const minX = -roomSize / 2 + wallThickness + radius;
+            const maxX = roomSize / 2 - wallThickness - radius;
+            const minZ = -roomSize / 2 + wallThickness + radius;
+            const maxZ = roomSize / 2 - wallThickness - radius;
+            if (newPosition.x < minX || newPosition.x > maxX || newPosition.z < minZ || newPosition.z > maxZ) {
+                return true;
+            }
+            // Check collision with arcade machines (bounding spheres)
+            for (const obj of arcadeMachineObjects) {
+                const box = new THREE.Box3().setFromObject(obj);
+                box.expandByScalar(radius);
+                if (box.containsPoint(newPosition)) {
+                    return true;
+                }
+            }
+            // --- Counter/Desk Collision (rotated block in corner) ---
+    // The counter is a box rotated 45deg (Math.PI/4) in the back-left corner
+    // Get the same transform as in addCounterAndSign
+    const deskCenter = new THREE.Vector3(
+        backLeftCorner.x + counterWidth / 2 + wallThickness / 2,
+        counterHeight / 2,
+        backLeftCorner.z + counterDepth + wallThickness / 2
+    );
+    // Inverse rotate the player position by -PI/4 around Y, then check AABB
+    const rel = newPosition.clone().sub(deskCenter);
+    const angle = -Math.PI / 4;
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const rx = rel.x * cos - rel.z * sin;
+    const rz = rel.x * sin + rel.z * cos;
+    // Desk AABB extents (with radius margin)
+    const halfW = counterWidth / 2 + radius;
+    const halfD = counterDepth / 2 + radius;
+    if (Math.abs(rx) < halfW && Math.abs(rz) < halfD && newPosition.y < counterHeight + 0.5) {
+        return true;
+    }
+    return false;
+        }
+
+        function updateCameraPosition() {
+            if (isPointerLocked) {
+                const direction = new THREE.Vector3();
+                camera.getWorldDirection(direction); // Get the direction the camera is facing
+
+                const forward = new THREE.Vector3(direction.x, 0, direction.z).normalize(); // Forward on the ground plane
+                const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forward).normalize(); // Right on the ground plane
+
+                let newPosition = camera.position.clone();
+                if (moveForward) newPosition.addScaledVector(forward, cameraSpeed);
+                if (moveBackward) newPosition.addScaledVector(forward, -cameraSpeed);
+                if (moveLeft) newPosition.addScaledVector(right, cameraSpeed);
+                if (moveRight) newPosition.addScaledVector(right, -cameraSpeed);
+
+                // Only update camera position if no collision
+                if (!checkCollision(newPosition)) {
+                    camera.position.copy(newPosition);
+                }
+            }
+        }
+
+        // --- Interaction (Click and Context Menu) ---
+        function onClick(event) {
+            // Request pointer lock on left click
+            if (!isPointerLocked) {
+                renderer.domElement.requestPointerLock();
+                return; // Don't process click for interaction until pointer is locked
+            }
+
+             // Calculate mouse position in normalized device coordinates (-1 to +1)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            // Update the raycaster
+            raycaster.setFromCamera(mouse, camera);
+
+            // Check for intersections with ALL interactive meshes
+            const intersects = raycaster.intersectObjects(interactiveMeshes);
+
+            let clickedMachine = null;
+
+            if (intersects.length > 0) {
+                const intersectedObject = intersects[0].object;
+
+                 // Find the top-level arcade machine object (Group)
+                let currentObject = intersectedObject;
+                while (currentObject) {
+                    if (currentObject.userData && currentObject.userData.game) {
+                        // Found an object with game data (the top-level group)
+                        clickedMachine = currentObject;
+                        break; // Stop traversing up
+                    }
+                    if (currentObject.userData && currentObject.userData.parentGroup) {
+                         // Found a child mesh with a parent group reference
+                         clickedMachine = currentObject.userData.parentGroup;
+                         break; // Stop traversing up
+                    }
+                    currentObject = currentObject.parent;
+                }
+            }
+
+            if (clickedMachine && clickedMachine.userData.game && clickedMachine.userData.game.link) {
+                // Link to the placeholder page
+                window.location.href = clickedMachine.userData.game.link;
+                 hideContextMenu(); // Hide context menu if a machine is clicked
+            } else {
+                // Toggle context menu visibility if no machine was clicked
+                if (contextMenu.style.display === 'block') {
+                    hideContextMenu();
+                } else {
+                    showContextMenu(event.clientX, event.clientY);
+                }
+                hidePopup(); // Hide hover popup if showing context menu
+            }
+        }
+
+        function onContextMenu(event) {
+             event.preventDefault(); // Prevent the default browser context menu
+             showContextMenu(event.clientX, event.clientY);
+             hidePopup(); // Hide hover popup if showing context menu
+        }
+
+
+        function showPopup(x, y, gameData) {
+            popupTitle.textContent = gameData.title;
+            popupStage.textContent = `Stage: ${gameData.stage}`;
+            popupDescription.textContent = gameData.description;
+
+            // Position the popup near the mouse cursor
+            popup.style.left = `${x + 10}px`;
+            popup.style.top = `${y + 10}px`;
+            popup.style.display = 'block';
+        }
+
+        function hidePopup() {
+            hoveredMachine = null;
+            popup.style.display = 'none';
+        }
+
+        function showContextMenu(x, y) {
+             contextMenu.style.left = `${x}px`;
+             contextMenu.style.top = `${y}px`;
+             contextMenu.style.display = 'block';
+        }
+
+        function hideContextMenu() {
+             contextMenu.style.display = 'none';
+        }
+
+        // --- Pointer Lock API Callbacks ---
+        function onPointerLockChange() {
+            const menuContainer = document.getElementById('menu-container');
+            if (document.pointerLockElement === renderer.domElement) {
+                console.log('Pointer Locked');
+                isPointerLocked = true;
+                // Hide the menu when pointer is locked
+                menuContainer.style.display = 'none';
+            } else {
+                console.log('Pointer Unlocked');
+                isPointerLocked = false;
+                // Show the menu when pointer is unlocked
+                menuContainer.style.display = 'flex';
+                // Optionally re-render menu columns if needed
+                if (typeof renderMenuColumns === 'function') {
+                    renderMenuColumns(window.previousRenderedPath || []);
+                }
+                // Reset movement flags when pointer is unlocked
+                moveForward = false;
+                moveBackward = false;
+                moveLeft = false;
+                moveRight = false;
+            }
+        }
+
+        function onPointerLockError() {
+            console.error('Pointer Lock Error');
+        }
+
+
+        // --- Reticule (Cyan Circle) ---
+let reticuleSprite;
+function addReticule() {
+    // Remove any previous reticule
+    if (reticuleSprite && reticuleSprite.parent) reticuleSprite.parent.remove(reticuleSprite);
+    // Create a canvas for a crisp 2D reticule
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 64, 64);
+    ctx.beginPath();
+    ctx.arc(32, 32, 20, 0, 2 * Math.PI);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'cyan';
+    ctx.globalAlpha = 0.85;
+    ctx.shadowColor = '#00ffff';
+    ctx.shadowBlur = 6;
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+    // Create a texture and sprite
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture, color: 0xffffff, depthTest: false, depthWrite: false, transparent: true });
+    reticuleSprite = new THREE.Sprite(spriteMaterial);
+    reticuleSprite.center.set(0.5, 0.5);
+    reticuleSprite.scale.set(0.08, 0.08, 1); // Size in world units
+    // Add to camera so it stays centered
+    camera.add(reticuleSprite);
+    reticuleSprite.position.set(0, 0, -1); // 1 unit in front of camera
+}
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Update camera position based on input (only if pointer is locked)
+            updateCameraPosition();
+
+            renderer.render(scene, camera);
+        }
+
+        // --- Handle Window Resize ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function addCeilingLights() {
+            const lightSpacing = 4; // Distance between lights
+            const lightIntensity = 0.5; // Adjust intensity as needed
+            const lightColor = 0xffffff; // White light
+            const lightHeight = 3.5; // Adjusted height to be below the ceiling mesh (ceiling is at 3.75)
+
+            // Calculate the number of lights along each axis
+            const numLightsX = Math.floor(roomSize / lightSpacing);
+            const numLightsZ = Math.floor(roomSize / lightSpacing);
+
+            for (let i = 0; i <= numLightsX; i++) {
+                for (let j = 0; j <= numLightsZ; j++) {
+                    const x = -roomSize / 2 + i * lightSpacing;
+                    const z = -roomSize / 2 + j * lightSpacing;
+
+                    const pointLight = new THREE.PointLight(lightColor, lightIntensity, lightSpacing * 2);
+                    pointLight.position.set(x, lightHeight, z);
+                    scene.add(pointLight);
+                }
+            }
+        }
+
+        // Function to create a vertical gradient texture
+        function createGradientTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1; // Only need 1 pixel width for a vertical gradient
+            canvas.height = 256; // Height for the gradient resolution
+
+            const context = canvas.getContext('2d');
+
+            const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#1536AA'); // Top: Neon Ultra Violet
+            gradient.addColorStop(0.2, '#121519'); // Towards middle: Dark Grey
+            gradient.addColorStop(0.5, '#222222'); // Towards middle: Dark Grey
+            gradient.addColorStop(0.7, '#333333'); // Towards middle: Dark Grey
+            gradient.addColorStop(1, '#1F51FF'); // Bottom: Neon Ultra Violet
+
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            // Ensure the texture is not flipped vertically by default (BoxGeometry UVs might be inverted)
+            texture.flipY = false;
+            // Repeat horizontally once across the wall width, and repeat vertically once for the full height
+            texture.wrapS = THREE.RepeatWrapping; // Allow horizontal repeating
+            texture.wrapT = THREE.RepeatWrapping; // Allow vertical repeating
+            // Set repeat to cover the wall dimensions. repeat.x controls horizontal, repeat.y controls vertical.
+            // For a vertical gradient that spans the height, repeat.y should be 1.
+            // repeat.x can be adjusted if you want the gradient pattern to tile horizontally.
+            // Let's set repeat.x to roomSize / some_texture_unit, or just 1 for a single stretch across the width.
+            // Let's try repeating it a few times horizontally to see the pattern.
+            texture.repeat.set(roomSize / 4, 1); // Repeat horizontally based on room size, cover height once
+
+            return texture;
+        }
+
+        function createCheckeredFloor() {
+            const size = roomSize; // Size of the floor
+            const divisions = 40; // Number of tiles along one axis (adjust as needed)
+
+            // Create a canvas for the checkerboard texture
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const context = canvas.getContext('2d');
+
+            // Draw the checkerboard pattern
+            const tileSize = canvas.width / divisions;
+            for (let i = 0; i < divisions; i++) {
+                for (let j = 0; j < divisions; j++) {
+                    context.fillStyle = (i + j) % 2 === 0 ? '#111111' : '#111213'; // Alternate black and white
+                    context.fillRect(i * tileSize, j * tileSize, tileSize, tileSize);
+                }
+            }
+
+            // Create a texture from the canvas
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(1, 1);
+
+            // Apply the texture to the floor material
+            const groundGeometry = new THREE.PlaneGeometry(size, size);
+            const groundMaterial = new THREE.MeshStandardMaterial({ map: texture });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+            ground.position.y = 0; // Position slightly above the floor level
+            scene.add(ground);
+        }
+
+        // Initialize the scene when the window loads
+        window.onload = function() {
+            init();
+            addReticule();
+        };
+
+    </script>
+</body>
+</html>

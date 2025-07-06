@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.xaenaautomobiles.com" />
+    <meta property="og:image" content="/images/Xaena.jpg" />
+    <meta property="og:title" content="Xaena About" />
+    <meta property="og:description" content="More about the Xaena 4-rotor concept" />
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css"
+        integrity="sha384-TX8t27EcRE3e/ihU7zmQxVncDAy5uIKz4rEkgIXeMed4M0jlfIDPvg6uqKI2xXr2" crossorigin="anonymous">
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+    <link rel="stylesheet" href="xgo.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Jost">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <title>About Xaena Automobiles</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <link rel="shortcut icon" href="https://www.xaenaautomobiles.com/favicon.ico">
+    <style>
+        .img-1 {
+            background: url("images/Xaena1.jpg");
+            max-height: 100%;
+            transition: 2s;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            background-position-y: center;
+            background-position-x: center;
+        }
+
+        body {
+            color: white;
+            background-color: black !important;
+        }
+
+        .img-2 {
+            background: url("images/Xaena2.jpg");
+            max-height: 100%;
+            background-repeat: no-repeat;
+            transition: 2s;
+            background-attachment: fixed;
+            background-position-y: center;
+            background-position-x: center;
+        }
+
+        .site-coming-soon {
+            font-size: 70px;
+            font-family: 'Jost', sans-serif !important;
+        }
+
+        .title {
+            font-size: 20px;
+            font-weight: 350;
+            letter-spacing: 0.5px;
+            font-family: 'Jost', sans-serif !important;
+        }
+
+        .text-div {
+            width: 85%;
+            margin: auto;
+        }
+
+        .para {
+            line-height: 35px;
+        }
+
+        span:hover {
+            transition: 2s;
+            outline: none;
+            cursor: pointer;
+        }
+
+        span {
+            margin-top: 0px !important;
+        }
+
+        span a {
+            display: inline-block;
+            text-decoration: none !important;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        .column {
+            float: none;
+            width: 50%;
+            padding: 10px;
+        }
+
+        .row:after {
+            content: "";
+            display: table;
+        }
+
+        @media screen and (max-width: 600px) {
+            .column {
+                width: 100%;
+            }
+        }
+
+        @media screen and (max-width:1100px) {
+            .img-1 {
+                background: url("images/Xaena1.jpg");
+                max-height: 100%;
+                transition: 2s;
+                background-repeat: no-repeat;
+                background-position-y: center;
+                background-position-x: center;
+            }
+
+            .img-2 {
+                background: url("images/Xaena2.jpg");
+                max-height: 100%;
+                background-repeat: no-repeat;
+                transition: 2s;
+                background-position-y: center;
+                background-position-x: center;
+            }
+
+            .text-div {
+                width: 80%;
+                margin: auto;
+            }
+        }
+
+        @media screen and (max-width:900px) {
+            .text-div {
+                width: 80%;
+                margin: auto;
+            }
+
+            .site-coming-soon {
+                font-size: 60px;
+            }
+        }
+
+        @media screen and (max-width:760px) {
+            .img-1 {
+                background: url("images/Xaena1.jpg");
+                max-height: 100%;
+                transition: 2s;
+                background-repeat: no-repeat;
+                background-position-y: center;
+                background-position-x: center;
+            }
+
+            .img-2 {
+                background: url("images/Xaena2.jpg");
+                max-height: 100%;
+                background-repeat: no-repeat;
+                transition: 2s;
+                background-position-y: center;
+                background-position-x: center;
+            }
+
+            .text-div {
+                width: 80%;
+                margin: auto;
+            }
+
+            .site-coming-soon {
+                font-size: 45px;
+            }
+        }
+
+        @media screen and (max-width:575px) {
+            .img-1 {
+                background: url("images/Xaena1.jpg");
+                max-height: 100%;
+                transition: 2s;
+                background-repeat: no-repeat;
+                background-position-y: center;
+                background-position-x: center;
+                background-color: black !important;
+            }
+
+            .img-2 {
+                background: url("images/Xaena2.jpg");
+                max-height: 100%;
+                background-repeat: no-repeat;
+                transition: 2s;
+                background-position-y: center;
+                background-position-x: center;
+                background-color: black !important;
+            }
+
+            .text-div {
+                width: 90%;
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+                padding: 0 !important;
+            }
+
+            .site-coming-soon {
+                font-size: 32px;
+            }
+
+            .logo {
+                text-align: center;
+                margin-left: auto !important;
+                background-color: black !important;
+            }
+
+            .para {
+                margin: 20px auto !important;
+                text-align: justify;
+            }
+
+            .footer {
+                margin-top: 30px !important;
+            }
+        }
+
+        .title {
+            font-size: 20px;
+            font-weight: 350;
+            letter-spacing: 0.5px;
+            font-family: 'Jost', sans-serif !important;
+        }
+
+        p {
+            font-family: 'Jost', sans-serif !important;
+        }
+        .xgo-top {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        .xgo-bar .xgo-button, .xgo-bar .fa {
+            text-shadow: 0 0 5px rgba(0,0,0,0.7);
+        }
+        .xgo-bar .xgo-button:hover, .xgo-bar .xgo-button:hover .fa,
+        .btn-dark a:hover,
+        .footer a:hover {
+            color: #00AAFF !important;
+            text-shadow: 0 0 8px #00AAFF, 0 0 10px #00AAFF;
+        }
+        @media (orientation: landscape) {
+            .xgo-bar-item {
+                padding: 8px 24px !important;
+            }
+        }
+    </style>
+</head>
+
+<body class="img-1">
+    <div class="xgo-top">
+        <div class="xgo-bar" id="myNavbar" style="display: flex; align-items: center;">
+            <a href="index.html" class="xgo-bar-item xgo-button" style="text-decoration: none; display: flex; align-items: center; margin-right: 20px;">
+                <span class="xgo-hide-medium xgo-hide-large" onclick="toggleFunction(event)" style="margin-right: 10px;">
+                    <i class="fa fa-bars"></i>
+                </span>
+                <span style="display: inline-block;">
+                    <img src="images/XaenaLogo.png" style="height:25px; display: block;" alt="Xaena Logo" />
+                </span>
+                <span style="margin-left: 10px;">XAENA AUTOMOBILES HOME</span>
+            </a>
+            <a href="about.html" class="xgo-bar-item xgo-button xgo-hide-small" style="margin-right: 20px;"><i class="fa fa-user"></i> ABOUT</a>
+            <a href="index.html#contact" class="xgo-bar-item xgo-button xgo-hide-small"><i class="fa fa-envelope"></i> CONTACT</a>
+        </div>
+        <div id="navDemo" class="xgo-bar-block xgo-black xgo-hide xgo-hide-large xgo-hide-medium">
+        </div>
+    </div>
+    <div class="body text-white">
+        <h4 class="logo py-4 text-center ml-5">
+            <img src="images/XaenaLogo.png" style="height:75px;" alt="Xaena Logo" />XAENA AUTOMOBILES
+        </h4>
+    </div>
+    <div class="text-div text-center">
+        <p class="title my-4">Introducing the Xaena Rotary Exotic Car</p>
+        <p class="title my-5" style="background-color:rgb(0, 0, 0, 0.5);">
+            When you want a luxury race car for the street, you acquire an exotic. And if it’s something no-one else
+            has, that’s even better. Most super car exotics are loosely based on some sort of race car and the all have
+            one thing in common. They go fast, whether it be 0-60 or top speed. Mostly both. Almost every type of race
+            car has been a basis for exotics. Except one. Rotaries. The 4-rotor 787B won the Le Mans in 1991 proving
+            it’s reliability by traveling about 3000 miles / 5000km at 120mph / 200kph for 24 hours. Rotaries are on
+            the race tracks all the time. Yet there has never been a street legal rotary exotic supercar. With emissions
+            legislation getting tighter it may never happen unless we do something about it.
+        </p>
+        <p class="title my-5" style="background-color:rgb(0, 0, 0, 0.5);">
+            Aesthetically most exotics aspire to be either beautiful or look like they’re going 100 miles per hour
+            while standing still. Or a mixture of both. If you Google images for “Most beautiful cars in the world” one
+            of the first ten images that will attract your attention:
+        </p>
+    </div>
+    <div class="text-div text-center">
+        <div class="row height: 350">
+            <div class="column width: 60%;" style="background-color:rgb(0, 0, 0, 0.5);">
+                <p>
+                    <a
+                        href="https://www.google.com/search?q=most+beautiful+car+in+the+world&safe=active&sxsrf=ALeKk0380dIusIEasdAS1Xd9-F7DVr3_ew:1624190630028&source=lnms&tbm=isch&sa=X&ved=2ahUKEwi6k7PMlabxAhVxQkEAHZUMDwoQ_AUoAXoECAEQAw&biw=1229&bih=557">
+                        <img alt="Beautiful car Google Search 9 - Mazda Furai" src="images/Intro_Furai.jpg" name="Furai"
+                            width="100%">
+                    </a>
+                </p>
+            </div>
+            <div class="title column width: 20" style="background-color:rgb(0, 0, 0, 0.5);">
+                <p style="text-align:left;">
+                    <a href="https://en.wikipedia.org/wiki/Mazda_Furai" target="_blank" width="20%">The Mazda Furai
+                        Concept</a>
+                    <br>
+                    <a>This was a mid-engine 3-rotor ethanol burning concept created in 2007. It was not just an empty
+                        shell like most concepts, it was driven at Laguna Seca and Goodwood. In 2008 it caught fire
+                        during a car journalist photography session at Bentwaters Parks. This was only made public in
+                        2013.</a>
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="text-div text-center">
+        <div class="row">
+            <div class="title column width: 20" style="background-color:rgb(0, 0, 0, 0.5);">
+                <p style="text-align:right;">
+                    <a href="https://en.wikipedia.org/wiki/Mazda_RX-Vision" target="_blank">The Mazda RX-Vision
+                        Concept</a>
+                    <br>
+                    <a>Mazda also made another beautiful concept car. In 2016 the Mazda RX-VISION sports car concept has
+                        been named ‘Most Beautiful Concept Car of the Year’ at the 31st Festival Automobile
+                        International in Paris. It featured a front mid-engine layout in Mazda’s beautiful Kodo design
+                        language.</a>
+                </p>
+            </div>
+            <div class="column width: 60%;" style="background-color:rgb(0, 0, 0, 0.5);">
+                <p>
+                    <a
+                        href="https://www.google.co.za/search?q=Most+Beautiful+Concept+Car&hl=en&tbm=isch&source=hp&biw=1229&bih=557&ei=pEHPYJKyGdGVgQbGu7y4Ag&oq=Most+Beautiful+Concept+Car&gs_lcp=CgNpbWcQAzICCAAyAggAUPUKWPUKYNoRaABwAHgAgAHjAYgB4wGSAQMyLTGYAQCgAQKgAQGqAQtnd3Mtd2l6LWltZ7ABAA&sclient=img&ved=0ahUKEwiSlPzap6bxAhXRSsAKHcYdDycQ4dUDCAc&uact=5">
+                        <img alt="Beautiful concept Google Search 10 - RX-Vision" src="images/Intro_RX-Vision.jpg"
+                            name="RX-Vision" width="100%">
+                    </a>
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="text-div text-center">
+        <p class="title my-5" style="background-color:rgb(0, 0, 0, 0.5);">
+            Both these cars have sleek sexy flowing lines. While the Furai has lots of lines resembling water-flow and
+            some alienesque features, the RX-Vision is minimalistic and is almost a single curved surface. The RX-Vision
+            still resembles a sports car rather than a super car with its front mid-engine layout, while the Furai is
+            halfway between a race car and a super car.
+        </p>
+        <p class="title my-5" style="background-color:rgb(0, 0, 0, 0.5);">
+            What if we mixed those two cars and gave it the same engine as the 24 hour Le Mans winning car? That is what
+            my inspiration was for my Furai-Vision concept:
+        </p>
+        <p class="title my-5" style="background-color:rgb(0, 0, 0, 0.5);">Xaena Furai-Vision Concept</p>
+        <p><img alt="Furai-Vision" src="images/Intro_Furai-Vision.jpg" name="Furai-Vision" width="80%" /></p>
+        <br>
+        <p class="title my-5" style="background-color:rgb(0, 0, 0, 0.5);">The end goal is producing small quantity
+            bespoke super-cars. If you want this vision to become reality, let us know if you would want to join an
+            Indiegogo Crowdfunding campaign to get Xaena kick-started.</p>
+        <br>
+        <br>
+        <br>
+    </div>
+    <div id="contact" class="text-div text-center">
+        <span class="px-3 py-3 btn-dark" onmouseover="imageChange()"><a class="px-4 my-3"
+                href="mailto:info@xaenaautomobiles.com">info@xaenaautomobiles.com</a></span>
+    </div>
+    <div class="footer text-center py-1 mb-5">
+        <a class="fa fa-facebook-official w3-hover-opacity" href="https://www.facebook.com/xaena.automobiles"
+            target="_blank" alt="facebook @xaena.automobiles"></a>
+        <a class="fa fa-instagram w3-hover-opacity" href="https://www.instagram.com/xaena.exotic.car/" target="_blank"
+            alt="instagram @xaena.exotic.car"></a>
+        <p class="py-1">©2021 by Xaena Automobiles</p>
+    </div>
+    <script>
+        function imageChange() {
+            document.body.classList.add('img-2');
+            document.body.classList.remove('img-1');
+            imgblack()
+        }
+        function imgblack() {
+            window.setTimeout(function () {
+                document.body.className = 'img-1';
+            }, 2000);
+        }
+        imageChange();
+        window.onscroll = function () { myFunction() };
+        function myFunction() {
+            var navbar = document.getElementById("myNavbar");
+            if (document.body.scrollTop > 100 || document.documentElement.scrollTop > 100) {
+                navbar.className = "xgo-bar" + " xgo-card" + " xgo-animate-top" + " xgo-white";
+            } else {
+                navbar.className = navbar.className.replace(" xgo-card xgo-animate-top xgo-white", "");
+            }
+        }
+        function toggleFunction() {
+            var x = document.getElementById("navDemo");
+            if (x.className.indexOf("xgo-show") == -1) {
+                x.className += " xgo-show";
+            } else {
+                x.className = x.className.replace(" xgo-show", "");
+            }
+        }
+    </script>
+</body>
+
+</html>

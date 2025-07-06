@@ -207,6 +207,7 @@
         let aimingDot;
         let icharPopup;
         let canShowIcharPopup = true;
+        let monitorDisplays = [];
 
         // Detect if the user is on a mobile device
         const isMobile = /Mobi|Android/i.test(navigator.userAgent);
@@ -706,8 +707,10 @@
                 const screen = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.45, 0.02), monitorMaterial);
                 screen.position.y = deskTopY + 0.3;
                 
-                const display = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.43), screenMaterial);
+                const display = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.43), screenMaterial.clone());
                 display.position.z = 0.011;
+                display.userData.isMonitorDisplay = true;
+                monitorDisplays.push(display);
                 screen.add(display);
 
                 monitor.add(stand);
@@ -835,6 +838,23 @@
                 if (icharPopup && canShowIcharPopup) {
                     icharPopup.style.display = 'block';
                     controls.unlock();
+                }
+                return;
+            }
+            // Raycast from center of screen for monitor click
+            const monitorIntersects = raycaster.intersectObjects(monitorDisplays, false);
+            if (monitorIntersects.length > 0) {
+                const display = monitorIntersects[0].object;
+                if (display.userData.isChanged) {
+                    window.location.href = 'Xaena/index.html';
+                } else {
+                    // Change the display's texture to images/Xaena1.jpg
+                    const loader = new THREE.TextureLoader();
+                    loader.load('images/Xaena1.jpg', function(texture) {
+                        display.material.map = texture;
+                        display.material.needsUpdate = true;
+                        display.userData.isChanged = true; // Set the flag
+                    });
                 }
                 return;
             }

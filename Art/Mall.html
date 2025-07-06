@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Mall Scene - Three.js</title>
+    <title>Gerhard Oosthuizen Art Gallery Three.js</title>
     <link rel="stylesheet" href="menu.css">
     <link rel="stylesheet" href="styles.css">
     <style>
@@ -302,8 +302,8 @@
 
             // Determine tile size based on the original shader's visual density (4 tiles across 30 units)
             const tileSize = 4; 
-            const floorWidth = 30;
-            const floorDepth = 30; // The floor spans from -15 to 15 in X, and 0 to 30 in Z
+            const floorWidth = 10;
+            const floorDepth = 10; // The floor spans from -15 to 15 in X, and 0 to 30 in Z
 
             const tileGeometry = new THREE.PlaneGeometry(tileSize, tileSize); // Geometry for a single tile
 
@@ -409,11 +409,11 @@
 
             Promise.all(fontPromises).then(() => {
                 const shopsData = {
-                    "The Sci-Fi Bookshop": createShop("The Sci-Fi Bookshop", new THREE.Vector3(10, 0, 5), loadedFonts.gentilis),
-                    "Art by Gerhard": createShop("Art by Gerhard", new THREE.Vector3(10, 0, 15), loadedFonts.helvetiker),
+                    // "The Sci-Fi Bookshop": createShop("The Sci-Fi Bookshop", new THREE.Vector3(10, 0, 5), loadedFonts.gentilis),
+                    "Art by Gerhard": createShop("Art by Gerhard", new THREE.Vector3(10, 0, 15), loadedFonts.helvetiker)/* ,
                     "GO 3Design": createShop("GO 3Design", new THREE.Vector3(0, 0, 25), loadedFonts.helvetiker),
                     "NX Dev": createShop("NX Dev", new THREE.Vector3(-10, 0, 15), loadedFonts.gentilis),
-                    "X-Arcade": createShop("X-Arcade", new THREE.Vector3(-10, 0, 5), loadedFonts.optimer)
+                    "X-Arcade": createShop("X-Arcade", new THREE.Vector3(-10, 0, 5), loadedFonts.optimer) */
                 };
 
                 // --- Add cylindrical pillars in the back corners of the art gallery ---
@@ -434,15 +434,15 @@
                 }
 
                 // Art gallery back corners (using correct positions for the gallery at (10, 0, 15), width 10, depth 10)
-                addPillar(14, 18); // right back
-                addPillar(14, 12);  // left back
+                //addPillar(14, 18); // right back
+                //addPillar(14, 12);  // left back
 
                 // --- Mall pillars ---
                 // (X:4, Z:19), (X:-4, Z:19), (X:4, Z:1), (X:-4, Z:1)
-                addPillar(4, 19);
-                addPillar(-4, 19);
-                addPillar(4, 1);
-                addPillar(-4, 1);
+                addPillar(3, 19);
+                addPillar(-3, 19);
+                addPillar(3, 1);
+                addPillar(-3, 1);
 
      
 
@@ -450,18 +450,18 @@
 
                 // --- Add invisible hitbox links for each shop ---
                 const shopHitboxes = [
-                    {
+                    /* {
                         name: "The Sci-Fi Bookshop",
                         position: new THREE.Vector3(5, 1.5, 5),
                         size: [0.1, 3, 10],
                         url: 'Books/SciFiBookshop.html'
-                    },
+                    }, */
                     {
                         name: "Art by Gerhard",
                         position: new THREE.Vector3(5, 1.5, 15),
                         size: [0.1, 3, 10],
                         url: 'Art/Art.html'
-                    },
+                    }/* ,
                     {
                         name: "GO 3Design",
                         position: new THREE.Vector3(0, 1.5, 20),
@@ -479,7 +479,7 @@
                         position: new THREE.Vector3(-5, 1.5, 5),
                         size: [0.1, 3, 10],
                         url: 'Arcade/Arcade.html'
-                    }
+                    } */
                 ];
                 shopHitboxes.forEach(hitbox => {
                     const geometry = new THREE.BoxGeometry(...hitbox.size);
