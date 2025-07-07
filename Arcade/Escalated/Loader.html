@@ -1,4 +1,4 @@
-Escalated Mayhem loader: <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -26,8 +26,8 @@ Escalated Mayhem loader: <!DOCTYPE html>
         #matrix-container {
             position: absolute;
             width: 75vw; /* Center 3/4 of the screen width */
-            height: 75vh; /* Center 3/4 of the screen height */
-            top: 12.5vh; /* (100 - 75) / 2 = 12.5vh from top */
+            height: 100vh; /* Center 3/4 of the screen height */
+            top: 0vh; /* (100 - 75) / 2 = 12.5vh from top */
             left: 12.5vw; /* (100 - 75) / 2 = 12.5vw from left */
             overflow: hidden; /* Hide characters outside this area */
             display: grid; /* Use CSS Grid for columns */
@@ -47,8 +47,13 @@ Escalated Mayhem loader: <!DOCTYPE html>
             color: #008080; /* Darker teal color */
             font-size: clamp(0.8em, 2vw, 1.5em); /* Responsive font size for matrix characters */
             text-shadow: 0 0 3px #008080; /* Subtle glow */
-            /* Transition for color change */
-            transition: color 0.05s ease-in-out, text-shadow 0.05s ease-in-out;
+            /* Transition for color change and fading */
+            transition: color 0.05s ease-in-out, text-shadow 0.05s ease-in-out, opacity 1s ease-out;
+        }
+
+        /* --- NEW: Class for fading out matrix characters --- */
+        .matrix-cell.fade-out {
+            opacity: 0;
         }
 
         .matrix-cell.cyan {
@@ -68,7 +73,34 @@ Escalated Mayhem loader: <!DOCTYPE html>
             line-height: 0.7;            /* Tighter vertical spacing */
             padding-top: 0;
             padding-bottom: 0;
+            transition: color 0.5s ease-in-out, text-shadow 0.5s ease-in-out; /* Smooth transition for final glow */
         }
+
+        /* Final glow effect for ESCALATED */
+        .final-glow {
+            color: #FFFFFF !important; /* Pure white text, !important to override other styles */
+            text-shadow: 0 0 4px #FFFFFF, 0 0 8px #4A90E2, 0 0 12px #0090E2 !important; /* White inner glow, UV Blue outer glow */
+        }
+
+        /* Styles for Bullet and Impact */
+        .bullet {
+            position: absolute;
+            width: 10px;
+            height: 4px;
+            background-color: #FFFF00; /* Bright yellow */
+            border-radius: 2px;
+            box-shadow: 0 0 10px #FFFF00, 0 0 20px #FFFF00;
+            z-index: 20;
+            transition: transform 0.2s ease-out; /* Animation for movement */
+            pointer-events: none;
+        }
+
+        .impact {
+            color: #FFFFFF !important;
+            text-shadow: 0 0 25px #FFFFFF, 0 0 40px #FFFF00 !important;
+            transition: color 0.05s, text-shadow 0.05s;
+        }
+
 
         /* Landscape: Use a wider font and increase letter spacing */
         @media (orientation: landscape) {
@@ -86,7 +118,7 @@ Escalated Mayhem loader: <!DOCTYPE html>
             color: #ADD8E6; /* UV Blue color */
             font-size: clamp(3em, 10vw, 6em); /* Doubled size */
             font-family: 'Yellowtail', cursive; /* Use Yellowtail font */
-            text-shadow: 0 0 20px #1F51FF; /* Stronger glow for larger text */
+            text-shadow: 0 0 20px #0051FF; /* Stronger glow for larger text */
             z-index: 10; /* Ensure it's above everything */
             pointer-events: none; /* Allow clicks to pass through */
             opacity: 0; /* Initially hidden */
@@ -136,11 +168,10 @@ Escalated Mayhem loader: <!DOCTYPE html>
     <script>
         // --- Global Variables ---
         const matrixContainer = document.getElementById('matrix-container');
-        // Renamed and repurposed from action-text-container
         const mayhemTextContainerBottomRight = document.getElementById('mayhem-text-container-bottom-right');
         const numColumns = 9;
-        const numRows = 15; // Based on the 1/15th fractions
-        const animationSpeed = 25; // Milliseconds per character cycle/step (adjust for faster/slower)
+        const numRows = 15;
+        const animationSpeed = 25; // Milliseconds per character cycle/step
         const cycleDuration = 3; // Number of random character cycles before settling
 
         let currentColumnIndex = 0;
@@ -148,13 +179,8 @@ Escalated Mayhem loader: <!DOCTYPE html>
         let cycleCount = 0;
         let animationComplete = false;
 
-        // Character set for random falling letters
-        const englishChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        const chineseChars = "一二三四五六七八九十上下左右中大小月日年时分秒天地人出入口子手动工开学文京东西南北来去";
-        const allChars = englishChars + chineseChars;
+        const allChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789一二三四五六七八九十上下左右中大小月日年时分秒天地人出入口子手动工开学文京东西南北来去";
 
-        // Defines the "ESCALATED" letters, their column index, and vertical position (row index) from top
-        // Row index is calculated from the fraction: e.g., 11/15ths from top means row 11 (0-indexed)
         const escalatedLettersData = [
             { char: 'E', col: 0, row: Math.floor(numRows * (11 / 15)) },
             { char: 'S', col: 1, row: Math.floor(numRows * (10 / 15)) },
@@ -164,34 +190,26 @@ Escalated Mayhem loader: <!DOCTYPE html>
             { char: 'A', col: 5, row: Math.floor(numRows * (6 / 15)) },
             { char: 'T', col: 6, row: Math.floor(numRows * (5 / 15)) },
             { char: 'E', col: 7, row: Math.floor(numRows * (4 / 15)) },
-            { char: 'D', col: 8, row: Math.floor(numRows * (3 / 15)) } // 'D' for the 9th column
+            { char: 'D', col: 8, row: Math.floor(numRows * (3 / 15)) }
         ];
 
-        // Store references to all matrix cells for easy access
         const matrixCells = [];
 
         // --- Initialization Function ---
         function init() {
-            // Create all matrix cells (divs) and add them to the container
             for (let r = 0; r < numRows; r++) {
                 matrixCells[r] = [];
                 for (let c = 0; c < numColumns; c++) {
                     const cellDiv = document.createElement('div');
                     cellDiv.classList.add('matrix-cell');
-                    cellDiv.dataset.row = r;
-                    cellDiv.dataset.col = c;
                     matrixContainer.appendChild(cellDiv);
                     matrixCells[r][c] = cellDiv;
                 }
             }
-
-            // Start the sequential animation
-            startSequentialAnimation();
-            console.log('Loader initialized and sequential animation started.');
+            startInitialAnimation();
         }
 
         // --- Helper Functions ---
-        // Interpolate between two hex colors
         function interpolateColor(color1, color2, factor) {
             let c1 = color1.match(/\w\w/g).map(x => parseInt(x, 16));
             let c2 = color2.match(/\w\w/g).map(x => parseInt(x, 16));
@@ -199,64 +217,56 @@ Escalated Mayhem loader: <!DOCTYPE html>
             return `#${result.map(x => x.toString(16).padStart(2, '0')).join('')}`;
         }
 
-        // Adjust brightness by a factor (0.9 to 1.1)
         function adjustBrightness(hex, factor) {
             let rgb = hex.match(/\w\w/g).map(x => parseInt(x, 16));
+            // Fixed: Added a missing closing parenthesis after Math.round(v * factor)
             let adjusted = rgb.map(v => Math.min(255, Math.max(0, Math.round(v * factor))));
             return `#${adjusted.map(x => x.toString(16).padStart(2, '0')).join('')}`;
         }
 
-        // --- Sequential Animation Logic ---
-        function startSequentialAnimation() {
+        // --- Initial Animation Logic ---
+        function startInitialAnimation() {
             if (animationComplete) return;
-
             if (currentColumnIndex >= numColumns) {
                 animationComplete = true;
-                showMayhem();
+                triggerSecondaryAnimations();
                 return;
             }
-
             const currentCell = matrixCells[currentRowIndex][currentColumnIndex];
             const escalatedLetter = escalatedLettersData.find(
                 data => data.col === currentColumnIndex && data.row === currentRowIndex
             );
-
             if (cycleCount < cycleDuration) {
-                // Phase 1: Cycling random characters
-                const randomChar = allChars[Math.floor(Math.random() * allChars.length)];
-                currentCell.textContent = randomChar;
+                currentCell.textContent = allChars[Math.floor(Math.random() * allChars.length)];
                 currentCell.classList.toggle('cyan');
                 cycleCount++;
-                setTimeout(startSequentialAnimation, animationSpeed);
+                setTimeout(startInitialAnimation, animationSpeed);
             } else {
-                // Phase 2: Settling or placing ESCALATED letter
                 currentCell.classList.remove('cyan');
-
                 if (escalatedLetter) {
-                    // Place the ESCALATED letter and stop column animation
                     currentCell.textContent = escalatedLetter.char;
                     currentCell.classList.add('elevated-char');
-                    currentCell.style.color = ""; // Use CSS for ESCALATED letters
-                    currentCell.style.textShadow = ""; // Use CSS for ESCALATED letters
                     currentRowIndex = 0;
                     currentColumnIndex++;
                     cycleCount = 0;
                 } else {
-                    // Settle to the last random character in a vertical gradient color
-                    // Calculate gradient factor (0 at top, 1 at bottom)
                     const factor = currentRowIndex / (numRows - 1);
                     let baseColor = interpolateColor('000808', '00bbbb', factor);
-                    // Add up to ±10% random brightness
                     const brightnessFactor = 0.9 + Math.random() * 0.2;
                     let variedColor = adjustBrightness(baseColor, brightnessFactor);
                     currentCell.style.color = variedColor;
                     currentCell.style.textShadow = `0 0 3px ${variedColor}, 0 0 8px ${variedColor}`;
-
                     currentRowIndex++;
                     cycleCount = 0;
                 }
-                setTimeout(startSequentialAnimation, animationSpeed);
+                setTimeout(startInitialAnimation, animationSpeed);
             }
+        }
+
+        // --- Function to handle all post-initial animations ---
+        function triggerSecondaryAnimations() {
+            showMayhem();
+            setTimeout(startBulletAnimation, 2000);
         }
 
         // --- Show Mayhem Text ---
@@ -264,15 +274,112 @@ Escalated Mayhem loader: <!DOCTYPE html>
             mayhemTextContainerBottomRight.classList.add('show');
         }
 
-        // --- Window Resize Handler ---
-        function onWindowResize() {
-            // The CSS Grid and vw/vh units handle responsiveness for the matrix cells.
-            // No specific JS re-positioning needed for characters.
+        // --- Bullet Animation Logic ---
+        function startBulletAnimation() {
+            const elevatedCells = Array.from(document.querySelectorAll('.elevated-char'));
+            let bulletIndex = 0;
+
+            function shootNextBullet() {
+                if (bulletIndex >= elevatedCells.length) {
+                    setTimeout(startRotationAnimation, 300);
+                    return;
+                }
+                const targetCell = elevatedCells[bulletIndex];
+                const targetRect = targetCell.getBoundingClientRect();
+                const bullet = document.createElement('div');
+                bullet.className = 'bullet';
+                document.body.appendChild(bullet);
+                const startX = -20;
+                const startY = targetRect.top + (targetRect.height / 2) - (bullet.offsetHeight / 2);
+                bullet.style.left = `${startX}px`;
+                bullet.style.top = `${startY}px`;
+                requestAnimationFrame(() => {
+                    const endX = targetRect.left;
+                    bullet.style.transform = `translateX(${endX - startX}px)`;
+                });
+                setTimeout(() => {
+                    targetCell.classList.add('impact');
+                    setTimeout(() => {
+                        targetCell.classList.remove('impact');
+                    }, 100);
+                    bullet.remove();
+                    bulletIndex++;
+                    setTimeout(shootNextBullet, 100);
+                }, 200);
+            }
+            shootNextBullet();
+        }
+
+        // --- Rotation Animation Logic ---
+        function startRotationAnimation() {
+            // --- NEW: Start the background fade-out simultaneously ---
+            fadeMatrixCharacters();
+
+            const elevatedCells = Array.from(document.querySelectorAll('.elevated-char'));
+            const originalChars = elevatedCells.map(cell => cell.textContent).join(''); // Join to compare as string
+            let currentChars = [...originalChars]; // Use spread to create a new array
+            let lastRemovedChar = ''; // To store the character that "falls off"
+
+            const rotationInterval = setInterval(() => {
+                // Store the character that will be replaced by the "•"
+                const firstChar = currentChars[0];
+
+                // Shift characters up
+                for (let i = 0; i < currentChars.length - 1; i++) {
+                    currentChars[i] = currentChars[i + 1];
+                }
+
+                // The last character is now the one that was at the second to last position.
+                // The character that was originally at the last position is now 'lost' in this shift,
+                // so we need to put 'lastRemovedChar' in the last position.
+                // If lastRemovedChar is empty (first cycle), we'll replace the last char with '•'
+                const charToPlaceAtEnd = lastRemovedChar === '' ? '•' : lastRemovedChar;
+                lastRemovedChar = firstChar; // The character that was at the first position is now the one to be remembered for the next cycle.
+                currentChars[currentChars.length - 1] = charToPlaceAtEnd;
+
+                // Update the display
+                elevatedCells.forEach((cell, index) => {
+                    cell.textContent = currentChars[index];
+                });
+
+                // Check if the word "ESCALATED" is complete again
+                if (currentChars.join('') === originalChars) {
+                    clearInterval(rotationInterval);
+                    setTimeout(() => applyFinalGlow(elevatedCells), 500);
+                }
+            }, 150);
+        }
+
+
+        // --- NEW: Function to fade out background matrix characters ---
+        function fadeMatrixCharacters() {
+            let row = 0;
+            const fadeInterval = setInterval(() => {
+                if (row >= numRows) {
+                    clearInterval(fadeInterval);
+                    return;
+                }
+                for (let col = 0; col < numColumns; col++) {
+                    const cell = matrixCells[row][col];
+                    // Check if it's not one of the main letters
+                    if (!cell.classList.contains('elevated-char')) {
+                        cell.classList.add('fade-out');
+                    }
+                }
+                row++;
+            }, 75); // Delay between each row fading to create a top-to-bottom effect
+        }
+
+        // --- Final Glow Effect ---
+        function applyFinalGlow(cells) {
+            cells.forEach(cell => {
+                cell.classList.add('final-glow');
+            });
         }
 
         // --- Start the loader when the window is fully loaded ---
         window.onload = init;
-        window.addEventListener('resize', onWindowResize);
+
     </script>
 </body>
 </html>

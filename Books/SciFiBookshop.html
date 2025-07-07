@@ -16,6 +16,18 @@
             border-radius: 0.5rem; /* Rounded corners for the container */
             border: 1px solid #e5e7eb;
         }
+        .page-content h1 {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
+        .page-content h2 {
+            font-size: 1.75rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
         .page-content h3 {
             font-size: 1.5rem;
             font-weight: bold;
@@ -35,6 +47,7 @@
             margin-bottom: 0.5rem;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-FWN6NL8B16"></script>
@@ -67,46 +80,42 @@
     </main>
 
     <script>
-        // Data for the Sci-Fi Bookshop, derived from Menu.txt
+        // Data for the Sci-Fi Bookshop
         const shopItems = [
             {
                 id: 'next-sun',
-                title: 'The Next Sun', // The title is important for display purposes.
-                filePath: 'NextSun/nextsun.html' // Corrected path
+                title: 'The Next Sun',
+                filePath: 'NextSun/The Next Sun.md'
             },
             {
                 id: 'solEscape',
                 title: 'The Escape from Sol',
-                filePath: 'BueHaria/Moonrise.html' // Corrected path
+                filePath: 'Escape/Escape from Sol - Draft.md'
             },
-
             {
                 id: 'caveman-abduction',
                 title: 'CaveMan Abduction',
-                filePath: 'Cavemen/Cavemen.html' // Corrected path
+                filePath: 'Cavemen/Cavemen Conquer the Cosmos.md'
             },
             {
                 id: 'abductotron-chronicals',
                 title: 'The AbductoTron Chronicals',
-                filePath: 'AbductoTron/abductoTron.html' // Corrected path
+                filePath: 'AbductoTron/The Abductotron Chronicles of Bob the Grey.md'
             },
             {
                 id: 'abduction-absurdity',
                 title: 'Abduction & Absurdity',
-                filePath: 'Absurdity/absurdity.html' // Corrected path
+                filePath: 'Absurdity/Abduction and Absurdity_ Cosmic AI Tales.pdf'
             },
             {
-                id: 'bue-harian-chronicals',
-                title: "The Bue-Har'ian Chronicals",
-                content: `
-                    <h3>The Bue-Har'ian Chronicals</h3>
-                    <p>A Science-Fiction Trilogy consisting of:</p>
-                    <ul>
-                        <li><strong>MoonRise:</strong> Science Students trying to Simulate the Universe gone awry.</li>
-                        <li><strong>Bue-Har'ia:</strong> Life in the Simulation World.</li>
-                        <li><strong>Z3R0:</strong> A New Hero.</li>
-                    </ul>
-                `
+                id: 'moonrise',
+                title: 'MoonRise',
+                filePath: 'BueHaria/Moonrise.md'
+            },
+            {
+                id: 'zero',
+                title: 'Z3R0',
+                filePath: 'BueHaria/Zero 2 - Chapter 1. In the beginning.md'
             }
         ];
 
@@ -151,20 +160,29 @@
 
                 // Load content from the file using the fetch API
                 if (item.filePath) {
-                    fetch(item.filePath)
-                        .then(response => {
-                            if (!response.ok) {
-                                throw new Error(`Failed to load ${item.filePath}: ${response.status}`);
-                            }
-                            return response.text();
-                        })
-                        .then(html => {
-                            contentDiv.innerHTML = html;
-                        })
-                        .catch(error => {
-                            console.error('Error fetching content:', error);
-                            contentDiv.innerHTML = `<p class="text-red-500">Error loading content: ${error.message}</p>`;
-                        });
+                    const extension = item.filePath.split('.').pop().toLowerCase();
+
+                    if (extension === 'md') {
+                        fetch(item.filePath)
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error(`Failed to load ${item.filePath}: ${response.status}`);
+                                }
+                                return response.text();
+                            })
+                            .then(text => {
+                                // The 'marked' library is loaded from CDN
+                                contentDiv.innerHTML = marked.parse(text);
+                            })
+                            .catch(error => {
+                                console.error('Error fetching content:', error);
+                                contentDiv.innerHTML = `<p class="text-red-500">Error loading content: ${error.message}</p>`;
+                            });
+                    } else if (extension === 'pdf') {
+                        contentDiv.innerHTML = `<embed src="${item.filePath}" type="application/pdf" width="100%" style="height: calc(100vh - 160px);" />`;
+                    } else {
+                        contentDiv.innerHTML = `<p class="text-red-500">Unsupported file type: ${extension}</p>`;
+                    }
                 } else {
                     contentDiv.innerHTML = `
                         <h3>${item.title}</h3>
@@ -181,5 +199,5 @@
             }
         };
     </script>
-</body></html>
+</body>
 </html>
