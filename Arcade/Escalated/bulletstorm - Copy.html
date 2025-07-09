@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loading...</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'monospace', 'Courier New', Courier, monospace;
+        }
+        #loader {
+            text-align: center;
+            white-space: pre;
+            font-size: 8px; /* Adjust for detail */
+            line-height: 0.9;
+            color: #00FFFF; /* Cyan color */
+            text-shadow: 0 0 5px #00FFFF, 0 0 10px #00FFFF;
+        }
+        .char-cell {
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <pre id="loader"></pre>
+    <canvas id="imageCanvas" style="display: none;"></canvas>
+
+    <script>
+        const loader = document.getElementById('loader');
+        const imageCanvas = document.getElementById('imageCanvas');
+        const ctx = imageCanvas.getContext('2d');
+
+        const image = new Image();
+        // Correct path to the image
+        image.src = 'textures/Mafia.png';
+        image.crossOrigin = "Anonymous"; // Handle potential CORS issues if served from a different origin
+
+        const asciiChars = "`.-':_,^=;><+!rc*/z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@";
+        const allMatrixChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789一二三四五六七八九十";
+
+        image.onload = () => {
+            // Desired width of the ASCII art in characters
+            const outputWidth = 200;
+
+            const scaleFactor = outputWidth / image.width;
+            const scaledWidth = Math.floor(image.width * scaleFactor);
+            // Adjust height for character aspect ratio (characters are taller than they are wide)
+            const scaledHeight = Math.floor(image.height * scaleFactor * 0.55);
+
+            imageCanvas.width = scaledWidth;
+            imageCanvas.height = scaledHeight;
+
+            ctx.drawImage(image, 0, 0, scaledWidth, scaledHeight);
+            const imageData = ctx.getImageData(0, 0, scaledWidth, scaledHeight);
+            const pixels = imageData.data;
+
+            let asciiMatrix = [];
+            for (let y = 0; y < scaledHeight; y++) {
+                let row = [];
+                for (let x = 0; x < scaledWidth; x++) {
+                    const index = (y * scaledWidth + x) * 4;
+                    const r = pixels[index];
+                    const g = pixels[index + 1];
+                    const b = pixels[index + 2];
+                    const brightness = (r + g + b) / 3;
+                    const charIndex = Math.floor((brightness / 255) * (asciiChars.length - 1));
+                    row.push(asciiChars[charIndex]);
+                }
+                asciiMatrix.push(row);
+            }
+
+            renderInitialGrid(scaledWidth, scaledHeight, asciiMatrix);
+        };
+
+        image.onerror = () => {
+            loader.textContent = "Error loading image.";
+        };
+
+        function renderInitialGrid(width, height, finalMatrix) {
+            let cellElements = [];
+            for (let y = 0; y < height; y++) {
+                let rowElements = [];
+                let rowDiv = document.createElement('div');
+                for (let x = 0; x < width; x++) {
+                    const span = document.createElement('span');
+                    span.className = 'char-cell';
+                    span.innerHTML = '&nbsp;'; // Start with a non-breaking space
+                    rowDiv.appendChild(span);
+                    rowElements.push(span);
+                }
+                loader.appendChild(rowDiv);
+                cellElements.push(rowElements);
+            }
+            startRevealAnimation(width, height, finalMatrix, cellElements);
+        }
+
+        function startRevealAnimation(width, height, finalMatrix, cellElements) {
+            let currentColumn = 0;
+            const revealSpeed = 20; // Milliseconds between revealing each column
+
+            function revealNextColumn() {
+                if (currentColumn >= width) {
+                    return; // Animation finished
+                }
+
+                for (let y = 0; y < height; y++) {
+                    const finalChar = finalMatrix[y][currentColumn];
+                    const cell = cellElements[y][currentColumn];
+                    // Start the matrix effect for this cell
+                    animateCell(cell, finalChar);
+                }
+
+                currentColumn++;
+                setTimeout(revealNextColumn, revealSpeed);
+            }
+
+            revealNextColumn();
+        }
+
+        function animateCell(cell, finalChar) {
+            let cycleCount = 0;
+            const maxCycles = Math.floor(Math.random() * 5) + 3; // Random number of cycles
+            const cycleSpeed = 50; // Speed of character cycling
+
+            function cycle() {
+                if (cycleCount >= maxCycles) {
+                    cell.textContent = finalChar; // Set the final character
+                } else {
+                    cell.textContent = allMatrixChars[Math.floor(Math.random() * allMatrixChars.length)];
+                    cycleCount++;
+                    setTimeout(cycle, cycleSpeed);
+                }
+            }
+            cycle();
+        }
+    </script>
+</body>
+</html>

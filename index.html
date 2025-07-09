@@ -94,18 +94,21 @@
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
         import { FontLoader } from 'three/addons/loaders/FontLoader.js';
         import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+        import { setupMobileControls } from './common-mobile-controls.js';
 
         // --- SCENE SETUP ---
         let scene, camera, renderer, controls, clock, raycaster;
 
         // --- MOVEMENT VARIABLES ---
-        let moveForward = false;
-        let moveBackward = false;
-        let moveLeft = false;
-        let moveRight = false;
         const playerVelocity = new THREE.Vector3();
         const playerSpeed = 6.0; // Adjusted for a more comfortable speed
         const playerHeight = 1.75;
+        const move = {
+            forward: false,
+            backward: false,
+            left: false,
+            right: false
+        };
 
         // Corridor boundaries
         const minX = -4.5;
@@ -1302,7 +1305,8 @@
             //{ name: "Kannada", start: 0x0C80, end: 0x0Cff },         // Kannada script, start: 0x0C80, end: 0x0CFF 
             { name: "Telugu", start: 0x0C2a, end: 0x0C36 },          // Telugu script , start: 0x0C00, end: 0x0C7F }, 
             { name: "Greek", start: 0x0390, end: 0x03FF },           // Greek and Coptic, start: 0x0370, end: 0x03FF 
-            { name: "Cyrillic", start: 0x0400, end: 0x04FF }         // Cyrillic (Russian), start: 0x0400, end: 0x04FF
+            { name: "Cyrillic", start: 0x0400, end: 0x04FF },        // Cyrillic (Russian), start: 0x0400, end: 0x04FF
+            { name: "Hangul", start: 0xAC00, end: 0xD7AF }           // Hangul Syllables (Korean), start: 0xAC00, end: 0xD7AF
         ];
 
         // Function to get a random character from any of the defined script ranges
@@ -1410,49 +1414,8 @@
 
             window.addEventListener('resize', onWindowResize, false);
 
-            // Keyboard controls
-            const onKeyDown = function (event) {
-                switch (event.code) {
-                    case 'ArrowUp':
-                    case 'KeyW':
-                        moveForward = true;
-                        break;
-                    case 'ArrowLeft':
-                    case 'KeyA':
-                        moveLeft = true;
-                        break;
-                    case 'ArrowDown':
-                    case 'KeyS':
-                        moveBackward = true;
-                        break;
-                    case 'ArrowRight':
-                    case 'KeyD':
-                        moveRight = true;
-                        break;
-                }
-            };
-            const onKeyUp = function (event) {
-                switch (event.code) {
-                    case 'ArrowUp':
-                    case 'KeyW':
-                        moveForward = false;
-                        break;
-                    case 'ArrowLeft':
-                    case 'KeyA':
-                        moveLeft = false;
-                        break;
-                    case 'ArrowDown':
-                    case 'KeyS':
-                        moveBackward = false;
-                        break;
-                    case 'ArrowRight':
-                    case 'KeyD':
-                        moveRight = false;
-                        break;
-                }
-            };
-            document.addEventListener('keydown', onKeyDown);
-            document.addEventListener('keyup', onKeyUp);
+            // Setup controls
+            setupMobileControls(THREE, controls, move);
 
             // Wireframe debug mode toggle (P key)
             document.addEventListener('keydown', function (event) {
@@ -1542,10 +1505,10 @@
 
                 const accelerationFactor = playerSpeed * 8.0; // How quickly player reaches full speed
 
-                if (moveForward) playerVelocity.z -= accelerationFactor * delta;
-                if (moveBackward) playerVelocity.z += accelerationFactor * delta;
-                if (moveLeft) playerVelocity.x -= accelerationFactor * delta;
-                if (moveRight) playerVelocity.x += accelerationFactor * delta;
+                if (move.forward) playerVelocity.z -= accelerationFactor * delta;
+                if (move.backward) playerVelocity.z += accelerationFactor * delta;
+                if (move.left) playerVelocity.x -= accelerationFactor * delta;
+                if (move.right) playerVelocity.x += accelerationFactor * delta;
 
                 const playerObject = controls.getObject();
 

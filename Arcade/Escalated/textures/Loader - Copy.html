@@ -62,7 +62,7 @@
         }
 
         .matrix-cell.elevated-char { /* Apply elevated styles directly to the cell */
-            color: #00ffff; /* Light Cyan color for ESCALATED letters */
+            color: #ADD8E6; /* Light Cyan color for ESCALATED letters */
             font-size: clamp(3em, 7vw, 5em); /* Doubled size */
             font-weight: bolder;
             z-index: 2; /* Ensure it's above other characters */
@@ -115,7 +115,7 @@
             position: absolute;
             bottom: 25%; /* 3/4 toward bottom */
             right: 5%; /* Position from right, responsive */
-            color: #ffffff; /* UV Blue color */
+            color: #ADD8E6; /* UV Blue color */
             font-size: clamp(3em, 10vw, 6em); /* Doubled size */
             font-family: 'Yellowtail', cursive; /* Use Yellowtail font */
             text-shadow: 0 0 20px #0051FF; /* Stronger glow for larger text */
@@ -272,11 +272,6 @@
         // --- Show Mayhem Text ---
         function showMayhem() {
             mayhemTextContainerBottomRight.classList.add('show');
-            // Set all ESCALATED letters to cyan before bullets fire
-            const elevatedCells = Array.from(document.querySelectorAll('.elevated-char'));
-            elevatedCells.forEach(cell => {
-                cell.classList.add('cyan');
-            });
         }
 
         // --- Bullet Animation Logic ---
@@ -303,22 +298,10 @@
                     bullet.style.transform = `translateX(${endX - startX}px)`;
                 });
                 setTimeout(() => {
-                    // 1. Flash white
                     targetCell.classList.add('impact');
-                    targetCell.classList.remove('cyan'); // Ensure cyan is off for the white flash
-
                     setTimeout(() => {
-                        // 2. Flash cyan
                         targetCell.classList.remove('impact');
-                        targetCell.classList.add('cyan');
-
-                        setTimeout(() => {
-                            // 3. Become Midnight Blue
-                            targetCell.classList.remove('cyan');
-                            targetCell.style.color = '#191970';
-                        }, 100); // Duration of cyan flash
-                    }, 100); // Duration of white flash
-
+                    }, 100);
                     bullet.remove();
                     bulletIndex++;
                     setTimeout(shootNextBullet, 100);
@@ -333,40 +316,30 @@
             fadeMatrixCharacters();
 
             const elevatedCells = Array.from(document.querySelectorAll('.elevated-char'));
-            const originalChars = elevatedCells.map(cell => cell.textContent).join('');
-            let currentChars = [...originalChars];
-            let lastRemovedChar = '';
-            
-            // --- NEW: Track which cells should be cyan ---
-            const isCyan = new Array(elevatedCells.length).fill(false);
-
-            // Set all to midnight blue and remove cyan before starting rotation
-            elevatedCells.forEach(cell => {
-                cell.classList.remove('cyan');
-                cell.style.color = '#191970';
-            });
+            const originalChars = elevatedCells.map(cell => cell.textContent).join(''); // Join to compare as string
+            let currentChars = [...originalChars]; // Use spread to create a new array
+            let lastRemovedChar = ''; // To store the character that "falls off"
 
             const rotationInterval = setInterval(() => {
-                // Shift characters
-                const firstChar = currentChars.shift();
+                // Store the character that will be replaced by the "•"
+                const firstChar = currentChars[0];
+
+                // Shift characters up
+                for (let i = 0; i < currentChars.length - 1; i++) {
+                    currentChars[i] = currentChars[i + 1];
+                }
+
+                // The last character is now the one that was at the second to last position.
+                // The character that was originally at the last position is now 'lost' in this shift,
+                // so we need to put 'lastRemovedChar' in the last position.
+                // If lastRemovedChar is empty (first cycle), we'll replace the last char with '•'
                 const charToPlaceAtEnd = lastRemovedChar === '' ? '•' : lastRemovedChar;
-                lastRemovedChar = firstChar;
-                currentChars.push(charToPlaceAtEnd);
+                lastRemovedChar = firstChar; // The character that was at the first position is now the one to be remembered for the next cycle.
+                currentChars[currentChars.length - 1] = charToPlaceAtEnd;
 
-                // Shift cyan status
-                isCyan.shift();
-                isCyan.push(charToPlaceAtEnd !== '•');
-
-                // Update the display based on the new state
+                // Update the display
                 elevatedCells.forEach((cell, index) => {
                     cell.textContent = currentChars[index];
-                    if (isCyan[index]) {
-                        cell.classList.add('cyan');
-                        cell.style.color = ''; // Let CSS handle the color
-                    } else {
-                        cell.classList.remove('cyan');
-                        cell.style.color = '#191970'; // Midnight blue
-                    }
                 });
 
                 // Check if the word "ESCALATED" is complete again
@@ -400,8 +373,6 @@
         // --- Final Glow Effect ---
         function applyFinalGlow(cells) {
             cells.forEach(cell => {
-                cell.classList.remove('cyan');
-                cell.style.color = '';
                 cell.classList.add('final-glow');
             });
         }

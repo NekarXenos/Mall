@@ -303,22 +303,13 @@
                     bullet.style.transform = `translateX(${endX - startX}px)`;
                 });
                 setTimeout(() => {
-                    // 1. Flash white
                     targetCell.classList.add('impact');
-                    targetCell.classList.remove('cyan'); // Ensure cyan is off for the white flash
-
+                    // Change hit letter to Midnight Blue
+                    targetCell.classList.remove('cyan');
+                    targetCell.style.color = '#191970';
                     setTimeout(() => {
-                        // 2. Flash cyan
                         targetCell.classList.remove('impact');
-                        targetCell.classList.add('cyan');
-
-                        setTimeout(() => {
-                            // 3. Become Midnight Blue
-                            targetCell.classList.remove('cyan');
-                            targetCell.style.color = '#191970';
-                        }, 100); // Duration of cyan flash
-                    }, 100); // Duration of white flash
-
+                    }, 100);
                     bullet.remove();
                     bulletIndex++;
                     setTimeout(shootNextBullet, 100);

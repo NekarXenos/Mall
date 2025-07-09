@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Horizontal Matrix Effect - Mirrored</title>
+    <!-- Import Google Fonts: 'Oi' for the leading 'D' and 'Space Mono' for the matrix characters -->
+    <link href="https://fonts.googleapis.com/css2?family=Oi&family=Space+Mono&display=swap" rel="stylesheet">
+    <style>
+        /* Basic styling for the body and canvas to fill the screen */
+        body {
+            margin: 0;
+            overflow: hidden; /* Hide scrollbars */
+            background-color: #000; /* Black background for the matrix effect */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh; /* Full viewport height */
+            font-family: 'Space Mono', monospace; /* Fallback font */
+        }
+        canvas {
+            display: block; /* Remove extra space below canvas */
+            background-color: #000; /* Ensure canvas background is black */
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrixCanvas"></canvas>
+
+    <script>
+        // Get the canvas element and its 2D rendering context
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Array to hold properties for each horizontal stream
+        let streams = [];
+        // Characters to be used in the matrix trail - Katakana, numbers, and symbols
+        const katakana = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン';
+        const latin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const nums = '0123456789';
+        const characters = (katakana + latin + nums).split('');
+        
+        // Base font size for characters
+        const fontSize = 20;
+
+        /**
+         * Initializes or re-initializes the matrix effect based on window size.
+         * Sets canvas dimensions and creates stream objects for each row.
+         */
+        function initializeMatrix() {
+            // Set canvas dimensions to match the window size
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            // Clear the existing streams
+            streams = [];
+            // Calculate the number of rows based on canvas height and font size
+            const numRows = Math.floor(canvas.height / fontSize);
+
+            // Create a stream object for each row
+            for (let i = 0; i < numRows; i++) {
+                streams.push({
+                    x: Math.random() * canvas.width, // Starting X position (random across the width)
+                    y: (i + 0.5) * fontSize, // Y position for the row, ensuring proper spacing
+                    direction: Math.random() < 0.5 ? 1 : -1, // Direction: 1 for right, -1 for left
+                    trailLength: Math.floor(Math.random() * 10) + 5, // Random trail length (5 to 14 characters)
+                    speed: Math.random() * 1 + 0.5 // Random speed for each stream (0.5 to 1.5)
+                });
+            }
+        }
+
+        /**
+         * The main drawing function that updates and renders each frame of the matrix effect.
+         */
+        function draw() {
+            // Create a fading effect by drawing a semi-transparent black rectangle over the entire canvas.
+            // This makes older characters gradually fade out.
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Iterate over each stream (row)
+            streams.forEach(stream => {
+                // --- Draw the leading 'D' character ---
+                // Set font for the 'D' character: bold, specified size, and 'Oi' font
+                ctx.font = `bold ${fontSize}px 'Oi', cursive`;
+                ctx.fillStyle = '#CCCCCC'; // Grey color for the 'D'
+                ctx.shadowColor = '#FF4500'; // Fiery orange glow color
+                ctx.shadowBlur = 15; // Intensity of the glow
+
+                // If the stream is moving left, we mirror the 'D'
+                if (stream.direction === -1) {
+                    ctx.save(); // Save the current canvas state
+                    ctx.translate(stream.x, stream.y); // Move origin to the character's position
+                    ctx.scale(-1, 1); // Flip the context horizontally
+                    ctx.fillText('D', 0, 0); // Draw the mirrored 'D' at the new origin
+                    ctx.restore(); // Restore the canvas state
+                } else {
+                    // Otherwise, draw the 'D' normally
+                    ctx.fillText('D', stream.x, stream.y);
+                }
+
+                // Reset shadow properties to prevent them from affecting other elements
+                ctx.shadowBlur = 0;
+
+                // --- Draw the cyan trail characters ---
+                // Set font for the trail characters: specified size and 'Space Mono' (monospaced)
+                ctx.font = `${fontSize}px 'Space Mono', monospace`;
+                ctx.fillStyle = '#00FFFF'; // Cyan color for the trail
+
+                // Loop to draw each character in the trail behind the 'D'
+                for (let i = 1; i <= stream.trailLength; i++) {
+                    let charX;
+                    // Calculate the X position for each trail character based on the 'D's position and direction
+                    if (stream.direction === 1) { // If moving right, trail is to the left of 'D'
+                        charX = stream.x - (i * fontSize);
+                    } else { // If moving left, trail is to the right of 'D'
+                        charX = stream.x + (i * fontSize);
+                    }
+
+                    // Only draw the character if it's within the visible canvas area (with a small buffer)
+                    if (charX >= -fontSize && charX <= canvas.width + fontSize) {
+                        // Select a random character from the predefined set
+                        const randomChar = characters[Math.floor(Math.random() * characters.length)];
+                        ctx.fillText(randomChar, charX, stream.y);
+                    }
+                }
+
+                // --- Update the 'D' position for the next frame ---
+                // Move the 'D' horizontally based on its direction and speed
+                stream.x += stream.direction * stream.speed;
+
+                // --- Boundary Check and Stream Reset ---
+                // Calculate the threshold for when the stream is completely off-screen
+                // This includes the 'D' and its entire trail length
+                const resetThreshold = stream.trailLength * fontSize;
+
+                // Check if the 'D' and its trail have moved entirely off the screen
+                if ((stream.direction === 1 && stream.x > canvas.width + resetThreshold) || // Moving right and off-screen
+                    (stream.direction === -1 && stream.x < -resetThreshold)) { // Moving left and off-screen
+                    // Reset the 'D' to the opposite side of the screen to create a continuous loop
+                    stream.x = stream.direction === 1 ? -resetThreshold : canvas.width + resetThreshold;
+                }
+            });
+
+            // Request the next animation frame to continue the loop
+            requestAnimationFrame(draw);
+        }
+
+        // --- Event Listeners ---
+        // Initialize the matrix and start the animation when the window loads
+        window.addEventListener('load', () => {
+            initializeMatrix();
+            draw();
+        });
+
+        // Re-initialize the matrix whenever the window is resized to ensure responsiveness
+        window.addEventListener('resize', initializeMatrix);
+    </script>
+</body>
+</html>

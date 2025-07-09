@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escalated Mayhem</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oi&family=Ultra&family=Yellowtail&display=swap" rel="stylesheet">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrixCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas to full screen
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // --- Configuration ---
+        const fontSize = 16;
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        const columns = Math.floor(canvas.width / fontSize);
+        const rows = Math.floor(canvas.height / fontSize);
+        const streams = [];
+
+        // --- Stream Class ---
+        class Stream {
+            constructor() {
+                this.y = Math.floor(Math.random() * rows) * fontSize;
+                this.x = Math.random() < 0.5 ? -Math.random() * canvas.width : canvas.width + Math.random() * canvas.width;
+                this.speed = (Math.random() * 5) + 2;
+                this.direction = this.x < 0 ? 1 : -1; // 1 for right, -1 for left
+                this.length = Math.floor(Math.random() * 20) + 10;
+                this.characters = [];
+                this.generateCharacters();
+            }
+
+            generateCharacters() {
+                this.characters = [];
+                 // The leader character 'D'
+                this.characters.push({ value: 'D', isLeader: true });
+                // The rest of the stream
+                for (let i = 1; i < this.length; i++) {
+                    this.characters.push({ value: chars.charAt(Math.floor(Math.random() * chars.length)), isLeader: false });
+                }
+            }
+
+            draw() {
+                for (let i = 0; i < this.characters.length; i++) {
+                    const charInfo = this.characters[i];
+                    const charX = this.x + (i * fontSize * this.direction);
+                    
+                    if (charInfo.isLeader) {
+                        ctx.font = `bold ${fontSize + 4}px 'Oi'`;
+                        // Fiery orange glow for the leader
+                        ctx.shadowColor = 'orangered';
+                        ctx.shadowBlur = 15;
+                        ctx.fillStyle = '#CCCCCC'; // Grey color for 'D'
+                    } else {
+                        ctx.font = `${fontSize}px monospace`;
+                        ctx.shadowBlur = 0; // No glow for other characters
+                        ctx.fillStyle = '#00FFFF'; // Cyan for the trail
+                    }
+                    ctx.fillText(charInfo.value, charX, this.y);
+                }
+                 // Reset shadow for other elements
+                ctx.shadowBlur = 0;
+            }
+
+            update() {
+                this.x += this.speed * this.direction;
+                // Reset stream if it goes off-screen
+                if ((this.direction === 1 && this.x > canvas.width) || (this.direction === -1 && this.x < -this.length * fontSize)) {
+                    this.y = Math.floor(Math.random() * rows) * fontSize;
+                    this.x = this.direction === 1 ? -this.length * fontSize : canvas.width;
+                }
+            }
+        }
+
+        // --- Text Animation ---
+        const escalatedText = "ESCALATED";
+        let revealedLetters = 0;
+        let mayhemAlpha = 0;
+        let mayhemAnimationDone = false;
+
+        // Reveal one letter of "ESCALATED" every 500ms
+        const revealInterval = setInterval(() => {
+            if (revealedLetters < escalatedText.length) {
+                revealedLetters++;
+            } else {
+                clearInterval(revealInterval);
+            }
+        }, 500);
+
+
+        function drawEscalated() {
+            if (revealedLetters === 0) return;
+
+            ctx.font = `bold ${canvas.width / 10}px 'Ultra'`;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            
+            for (let i = 0; i < revealedLetters; i++) {
+                const letter = escalatedText[i];
+                const step = i / (escalatedText.length - 1);
+
+                // Position letters diagonally from bottom-left to top-right
+                const x = canvas.width * 0.05 + (canvas.width * 0.8) * step;
+                const y = canvas.height * 0.9 - (canvas.height * 0.7) * step;
+
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 10;
+                ctx.fillText(letter, x, y);
+                ctx.restore();
+            }
+        }
+
+        function drawMayhem() {
+            if (revealedLetters < escalatedText.length) return;
+
+            if (mayhemAlpha < 1) {
+                mayhemAlpha += 0.01; // Fade in speed
+            } else {
+                mayhemAnimationDone = true;
+            }
+
+            ctx.font = `italic bold ${canvas.width / 12}px 'Yellowtail'`;
+            ctx.fillStyle = `rgba(255, 100, 0, ${mayhemAlpha})`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            const x = canvas.width * (2 / 3);
+            const y = canvas.height * (2 / 3);
+
+            ctx.save();
+            ctx.shadowColor = 'red';
+            ctx.shadowBlur = 20;
+            ctx.fillText("Mayhem", x, y);
+            ctx.restore();
+        }
+
+        // --- Initialization and Animation Loop ---
+        function initializeStreams() {
+            for (let i = 0; i < 50; i++) { // Create 50 streams
+                streams.push(new Stream());
+            }
+        }
+
+        function animate() {
+            // Semi-transparent background for fading trail effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw matrix streams
+            streams.forEach(stream => {
+                stream.draw();
+                stream.update();
+            });
+
+            // Draw the text animations
+            drawEscalated();
+            drawMayhem();
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- Event Listeners ---
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // Re-evaluate positions if needed, but for this effect it adapts well
+        });
+
+        // Start the animation
+        initializeStreams();
+        animate();
+
+    </script>
+</body>
+</html>
