@@ -31,7 +31,7 @@
 
         // --- Configuration ---
         const fontSize = 16;
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=-.:#@アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン';
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
         const columns = Math.floor(canvas.width / fontSize);
         const rows = Math.floor(canvas.height / fontSize);
         const streams = [];
@@ -59,34 +59,24 @@
             }
 
             draw() {
-                // Draw the leader 'D'
-                const leaderX = this.x;
-                ctx.save();
-                ctx.font = `bold ${fontSize + 4}px 'Oi'`;
-                ctx.shadowColor = 'orangered';
-                ctx.shadowBlur = 7;
-                ctx.translate(leaderX, this.y);
-                ctx.scale(this.direction, 1);
-
-                ctx.fillStyle = '#AAAAAA';
-                ctx.fillText('D', 0, 0);
-                ctx.lineWidth = 0.1;
-                ctx.strokeStyle = 'rgb(255, 128, 0)';
-                ctx.strokeText('D', 0, 0);
-                ctx.restore();
-
-                // Draw the trail (non-persistent, random each frame)
-                ctx.font = `${fontSize}px monospace`;
-                ctx.shadowBlur = 0;
-                ctx.fillStyle = 'rgba(0, 255, 255, 0.5)';// '#00FFFF';
-                for (let i = 1; i < this.length; i++) {
-                    const charX = this.x - (i * fontSize * this.direction);
-                    const randomChar = chars.charAt(Math.floor(Math.random() * chars.length));
-                    ctx.shadowColor = 'cyan';
-                    ctx.shadowBlur = 10*(1-(1/i));
-                    ctx.fillStyle = 'rgba(0, 255, 255, 1-(2/i))'; // Cyan color for the trail
-                    ctx.fillText(randomChar, charX, this.y);
+                for (let i = 0; i < this.characters.length; i++) {
+                    const charInfo = this.characters[i];
+                    const charX = this.x + (i * fontSize * this.direction);
+                    
+                    if (charInfo.isLeader) {
+                        ctx.font = `bold ${fontSize + 4}px 'Oi'`;
+                        // Fiery orange glow for the leader
+                        ctx.shadowColor = 'orangered';
+                        ctx.shadowBlur = 15;
+                        ctx.fillStyle = '#CCCCCC'; // Grey color for 'D'
+                    } else {
+                        ctx.font = `${fontSize}px monospace`;
+                        ctx.shadowBlur = 0; // No glow for other characters
+                        ctx.fillStyle = '#00FFFF'; // Cyan for the trail
+                    }
+                    ctx.fillText(charInfo.value, charX, this.y);
                 }
+                 // Reset shadow for other elements
                 ctx.shadowBlur = 0;
             }
 
@@ -150,39 +140,18 @@
             }
 
             ctx.font = `italic bold ${canvas.width / 12}px 'Yellowtail'`;
+            ctx.fillStyle = `rgba(255, 100, 0, ${mayhemAlpha})`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
+            
             const x = canvas.width * (2 / 3);
             const y = canvas.height * (2 / 3);
 
-            // 1. Simulate inner shadow by drawing shadowed text, then fill on top
             ctx.save();
-            ctx.globalCompositeOperation = 'source-over';
             ctx.shadowColor = 'red';
             ctx.shadowBlur = 20;
-            ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.fillText("Mayhem", x, y);
             ctx.restore();
-
-
-            // 2. Draw the text on top, normal blending, no shadow
-            ctx.save();
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = `rgb(255, 200, 128 )`;// ${mayhemAlpha})`; //rgba(255, 100, 0, ${mayhemAlpha})`;
-            ctx.fillText("Mayhem", x, y);
-            ctx.restore();
-       
-            // 3. Draw the outline in red
-            ctx.save();
-            ctx.shadowColor = 'orangered';
-            ctx.shadowBlur = 10;
-            ctx.lineWidth = 0.1;
-            ctx.strokeStyle = 'rgba(255, 128, 0, 0.3 )';
-            ctx.strokeText("Mayhem", x, y);
-            ctx.restore();
-
-           
         }
 
         // --- Initialization and Animation Loop ---
