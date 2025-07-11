@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flying Saucer FTL Journey</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Flying Saucer FTL Journey</div>
+
+    <!-- Three.js and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <!-- Updated Tween.js library -->
+    <script src="https://unpkg.com/@tweenjs/tween.js@21.0.0/dist/tween.umd.js"></script>
+
+    <script>
+        // --- SCENE SETUP ---
+        let scene, camera, renderer, controls;
+        let saucer, galaxy, starField, destinationStar, destinationPlanet;
+        let clock = new THREE.Clock();
+
+        // Animation sequence state
+        let animationPhase = 0; // 0: Approach, 1: FTL, 2: Inside Galaxy, 3: Approach Planet, 4: Landing
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 50000);
+            camera.position.set(0, 50, 200);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+            scene.add(ambientLight);
+            const pointLight = new THREE.PointLight(0xffffff, 1, 0);
+            pointLight.position.set(50, 50, 50);
+            scene.add(pointLight);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // --- CREATE OBJECTS ---
+            createSaucer();
+            createGalaxy();
+            createStarfield();
+            createDestinationSystem();
+            
+            // Start the animation sequence
+            startAnimationSequence();
+
+            // Handle window resizing
+            window.addEventListener('resize', onWindowResize, false);
+
+            // Start the main animation loop
+            animate();
+        }
+
+        // --- OBJECT CREATION FUNCTIONS ---
+
+        function createSaucer() {
+            const saucerGroup = new THREE.Group();
+            
+            // Main body
+            const bodyGeometry = new THREE.SphereGeometry(10, 32, 16);
+            bodyGeometry.scale(1, 0.2, 1); // Flatten the sphere
+            const bodyMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xc0c0c0, // Silver
+                metalness: 0.9, 
+                roughness: 0.2 
+            });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            saucerGroup.add(body);
+
+            // Cockpit
+            const cockpitGeometry = new THREE.SphereGeometry(3, 32, 16);
+            const cockpitMaterial = new THREE.MeshStandardMaterial({
+                color: 0x87ceeb, // Sky blue
+                metalness: 0.5,
+                roughness: 0.1,
+                transparent: true,
+                opacity: 0.6
+            });
+            const cockpit = new THREE.Mesh(cockpitGeometry, cockpitMaterial);
+            cockpit.position.y = 2.5;
+            saucerGroup.add(cockpit);
+
+            saucer = saucerGroup;
+            saucer.position.set(0, 50, 8000); // Start far away
+            scene.add(saucer);
+        }
+
+        function createGalaxy() {
+            const particleCount = 50000;
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+            const galaxyRadius = 2000;
+            const arms = 4;
+            const armTwist = 2.5;
+
+            for (let i = 0; i < particleCount; i++) {
+                const radius = Math.random() * galaxyRadius;
+                const angle = (radius / galaxyRadius) * armTwist * Math.PI * 2 + (i % arms) * (Math.PI * 2 / arms);
+                const x = Math.cos(angle) * radius + (Math.random() - 0.5) * 200;
+                const y = (Math.random() - 0.5) * 100; // Make it flat
+                const z = Math.sin(angle) * radius + (Math.random() - 0.5) * 200;
+
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+
+                // Color based on distance from center
+                const color = new THREE.Color();
+                const distanceFromCenter = Math.sqrt(x*x + z*z);
+                if(distanceFromCenter < 300) {
+                    color.setHSL(0.1, 1.0, 0.7); // Yellowish core
+                } else {
+                    color.setHSL(0.6, 0.8, 0.6 + Math.random() * 0.2); // Blueish arms
+                }
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 5,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                transparent: true,
+                opacity: 0.8,
+                sizeAttenuation: true
+            });
+
+            galaxy = new THREE.Points(geometry, material);
+            galaxy.position.z = 0;
+            scene.add(galaxy);
+        }
+
+        function createStarfield() {
+            const starCount = 10000;
+            const positions = new Float32Array(starCount * 3);
+            const geometry = new THREE.BufferGeometry();
+
+            for (let i = 0; i < starCount; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 10000;
+                positions[i * 3 + 1] = (Math.random() - 0.5) * 10000;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 10000;
+            }
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            const material = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 2,
+                sizeAttenuation: true
+            });
+
+            starField = new THREE.Points(geometry, material);
+            scene.add(starField);
+        }
+        
+        function createDestinationSystem() {
+            // The star the saucer will fly towards
+            const starGeometry = new THREE.SphereGeometry(150, 32, 32);
+            const starMaterial = new THREE.MeshBasicMaterial({ color: 0xfff4a3, fog: false });
+            destinationStar = new THREE.Mesh(starGeometry, starMaterial);
+            destinationStar.position.set(1000, 0, -1000);
+            scene.add(destinationStar);
+
+            // Add a light source for the star
+            const starLight = new THREE.PointLight(0xfff4a3, 2, 3000);
+            destinationStar.add(starLight);
+
+            // The planet to land on
+            const planetGeometry = new THREE.SphereGeometry(20, 32, 32);
+            const planetMaterial = new THREE.MeshStandardMaterial({ color: 0x4a9d4a, roughness: 0.8 });
+            destinationPlanet = new THREE.Mesh(planetGeometry, planetMaterial);
+            destinationPlanet.position.set(250, 0, 0); // Orbiting the star
+            destinationStar.add(destinationPlanet); // Make planet a child of the star
+        }
+
+        // --- ANIMATION SEQUENCE ---
+
+        function startAnimationSequence() {
+            const info = document.getElementById('info');
+            
+            // Phase 0: Approach the galaxy
+            info.innerText = "Approaching Galaxy...";
+            new TWEEN.Tween(saucer.position)
+                .to({ z: 2500 }, 10000) // Move closer to the galaxy edge
+                .easing(TWEEN.Easing.Quadratic.InOut)
+                .onComplete(() => {
+                    animationPhase = 1;
+                    
+                    // Phase 1: FTL Jump
+                    info.innerText = "Engaging FTL Drive!";
+                    new TWEEN.Tween(saucer.position)
+                        .to({ z: -500 }, 2000) // Rapidly move through the galaxy core
+                        .easing(TWEEN.Easing.Exponential.In)
+                        .onUpdate(() => {
+                            starField.material.size = 15; // Stretch stars for FTL effect
+                        })
+                        .onComplete(() => {
+                            animationPhase = 2;
+                            starField.material.size = 2; // Reset star size
+
+                            // Phase 2: Flying through the galaxy
+                            info.innerText = "Navigating Starfield...";
+                            const destinationArea = new THREE.Vector3(800, 20, -800);
+                            new TWEEN.Tween(saucer.position)
+                                .to(destinationArea, 8000) // Move towards destination star area
+                                .easing(TWEEN.Easing.Sinusoidal.InOut)
+                                .onComplete(() => {
+                                    animationPhase = 3;
+                                    
+                                    // Phase 3: Approaching the destination star
+                                    info.innerText = "Approaching Destination System...";
+                                    
+                                    // *** FIX: Get world position of the orbiting planet ***
+                                    const approachPosition = new THREE.Vector3();
+                                    destinationPlanet.getWorldPosition(approachPosition);
+                                    approachPosition.y += 30; // Hover above
+                                    approachPosition.x += 50; // Approach from the side
+
+                                    new TWEEN.Tween(saucer.position)
+                                        .to(approachPosition, 8000)
+                                        .easing(TWEEN.Easing.Quadratic.Out)
+                                        .onComplete(() => {
+                                            animationPhase = 4;
+                                            
+                                            // Phase 4: Landing on the planet
+                                            info.innerText = "Landing Procedure Initiated...";
+
+                                            // *** FIX: Get final world position for landing ***
+                                            const landingPosition = new THREE.Vector3();
+                                            destinationPlanet.getWorldPosition(landingPosition);
+                                            landingPosition.y += 22; // Land on top of planet
+
+                                            new TWEEN.Tween(saucer.position)
+                                                .to(landingPosition, 5000)
+                                                .easing(TWEEN.Easing.Bounce.Out)
+                                                .start(); // Start this tween
+                                            
+                                            new TWEEN.Tween(saucer.rotation)
+                                                .to({ x: 0, y: saucer.rotation.y + Math.PI * 2, z: 0 }, 5000)
+                                                .onComplete(() => {
+                                                    info.innerText = "Touchdown! Mission Complete.";
+                                                })
+                                                .start(); // Start this tween
+                                        })
+                                        .start(); // Start this tween
+                                })
+                                .start(); // Start this tween
+                        })
+                        .start(); // Start this tween
+                })
+                .start(); // Start this tween
+        }
+
+
+        // --- MAIN ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            TWEEN.update();
+            controls.update();
+
+            // Make the galaxy and destination system rotate slowly
+            if(galaxy) galaxy.rotation.y += delta * 0.01;
+            if(destinationStar) destinationStar.rotation.y += delta * 0.05;
+
+            // Camera follows the saucer
+            if (saucer) {
+                const cameraOffset = new THREE.Vector3(0, 50, 150);
+                const cameraTarget = new THREE.Vector3();
+                
+                // For FTL, move camera closer
+                if (animationPhase === 1) {
+                    cameraOffset.set(0, 10, 30);
+                } else if (animationPhase >= 3) { // During approach and landing, get a closer view
+                    cameraOffset.set(0, 40, 100);
+                }
+
+                // Smoothly move camera to follow the saucer
+                cameraTarget.copy(saucer.position).add(cameraOffset);
+                camera.position.lerp(cameraTarget, 0.05);
+                camera.lookAt(saucer.position);
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // --- UTILITY FUNCTIONS ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- START ---
+        // FIX: Wait for all resources to load before starting the app
+        window.onload = init;
+
+    </script>
+</body>
+</html>

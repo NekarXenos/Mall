@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planet Destroyer Loader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #0a0a1a;
+            color: #f0f0f0;
+            overflow: hidden;
+        }
+        canvas {
+            background-color: #000;
+            display: block;
+            border-radius: 0.5rem;
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
+        }
+        .slider-container {
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+        }
+        /* Custom styles for the range slider */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #2a2a3a;
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #4CAF50;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #0a0a1a;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #4CAF50;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #0a0a1a;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl mx-auto text-center mb-6">
+        <h1 class="text-2xl md:text-3xl font-bold text-green-400 tracking-wider">PLANET DECONSTRUCTION</h1>
+        <p class="text-sm text-gray-400 mt-2">Loading System Core...</p>
+    </div>
+
+    <canvas id="gameCanvas" class="w-full max-w-2xl aspect-square"></canvas>
+
+    <div class="slider-container w-full max-w-2xl p-4 mt-6 rounded-lg text-center">
+        <label for="pixelSizeSlider" class="block mb-2 text-sm font-medium text-gray-300">BLOCK RESOLUTION: <span id="pixelSizeValue">10</span>px</label>
+        <input id="pixelSizeSlider" type="range" min="4" max="40" value="10" class="w-full">
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slider = document.getElementById('pixelSizeSlider');
+        const pixelSizeValue = document.getElementById('pixelSizeValue');
+
+        let pixelSize = 10;
+        let planet = [];
+        let totalBlocks = 0;
+        let destroyedBlocks = 0;
+        let spaceship = { angle: 0, radius: 0 };
+        let laser = { active: false, duration: 0, target: {x: 0, y: 0} };
+
+        // --- Initialization and Reset ---
+
+        function setupCanvas() {
+            // Set canvas resolution based on its displayed size
+            const size = canvas.getBoundingClientRect().width;
+
+            // FIX: Guard against the canvas having no width on initial load.
+            // If size is 0, planetRadius becomes 0, leading to division by zero (NaN)
+            // in the getNoiseValue function. We defer setup until the next frame
+            // by which time the browser should have calculated the layout.
+            if (size === 0) {
+                requestAnimationFrame(setupCanvas);
+                return;
+            }
+
+            canvas.width = size;
+            canvas.height = size;
+            resetAnimation();
+        }
+
+        function resetAnimation() {
+            // Reset all state variables and create a new planet
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            planet = [];
+            spaceship.angle = Math.random() * Math.PI * 2; // Start at a random angle
+            spaceship.radius = canvas.width * 0.4;
+            laser.active = false;
+            destroyedBlocks = 0;
+            createPlanet();
+        }
+        
+        function createPlanet() {
+            const planetRadius = canvas.width * 0.25;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // This check is a fallback, but the main fix is in setupCanvas()
+            if (planetRadius <= 0) return;
+            
+            // --- Generate chunky continents and oceans using a simple noise map ---
+            // We'll create a coarse grid of random values to define land vs water.
+            const noiseGridSize = 10;
+            const noiseGrid = [];
+            for(let i = 0; i < noiseGridSize; i++) {
+                noiseGrid[i] = [];
+                for(let j = 0; j < noiseGridSize; j++) {
+                    noiseGrid[i][j] = Math.random();
+                }
+            }
+
+            // This function gets a smoothed value from the noise grid for any coordinate.
+            const getNoiseValue = (x, y) => {
+                // Map planet coordinates to the noise grid coordinates
+                const gridX = (x + planetRadius) / (planetRadius * 2) * (noiseGridSize - 1);
+                const gridY = (y + planetRadius) / (planetRadius * 2) * (noiseGridSize - 1);
+
+                const x1 = Math.floor(gridX);
+                const y1 = Math.floor(gridY);
+                const x2 = Math.min(x1 + 1, noiseGridSize - 1);
+                const y2 = Math.min(y1 + 1, noiseGridSize - 1);
+
+                // Bilinear interpolation for smooth transitions between grid points
+                const val1 = noiseGrid[y1][x1];
+                const val2 = noiseGrid[y1][x2];
+                const val3 = noiseGrid[y2][x1];
+                const val4 = noiseGrid[y2][x2];
+
+                const fracX = gridX - x1;
+                const fracY = gridY - y1;
+
+                const interpTop = val1 * (1 - fracX) + val2 * fracX;
+                const interpBottom = val3 * (1 - fracX) + val4 * fracX;
+                return interpTop * (1 - fracY) + interpBottom * fracY;
+            };
+            // --- End of noise generation code ---
+
+
+            // Iterate over a grid to place blocks
+            for (let x = -planetRadius; x <= planetRadius; x += pixelSize) {
+                for (let y = -planetRadius; y <= planetRadius; y += pixelSize) {
+                    const distance = Math.sqrt(x*x + y*y);
+                    if (distance <= planetRadius) {
+                        // --- Use noise to determine block type ---
+                        const noise = getNoiseValue(x, y);
+                        const isWater = noise < 0.45; // ~45% of the surface is water
+
+                        let blockColor;
+                        if (isWater) {
+                             // Water block - shades of blue
+                            blockColor = `hsl(${200 + Math.random() * 30}, 70%, ${40 + Math.random() * 15}%)`;
+                        } else {
+                            // Land block - shades of green
+                            blockColor = `hsl(${120 + Math.random() * 20}, 60%, ${30 + Math.random() * 20}%)`;
+                        }
+
+                        // Add a block if it's within the planet's circular shape
+                        planet.push({
+                            x: centerX + x,
+                            y: centerY + y,
+                            alive: true,
+                            color: blockColor
+                        });
+                        // --- End of block type modification ---
+                    }
+                }
+            }
+            totalBlocks = planet.length;
+        }
+
+        // --- Drawing Functions ---
+
+        function drawPlanet() {
+            // Draw all blocks that are still 'alive'
+            planet.forEach(block => {
+                if (block.alive) {
+                    ctx.fillStyle = block.color;
+                    ctx.fillRect(block.x, block.y, pixelSize, pixelSize);
+                }
+            });
+        }
+
+        function drawSpaceship() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            const x = centerX + spaceship.radius * Math.cos(spaceship.angle);
+            const y = centerY + spaceship.radius * Math.sin(spaceship.angle);
+            
+            ctx.save();
+            ctx.translate(x, y);
+            // Rotate the spaceship to face the center of the planet
+            ctx.rotate(spaceship.angle + Math.PI / 2);
+            
+            // Draw a simple triangular spaceship
+            ctx.fillStyle = '#E0E0E0';
+            ctx.beginPath();
+            ctx.moveTo(0, -10);
+            ctx.lineTo(-7, 7);
+            ctx.lineTo(7, 7);
+            ctx.closePath();
+            ctx.fill();
+
+            // Draw a little cockpit
+            ctx.fillStyle = '#42A5F5';
+            ctx.beginPath();
+            ctx.arc(0, 0, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawLaser() {
+            if (!laser.active) return;
+            
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const startX = centerX + spaceship.radius * Math.cos(spaceship.angle);
+            const startY = centerY + spaceship.radius * Math.sin(spaceship.angle);
+
+            // The laser beam is a bright, glowing line
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(laser.target.x, laser.target.y);
+            ctx.strokeStyle = 'rgba(255, 82, 82, 0.9)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+        
+        function drawProgressText() {
+            if (destroyedBlocks === totalBlocks && totalBlocks > 0) {
+                ctx.fillStyle = 'rgba(76, 175, 80, 1)';
+                ctx.font = `${canvas.width * 0.08}px 'Press Start 2P'`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('COMPLETE', canvas.width / 2, canvas.height / 2);
+            }
+        }
+
+        // --- Update and Animation Logic ---
+
+        function update() {
+            // Move the spaceship in its orbit
+            spaceship.angle += 0.01;
+
+            // Manage the laser's state
+            if (laser.active) {
+                laser.duration--;
+                if (laser.duration <= 0) {
+                    laser.active = false;
+                }
+            } else if (destroyedBlocks < totalBlocks) {
+                // If laser is not active and there are blocks left, fire it
+                fireLaser();
+            }
+            
+            // If all blocks are gone, wait a bit then restart
+            if (destroyedBlocks === totalBlocks && totalBlocks > 0) {
+                setTimeout(resetAnimation, 2000);
+            }
+        }
+
+        function fireLaser() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const shipX = centerX + spaceship.radius * Math.cos(spaceship.angle);
+            const shipY = centerY + spaceship.radius * Math.sin(spaceship.angle);
+
+            let closestBlock = null;
+            let minDistance = Infinity;
+
+            // Find the nearest 'alive' block to the spaceship
+            planet.forEach(block => {
+                if (block.alive) {
+                    const dx = block.x - shipX;
+                    const dy = block.y - shipY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Simple check to ensure we are looking towards the planet
+                    const angleToBlock = Math.atan2(block.y - centerY, block.x - centerX);
+                    const angleToShip = Math.atan2(shipY - centerY, shipX - centerX);
+                    let angleDiff = Math.abs(angleToBlock - angleToShip);
+                    if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+
+                    if (distance < minDistance && angleDiff < Math.PI / 4) { // Only consider blocks in front
+                        minDistance = distance;
+                        closestBlock = block;
+                    }
+                }
+            });
+            
+            // If a block is found, target and destroy it
+            if (closestBlock) {
+                laser.active = true;
+                laser.duration = 5; // How many frames the laser beam is visible
+                laser.target.x = closestBlock.x + pixelSize / 2;
+                laser.target.y = closestBlock.y + pixelSize / 2;
+                closestBlock.alive = false;
+                destroyedBlocks++;
+            }
+        }
+
+        function gameLoop() {
+            // Main animation loop
+            update();
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawPlanet();
+            drawSpaceship();
+            drawLaser();
+            drawProgressText();
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- Event Listeners ---
+
+        slider.addEventListener('input', (e) => {
+            pixelSize = parseInt(e.target.value);
+            pixelSizeValue.textContent = `${pixelSize}`;
+        });
+        
+        // We reset the animation on 'change' (when user releases the slider)
+        // to avoid performance issues from resetting on every 'input' event.
+        slider.addEventListener('change', (e) => {
+            resetAnimation();
+        });
+
+        window.addEventListener('resize', setupCanvas);
+
+        // --- Start ---
+        setupCanvas();
+        gameLoop();
+    </script>
+</body>
+</html>

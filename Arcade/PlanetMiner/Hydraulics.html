@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Mining Gadgets - MINER (Serif I)</title>
+    <!-- Three.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls for camera interaction -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Tailwind CSS for basic styling (body background, info box) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Basic body styling to remove margins and hide overflow */
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif; /* Using Inter font as requested */
+            background-color: #1a202c; /* Dark background for better contrast */
+        }
+        /* Canvas styling to ensure it fills the screen */
+        canvas {
+            display: block;
+        }
+        /* Styling for the info box */
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 12px;
+            border-radius: 8px; /* Rounded corners */
+            border: 1px solid #4a5568;
+        }
+    </style>
+</head>
+<body>
+    <!-- Information display for user interaction -->
+    <div id="info">Use mouse to orbit, scroll to zoom.</div>
+
+    <script>
+        // --- Scene Setup ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true }); // Enable anti-aliasing for smoother edges
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- OrbitControls Setup ---
+        // Allows user to rotate and zoom the camera with mouse
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // Enables smooth camera movement
+        controls.dampingFactor = 0.25;
+        controls.screenSpacePanning = false; // Disables panning in screen space
+        controls.maxPolarAngle = Math.PI / 2; // Restricts vertical orbit to prevent going below the ground plane
+
+        // Set initial camera position and update controls for better view of "MINER"
+        camera.position.set(0, 7, 25);
+        controls.update();
+
+        // --- Lighting ---
+        // Ambient light provides general illumination
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+
+        // Directional light simulates sunlight from a specific direction
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 10, 7.5).normalize(); // Position and normalize for consistent lighting
+        scene.add(directionalLight);
+
+        // --- Materials for Gadget Parts ---
+        // Using MeshStandardMaterial for realistic lighting interaction
+        const greyMaterial = new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.7, metalness: 0.3 });
+        const yellowMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00, roughness: 0.5, metalness: 0.5 });
+        const silverMaterial = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.2, metalness: 0.9 });
+
+        /**
+         * Creates a single mining gadget.
+         * A gadget consists of a grey block at the start, and a main body (yellow cylinder, silver cylinder, grey cone)
+         * that is scaled and rotated to connect the start and end points.
+         * @param {THREE.Vector3} start_vec - The starting point of the gadget segment.
+         * @param {THREE.Vector3} end_vec - The ending point of the gadget segment.
+         * @returns {THREE.Group} A Three.js group containing all meshes of the gadget.
+         */
+        function createMiningGadget(start_vec, end_vec) {
+            const gadgetGroup = new THREE.Group();
+
+            // 1. Grey block at the start point
+            const blockGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+            const blockMesh = new THREE.Mesh(blockGeometry, greyMaterial);
+            blockMesh.position.copy(start_vec); // Position the block directly at the start_vec
+            gadgetGroup.add(blockMesh);
+
+            // 2. Main body (yellow cylinder, silver cylinder, grey cone)
+            const bodyGroup = new THREE.Group(); // Group to hold the main body parts for scaling and rotation
+
+            // Define original lengths of the components (before scaling to fit segment length)
+            const originalYellowLength = 0.7;
+            const originalSilverLength = 0.5;
+            const originalConeLength = 0.1;
+            const originalTotalLength = originalYellowLength + originalSilverLength + originalConeLength;
+
+            // Calculate the actual length of the segment between start and end points
+            const actualLength = start_vec.distanceTo(end_vec);
+            // Calculate the scaling factor needed to stretch the body components to fit the actual segment length
+            const scaleFactor = actualLength / originalTotalLength;
+
+            // --- Yellow Cylinder ---
+            // Diameter 0.1 -> radius 0.05
+            const yellowCylinderGeometry = new THREE.CylinderGeometry(0.05, 0.05, originalYellowLength, 32);
+            const yellowCylinderMesh = new THREE.Mesh(yellowCylinderGeometry, yellowMaterial);
+            // Position its center along the local Y-axis (which will be aligned with the segment direction)
+            yellowCylinderMesh.position.y = originalYellowLength / 2;
+            bodyGroup.add(yellowCylinderMesh);
+
+            // --- Silver Cylinder ---
+            // Diameter 0.05 -> radius 0.025
+            const silverCylinderGeometry = new THREE.CylinderGeometry(0.025, 0.025, originalSilverLength, 32);
+            const silverCylinderMesh = new THREE.Mesh(silverCylinderGeometry, silverMaterial);
+            // Position its center after the yellow cylinder
+            silverCylinderMesh.position.y = originalYellowLength + originalSilverLength / 2;
+            bodyGroup.add(silverCylinderMesh);
+
+            // --- Grey Cone ---
+            // Diameter 0.1 -> radius 0.05, length 0.1
+            const coneGeometry = new THREE.ConeGeometry(0.05, originalConeLength, 32);
+            const coneMesh = new THREE.Mesh(coneGeometry, greyMaterial);
+            // Rotate the cone by PI around the X-axis so it points downwards (tip at -Y)
+            coneMesh.rotation.x = Math.PI;
+            // Position its center such that its tip is at the end of the combined length
+            coneMesh.position.y = originalYellowLength + originalSilverLength + originalConeLength / 2;
+            bodyGroup.add(coneMesh);
+
+            // Scale the entire body group along its local Y-axis to match the segment length
+            bodyGroup.scale.y = scaleFactor;
+
+            // --- Position and Rotate the Body Group ---
+            // Set the body group's origin to the start point of the segment
+            bodyGroup.position.copy(start_vec);
+
+            // Calculate the direction vector from start to end
+            const direction = new THREE.Vector3().subVectors(end_vec, start_vec).normalize();
+            // The default orientation of CylinderGeometry/ConeGeometry is along the Y-axis.
+            const up = new THREE.Vector3(0, 1, 0);
+            // Create a quaternion to rotate from the default 'up' vector to the calculated 'direction' vector
+            const quaternion = new THREE.Quaternion().setFromUnitVectors(up, direction);
+            // Apply the rotation to the body group
+            bodyGroup.quaternion.copy(quaternion);
+
+            gadgetGroup.add(bodyGroup);
+
+            return gadgetGroup;
+        }
+
+        // --- Define Parameters for Letter Sizing and Spacing ---
+        const letterHeight = 2.0;
+        const letterWidth = 1.5;
+        const gap = 0.5;
+        const zOffset = 0; // Keep Z constant for 2D letters
+        const serifLength = 0.4; // Length of the serifs for 'I'
+
+        // Array to store all individual gadget segments [startPoint, endPoint]
+        const allSegments = [];
+
+        let currentX = -6; // Starting X position for the first letter
+
+        // --- M ---
+        // Vertical left bar
+        allSegments.push([new THREE.Vector3(currentX, 1 + letterHeight, zOffset), new THREE.Vector3(currentX, 1, zOffset)]);
+        // Diagonal down-right
+        allSegments.push([new THREE.Vector3(currentX, 1 + letterHeight, zOffset), new THREE.Vector3(currentX + letterWidth / 2, 1 + letterHeight / 2, zOffset)]);
+        // Diagonal up-right
+        allSegments.push([new THREE.Vector3(currentX + letterWidth / 2, 1 + letterHeight / 2, zOffset), new THREE.Vector3(currentX + letterWidth, 1 + letterHeight, zOffset)]);
+        // Vertical right bar
+        allSegments.push([new THREE.Vector3(currentX + letterWidth, 1 + letterHeight, zOffset), new THREE.Vector3(currentX + letterWidth, 1, zOffset)]);
+
+        currentX += letterWidth + gap; // Move X for next letter (start of I)
+
+        // --- I ---
+        const iBarX = currentX + serifLength / 2; // X position for the vertical bar of I, centered between serifs
+
+        // Top serif
+        allSegments.push([new THREE.Vector3(iBarX - serifLength / 2, 1 + letterHeight, zOffset), new THREE.Vector3(iBarX + serifLength / 2, 1 + letterHeight, zOffset)]);
+        // Vertical bar
+        allSegments.push([new THREE.Vector3(iBarX, 1 + letterHeight, zOffset), new THREE.Vector3(iBarX, 1, zOffset)]);
+        // Bottom serif
+        allSegments.push([new THREE.Vector3(iBarX - serifLength / 2, 1, zOffset), new THREE.Vector3(iBarX + serifLength / 2, 1, zOffset)]);
+
+        currentX = iBarX + serifLength / 2 + gap; // Move X for next letter (N), considering full width of I with serifs
+
+        // --- N ---
+        // Vertical left bar
+        allSegments.push([new THREE.Vector3(currentX, 1 + letterHeight, zOffset), new THREE.Vector3(currentX, 1, zOffset)]);
+        // Diagonal
+        allSegments.push([new THREE.Vector3(currentX, 1 + letterHeight, zOffset), new THREE.Vector3(currentX + letterWidth, 1, zOffset)]);
+        // Vertical right bar
+        allSegments.push([new THREE.Vector3(currentX + letterWidth, 1 + letterHeight, zOffset), new THREE.Vector3(currentX + letterWidth, 1, zOffset)]);
+
+        currentX += letterWidth + gap; // Move X for next letter
+
+        // --- E ---
+        // Vertical bar
+        allSegments.push([new THREE.Vector3(currentX, 1 + letterHeight, zOffset), new THREE.Vector3(currentX, 1, zOffset)]);
+        // Top arm
+        allSegments.push([new THREE.Vector3(currentX, 1 + letterHeight, zOffset), new THREE.Vector3(currentX + letterWidth, 1 + letterHeight, zOffset)]);
+        // Middle arm
+        allSegments.push([new THREE.Vector3(currentX, 1 + letterHeight / 2, zOffset), new THREE.Vector3(currentX + letterWidth, 1 + letterHeight / 2, zOffset)]);
+        // Bottom arm
+        allSegments.push([new THREE.Vector3(currentX, 1, zOffset), new THREE.Vector3(currentX + letterWidth, 1, zOffset)]);
+
+        currentX += letterWidth + gap; // Move X for next letter
+
+        // --- R ---
+        // Vertical bar
+        allSegments.push([new THREE.Vector3(currentX, 1 + letterHeight, zOffset), new THREE.Vector3(currentX, 1, zOffset)]);
+        // Top arc (part 1)
+        allSegments.push([new THREE.Vector3(currentX, 1 + letterHeight, zOffset), new THREE.Vector3(currentX + letterWidth, 1 + letterHeight, zOffset)]);
+        // Top arc (part 2)
+        allSegments.push([new THREE.Vector3(currentX + letterWidth, 1 + letterHeight, zOffset), new THREE.Vector3(currentX + letterWidth, 1 + letterHeight / 2, zOffset)]);
+        // Top arc (part 3)
+        allSegments.push([new THREE.Vector3(currentX + letterWidth, 1 + letterHeight / 2, zOffset), new THREE.Vector3(currentX, 1 + letterHeight / 2, zOffset)]);
+        // Diagonal leg
+        allSegments.push([new THREE.Vector3(currentX, 1 + letterHeight / 2, zOffset), new THREE.Vector3(currentX + letterWidth, 1, zOffset)]);
+
+        // --- Create and Add the Mining Gadgets to the Scene ---
+        for (let i = 0; i < allSegments.length; i++) {
+            let startPoint = allSegments[i][0];
+            let endPoint = allSegments[i][1];
+
+            // Apply the rule: if not horizontal, start at highest, end at lowest
+            // Check if it's not horizontal (i.e., y-coordinates are different)
+            if (startPoint.y !== endPoint.y) {
+                if (startPoint.y < endPoint.y) {
+                    // If start is lower than end, swap them
+                    const temp = startPoint;
+                    startPoint = endPoint;
+                    endPoint = temp;
+                }
+            }
+            // If horizontal, no swap needed as per the rule.
+
+            const gadget = createMiningGadget(startPoint, endPoint);
+            scene.add(gadget);
+        }
+
+        // --- Animation Loop ---
+        // This function continuously renders the scene and updates controls
+        function animate() {
+            requestAnimationFrame(animate); // Request the next frame
+            controls.update(); // Update OrbitControls (required if damping is enabled)
+            renderer.render(scene, camera); // Render the scene from the camera's perspective
+        }
+
+        // Start the animation loop once the window has fully loaded
+        window.onload = function () {
+            animate();
+        };
+
+        // --- Handle Window Resizing ---
+        // Adjust camera aspect ratio and renderer size when the window is resized
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix(); // Update camera's projection matrix
+            renderer.setSize(window.innerWidth, window.innerHeight); // Resize renderer
+        });
+    </script>
+</body>
+</html>
