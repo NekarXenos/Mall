@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flying Saucer FTL Journey</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            z-index: 100;
+        }
+        #settings-panel {
+            position: absolute;
+            top: 40px;
+            right: 10px;
+            padding: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            font-family: Arial, sans-serif;
+            border-radius: 5px;
+            z-index: 101;
+        }
+        #settings-panel label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        #settings-panel input {
+            width: 150px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Flying Saucer FTL Journey</div>
+    <div id="settings-panel">
+        <label for="saucer-size">Saucer Size: <span id="saucer-size-value">10</span></label>
+        <input type="range" id="saucer-size" min="1" max="50" value="10">
+        
+        <label for="camera-distance">Camera Distance: <span id="camera-distance-value">150</span></label>
+        <input type="range" id="camera-distance" min="50" max="500" value="150">
+
+        <label for="galaxy-size">Galaxy Radius: <span id="galaxy-size-value">2000</span></label>
+        <input type="range" id="galaxy-size" min="500" max="5000" value="2000">
+
+        <label for="sun-size">Sun Size: <span id="sun-size-value">150</span></label>
+        <input type="range" id="sun-size" min="50" max="500" value="150">
+
+        <label for="planet-size">Planet Size: <span id="planet-size-value">20</span></label>
+        <input type="range" id="planet-size" min="5" max="100" value="20">
+
+        <label for="planet-distance">Planet Distance: <span id="planet-distance-value">250</span></label>
+        <input type="range" id="planet-distance" min="100" max="1000" value="250">
+    </div>
+
+    <!-- Three.js and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <!-- Updated Tween.js library -->
+    <script src="https://unpkg.com/@tweenjs/tween.js@21.0.0/dist/tween.umd.js"></script>
+
+    <script>
+        // --- SCENE SETUP ---
+        let scene, camera, renderer, controls;
+        let saucer, galaxy, starField, destinationStar, destinationPlanet;
+        let clock = new THREE.Clock();
+
+        // Animation sequence state
+        let animationPhase = 0; // 0: Approach, 1: FTL, 2: Inside Galaxy, 3: Approach Planet, 4: Landing
+        
+        // --- SETTINGS ---
+        const settings = {
+            // Preferred range: 5-20. Min: 1, Max: 50
+            saucerSize: 1, //  10,
+            // Preferred range: 100-250. Min: 50, Max: 500
+            cameraDistance: 10, //  150,
+            // Preferred range: 1500-3000. Min: 500, Max: 5000
+            galaxyRadius: 3000, //  2000,
+            // Preferred range: 100-250. Min: 50, Max: 500
+            sunSize: 150, // 150,
+            // Preferred range: 15-40. Min: 5, Max: 100
+            planetSize: 15, // 20,
+            // Preferred range: 200-400. Min: 100, Max: 1000
+            planetDistance: 1000 // 250
+        };
+
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 50000);
+            camera.position.set(0, 50, 200);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+            scene.add(ambientLight);
+            const pointLight = new THREE.PointLight(0xffffff, 1, 0);
+            pointLight.position.set(50, 50, 50);
+            scene.add(pointLight);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // --- CREATE OBJECTS ---
+            createSaucer();
+            createGalaxy();
+            createStarfield();
+            createDestinationSystem();
+            
+            // Setup UI and event listeners
+            setupUI();
+
+            // Start the animation sequence
+            startAnimationSequence();
+
+            // Handle window resizing
+            window.addEventListener('resize', onWindowResize, false);
+
+            // Start the main animation loop
+            animate();
+        }
+
+        // --- OBJECT CREATION FUNCTIONS ---
+
+        function createSaucer() {
+            const saucerGroup = new THREE.Group();
+            
+            // The saucer's body is created with a base radius of 10 and then scaled.
+            const bodyGeometry = new THREE.SphereGeometry(10, 32, 16);
+            bodyGeometry.scale(1, 0.2, 1); // Flatten the sphere
+            const bodyMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xc0c0c0, metalness: 0.9, roughness: 0.2 
+            });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            saucerGroup.add(body);
+
+            const cockpitGeometry = new THREE.SphereGeometry(10 * 0.3, 32, 16);
+            const cockpitMaterial = new THREE.MeshStandardMaterial({
+                color: 0x87ceeb, metalness: 0.5, roughness: 0.1, transparent: true, opacity: 0.6
+            });
+            const cockpit = new THREE.Mesh(cockpitGeometry, cockpitMaterial);
+            cockpit.position.y = 10 * 0.25;
+            saucerGroup.add(cockpit);
+
+            saucer = saucerGroup;
+            saucer.scale.set(settings.saucerSize / 10, settings.saucerSize / 10, settings.saucerSize / 10);
+            saucer.position.set(0, 50, 8000);
+            scene.add(saucer);
+        }
+
+        function createGalaxy() {
+            if (galaxy) scene.remove(galaxy);
+            const particleCount = 50000;
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+            const arms = 2;
+            const armTwist = 1.5;
+
+            // New constants for galaxy generation density and offset
+            const CORE_DENSITY_BIAS = 2.0; // Higher value makes core denser (biases random radius towards center, 1.0 is uniform)
+            const MAX_RANDOM_OFFSET_CORE = 300; // Max random offset for particle position at the very center
+            const MIN_RANDOM_OFFSET_EDGE = 50;  // Min random offset for particle position at the galaxy edge
+            const GALAXY_CORE_COLOR_RATIO = 0.15; // Ratio of galaxy radius considered as core for color
+
+            for (let i = 0; i < particleCount; i++) {
+                // Density: Bias radius towards the center using a power function
+                // Math.random()^CORE_DENSITY_BIAS will produce more smaller numbers if CORE_DENSITY_BIAS > 1
+                const radius = Math.pow(Math.random(), CORE_DENSITY_BIAS) * settings.galaxyRadius;
+
+                // Calculate the angle for spiral arms
+                const angle = (radius / settings.galaxyRadius) * armTwist * Math.PI * 2 + (i % arms) * (Math.PI * 2 / arms);
+
+                // Calculate random offset based on distance from center (linear interpolation)
+                // Offset is MAX_RANDOM_OFFSET_CORE at radius 0, and MIN_RANDOM_OFFSET_EDGE at settings.galaxyRadius
+                const currentRandomOffset = MAX_RANDOM_OFFSET_CORE - (radius / settings.galaxyRadius) * (MAX_RANDOM_OFFSET_CORE - MIN_RANDOM_OFFSET_EDGE);
+
+                // Apply random offset to coordinates
+                const x = Math.cos(angle) * radius + (Math.random() - 0.5) * currentRandomOffset;
+                // Y offset is also proportional to the current random offset to maintain disk shape
+                const y = (Math.random() - 0.5) * (currentRandomOffset / 2); 
+                const z = Math.sin(angle) * radius + (Math.random() - 0.5) * currentRandomOffset;
+
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+
+                const color = new THREE.Color();
+                const distanceFromCenter = Math.sqrt(x*x + z*z);
+                // Assign colors based on distance from center, using the new ratio constant
+                if(distanceFromCenter < settings.galaxyRadius * GALAXY_CORE_COLOR_RATIO) {
+                    color.setHSL(0.1, 1.0, 0.7); // Bright yellow/orange for the core
+                } else {
+                    color.setHSL(0.6, 0.8, 0.6 + Math.random() * 0.2); // Blueish-white for the arms with slight variation
+                }
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 5, vertexColors: true, blending: THREE.AdditiveBlending,
+                transparent: true, opacity: 0.8, sizeAttenuation: true
+            });
+
+            galaxy = new THREE.Points(geometry, material);
+            galaxy.position.z = 0;
+			galaxy.rotation.x = Math.PI /7 ; 
+            scene.add(galaxy);
+        }
+
+        function createStarfield() {
+            const starCount = 10000;
+            const positions = new Float32Array(starCount * 3);
+            for (let i = 0; i < starCount; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 10000;
+                positions[i * 3 + 1] = (Math.random() - 0.5) * 10000;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 10000;
+            }
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const material = new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: true });
+            starField = new THREE.Points(geometry, material);
+            scene.add(starField);
+        }
+        
+        function createDestinationSystem() {
+            // The planet geometry is created with a base radius of 20
+            const starGeometry = new THREE.SphereGeometry(150, 32, 32);
+            const starMaterial = new THREE.MeshBasicMaterial({ color: 0xfff4a3, fog: false });
+            destinationStar = new THREE.Mesh(starGeometry, starMaterial);
+            destinationStar.position.set(1000, 0, -1000);
+            scene.add(destinationStar);
+
+            const starLight = new THREE.PointLight(0xfff4a3, 2, 3000);
+            destinationStar.add(starLight);
+
+            const planetGeometry = new THREE.SphereGeometry(20, 32, 32);
+            const planetMaterial = new THREE.MeshStandardMaterial({ color: 0x4a9d4a, roughness: 0.8 });
+            destinationPlanet = new THREE.Mesh(planetGeometry, planetMaterial);
+            destinationStar.add(destinationPlanet);
+            updateSceneFromSettings(); // Apply initial settings
+        }
+
+        // --- ANIMATION SEQUENCE ---
+
+        function startAnimationSequence() {
+            const info = document.getElementById('info');
+            
+            info.innerText = "Approaching Galaxy...";
+            new TWEEN.Tween(saucer.position)
+                .to({ z: settings.galaxyRadius + 500 }, 10000)
+                .easing(TWEEN.Easing.Quadratic.InOut)
+                .onComplete(() => {
+                    animationPhase = 1;
+                    info.innerText = "Engaging FTL Drive!";
+                    new TWEEN.Tween(saucer.position)
+                        .to({ z: -500 }, 2000)
+                        .easing(TWEEN.Easing.Exponential.In)
+                        .onUpdate(() => { starField.material.size = 15; })
+                        .onComplete(() => {
+                            animationPhase = 2;
+                            starField.material.size = 2;
+                            info.innerText = "Navigating Starfield...";
+                            
+                            const startPosition = saucer.position.clone();
+                            const destinationArea = new THREE.Vector3(800, 20, -800);
+                            const controlPoint = new THREE.Vector3(200, 250, -1300); 
+                            let previousPosition = startPosition.clone();
+
+                            new TWEEN.Tween({ t: 0 })
+                                .to({ t: 1 }, 8000)
+                                .easing(TWEEN.Easing.Quadratic.InOut)
+                                .onUpdate((obj) => {
+                                    const t = obj.t;
+                                    const t1 = 1 - t;
+                                    const x = t1 * t1 * startPosition.x + 2 * t1 * t * controlPoint.x + t * t * destinationArea.x;
+                                    const y = t1 * t1 * startPosition.y + 2 * t1 * t * controlPoint.y + t * t * destinationArea.y;
+                                    const z = t1 * t1 * startPosition.z + 2 * t1 * t * controlPoint.z + t * t * destinationArea.z;
+                                    saucer.position.set(x, y, z);
+
+                                    const direction = saucer.position.clone().sub(previousPosition).normalize();
+                                    if (direction.lengthSq() > 0.0001) {
+                                        saucer.lookAt(saucer.position.clone().add(direction));
+                                    }
+                                    previousPosition.copy(saucer.position);
+                                })
+                                .onComplete(() => {
+                                    animationPhase = 3;
+                                    info.innerText = "Approaching Destination System...";
+                                    
+                                    // *** FIX: Make approach position relative to planet's world size ***
+                                    const planetCenter = destinationPlanet.getWorldPosition(new THREE.Vector3());
+                                    const planetWorldRadius = planetCenter.distanceTo(destinationPlanet.localToWorld(new THREE.Vector3(0, destinationPlanet.geometry.parameters.radius, 0)));
+                                    const approachPosition = planetCenter.clone();
+                                    approachPosition.y += planetWorldRadius * 1.5;
+                                    approachPosition.x += planetWorldRadius * 2.0;
+
+                                    new TWEEN.Tween(saucer.position)
+                                        .to(approachPosition, 8000)
+                                        .easing(TWEEN.Easing.Quadratic.Out)
+                                        .onComplete(() => {
+                                            animationPhase = 4;
+                                            info.innerText = "Landing Procedure Initiated...";
+
+                                            // *** FIX: Precise landing calculation and smooth easing ***
+                                            const pCenter = destinationPlanet.getWorldPosition(new THREE.Vector3());
+                                            const pWorldRadius = pCenter.distanceTo(destinationPlanet.localToWorld(new THREE.Vector3(0, destinationPlanet.geometry.parameters.radius, 0)));
+                                            const sWorldHalfHeight = (10 * 0.2 / 2) * saucer.scale.y;
+                                            const pUp = new THREE.Vector3(0, 1, 0).applyQuaternion(destinationPlanet.getWorldQuaternion(new THREE.Quaternion()));
+                                            const landingPosition = pCenter.clone().add(pUp.setLength(pWorldRadius + sWorldHalfHeight));
+
+                                            new TWEEN.Tween(saucer.position)
+                                                .to(landingPosition, 5000)
+                                                .easing(TWEEN.Easing.Quadratic.Out) // Smoother landing
+                                                .onComplete(() => {
+                                                    info.innerText = "Touchdown! Mission Complete.";
+                                                    destinationPlanet.attach(saucer); // Stick to the planet
+                                                })
+                                                .start();
+                                            
+                                            // Level out the saucer for landing
+                                            new TWEEN.Tween(saucer.rotation)
+                                                .to({ x: 0, z: 0 }, 5000)
+                                                .easing(TWEEN.Easing.Quadratic.Out)
+                                                .start();
+                                        })
+                                        .start();
+                                })
+                                .start();
+                        })
+                        .start();
+                })
+                .start();
+        }
+
+
+        // --- MAIN ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            TWEEN.update();
+            controls.update();
+
+            if(galaxy) galaxy.rotation.y += delta * 0.01;
+            if(destinationStar) destinationStar.rotation.y += delta * 0.05;
+
+            if (saucer) {
+                const cameraOffset = new THREE.Vector3(0, settings.cameraDistance * 0.33, settings.cameraDistance);
+                const cameraTarget = new THREE.Vector3();
+                
+                if (animationPhase === 1) {
+                    cameraOffset.set(0, 10, 30);
+                } else if (animationPhase >= 3) {
+                    cameraOffset.set(0, settings.cameraDistance * 0.26, settings.cameraDistance * 0.66);
+                }
+
+                cameraTarget.copy(saucer.position).add(cameraOffset);
+                camera.position.lerp(cameraTarget, 0.05);
+                camera.lookAt(saucer.position);
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // --- UI AND SETTINGS UPDATE ---
+        function setupUI() {
+            const sliders = {
+                'saucer-size': 'saucerSize',
+                'camera-distance': 'cameraDistance',
+                'galaxy-size': 'galaxyRadius',
+                'sun-size': 'sunSize',
+                'planet-size': 'planetSize',
+                'planet-distance': 'planetDistance'
+            };
+
+            for (const [sliderId, settingKey] of Object.entries(sliders)) {
+                const slider = document.getElementById(sliderId);
+                const valueLabel = document.getElementById(`${sliderId}-value`);
+                slider.addEventListener('input', (event) => {
+                    settings[settingKey] = parseFloat(event.target.value);
+                    valueLabel.innerText = event.target.value;
+                    updateSceneFromSettings();
+                });
+            }
+        }
+
+        function updateSceneFromSettings() {
+            if (!saucer) return; // Don't update if objects not created yet
+
+            // Update saucer size
+            saucer.scale.set(settings.saucerSize / 10, settings.saucerSize / 10, settings.saucerSize / 10);
+            
+            // Recreate galaxy if radius changes
+            // Check if galaxy exists and has parameters, otherwise use current settings.galaxyRadius
+            const currentGalaxyRadius = galaxy && galaxy.geometry.parameters ? galaxy.geometry.parameters.galaxyRadius : settings.galaxyRadius;
+            if (currentGalaxyRadius !== settings.galaxyRadius) {
+                createGalaxy();
+            }
+
+            // Update sun size
+            destinationStar.scale.set(settings.sunSize / 150, settings.sunSize / 150, settings.sunSize / 150);
+            
+            // Update planet size and distance
+            destinationPlanet.scale.set(settings.planetSize / 20, settings.planetSize / 20, settings.planetSize / 20);
+            destinationPlanet.position.x = settings.planetDistance;
+        }
+
+
+        // --- UTILITY FUNCTIONS ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- START ---
+        window.onload = init;
+
+    </script>
+</body>
+</html>

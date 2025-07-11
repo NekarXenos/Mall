@@ -46,10 +46,6 @@
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true }); // Enable anti-aliasing for smoother edges
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true; // <--- Enable shadows
-renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Optional: softer shadows
-renderer.setClearColor(0x1a202c); // Match your background
-renderer.outputEncoding = THREE.sRGBEncoding;
         document.body.appendChild(renderer.domElement);
 
         // --- OrbitControls Setup ---
@@ -70,29 +66,13 @@ renderer.outputEncoding = THREE.sRGBEncoding;
 
         // --- Lighting ---
         // Ambient light provides general illumination
-        const ambientLight = new THREE.AmbientLight(0x101010, 1);
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
         scene.add(ambientLight);
 
         // Directional light simulates sunlight from a specific direction
-        const directionalLight = new THREE.DirectionalLight(0xffeedd, 1);
-directionalLight.position.set(5, 20, 15); // Higher and further away
-directionalLight.castShadow = true; // <--- Enable shadow casting
-
-        // Optional: tweak shadow map size and camera for better quality
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
-        directionalLight.shadow.camera.near = 1;
-        directionalLight.shadow.camera.far = 50;
-        directionalLight.shadow.camera.left = -40;
-        directionalLight.shadow.camera.right = 40;
-        directionalLight.shadow.camera.top = 40;
-        directionalLight.shadow.camera.bottom = -40;
-
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 10, 7.5).normalize(); // Position and normalize for consistent lighting
         scene.add(directionalLight);
-
-        // --- Debugging: Camera Helper for Directional Light ---
-        /* const helper = new THREE.CameraHelper(directionalLight.shadow.camera);
-scene.add(helper); */
 
         // --- Materials for Gadget Parts ---
         // Using MeshStandardMaterial for realistic lighting interaction
@@ -307,40 +287,16 @@ const zMin = -blockMeshSize * 2.5;
 const zMax = blockMeshSize / 2;
 
 // Helper to get a darker brown for each z-layer
-function getBrownMaterialForZ(z, zMin, zMax, x = 0, y = 0, diskRadius = 1) {
-    // Calculate total layers and current layer index
+function getBrownMaterialForZ(z, zMin, zMax) {
+    // We'll use HSL to darken the brown
+    // Base brown: 0x8B5A2B (H: 30, S: 0.6, L: 0.36 approx)
+    const baseH = 30 / 360, baseS = 0.6, baseL = 0.26;
     const totalLayers = Math.round((zMax - zMin) / blockMeshSize);
     const layerIndex = Math.round((z - zMin) / blockMeshSize);
-
-    // If this is the middle Z-layer, use a very dark brown (no radial effect)
-    if (layerIndex === Math.floor(totalLayers / 2)) {
-        const color = new THREE.Color();
-        color.setHSL(20/360, 0.5, 0.08); // Very dark brown
-        return new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.2 });
-    }
-
-    // Otherwise, use the radial banding as before
-    const dist = Math.sqrt(x * x + y * y);
-    const bands = 4;
-    const bandIndex = Math.floor(Math.abs(dist / diskRadius) * bands);
-
-    // HSL for each band: [hue, saturation, lightness]
-    // 0: dark reddish brown, 1: brick red, 2: golden yellow, 3: light yellow
-    const bandColors = [
-        [55/360, 0.45, 0.78],  // Inner core: light yellow
-        [45/360, 0.55, 0.55],  // Outer core: golden yellow
-        [18/360, 0.55, 0.32],  // Mantle: brighter brick red
-        [12/360, 0.45, 0.18],  // Outer: dark reddish brown
-    ];
-    const [h, s, l] = bandColors[Math.min(bandIndex, bandColors.length - 1)];
-
-    // Z-layer effect (optional, subtle)
-    const brownL = 0.26;
-    const zLightness = 1 + 0.012 * (layerIndex / Math.max(1, totalLayers - 1));
-    const finalL = Math.min(l * zLightness, 1);
-
+    // Lightness decreases with each layer
+    const l = baseL * (1 + 0.5 * (layerIndex / Math.max(1, totalLayers - 1))); // Down to 50% darker
     const color = new THREE.Color();
-    color.setHSL(h, s, finalL);
+    color.setHSL(baseH, baseS, l);
     return new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.2 });
 }
 
@@ -370,15 +326,14 @@ for (let x = -diskRadius; x <= diskRadius; x += blockMeshSize) {
                     }
                 }
                 if (!intersects) {
-                    // Pass x, y, and diskRadius for radial brightness
-                    const brownMaterial = getBrownMaterialForZ(z, zMin, zMax, x, y, diskRadius);
+                    // Create a darker brown for each z-layer
+                    const brownMaterial = getBrownMaterialForZ(z, zMin, zMax);
                     // Add voxel cube
                     const voxel = new THREE.Mesh(
                         new THREE.BoxGeometry(blockMeshSize, blockMeshSize, blockMeshSize),
                         brownMaterial
                     );
                     voxel.position.copy(voxelPos);
-                    voxel.receiveShadow = true; // <--- Enable shadow receiving
                     scene.add(voxel);
                 }
             }
@@ -542,6 +497,8 @@ function lineIntersectsBox(start, end, box) {
 
         // Y position: above disk, a bit higher than diskCenterY + diskRadius
         const planetBaseY = diskCenterY  + blockMeshSize * 1.5;
+
+        // Z position: 0.5 blockMeshSize toward camera from disk surface
         const planetZ = diskCenterZ + blockMeshSize;
 
         // X position: center the word
@@ -556,9 +513,8 @@ function lineIntersectsBox(start, end, box) {
                     if (grid[row][col] === "1") {
                         const voxel = new THREE.Mesh(
                             new THREE.BoxGeometry(blockMeshSize, blockMeshSize, blockMeshSize),
-                            new THREE.MeshStandardMaterial({ color: 0x40ceff, roughness: 0.1, metalness: 0.5 }) // Sky blue
+                            getBrownMaterialForZ(planetZ, zMin, zMax)
                         );
-                        voxel.castShadow = true; // <--- Enable shadow casting
                         voxel.position.set(
                             planetStartX +
                                 i * (gridSize * blockMeshSize + letterSpacing) +
@@ -571,14 +527,6 @@ function lineIntersectsBox(start, end, box) {
                 }
             }
         }
-
-       /* const testCube = new THREE.Mesh(
-    new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshStandardMaterial({ color: 0xff0000 })
-);
- testCube.position.set(0, diskCenterY + 5, 0);
-testCube.castShadow = true;
-scene.add(testCube); */
     </script>
 </body>
 </html>
