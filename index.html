@@ -227,35 +227,73 @@
             hoverInfoDiv = document.getElementById('hover-info');
 
             const infoDiv = document.getElementById('info');
+            const reticule = document.getElementById('reticule');
+            const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            let pauseButton;
+
+            function onLock() {
+                infoDiv.style.display = 'none';
+                setReticuleVisible(true);
+                if (isTouchDevice) {
+                    reticule.style.pointerEvents = 'auto';
+                    if (pauseButton) pauseButton.style.display = 'block';
+                }
+                if (typeof toggleMenu === 'function') toggleMenu(false);
+            }
+
+            function onUnlock() {
+                infoDiv.style.display = 'block';
+                infoDiv.innerHTML = isTouchDevice 
+                    ? 'Paused - Touch to Resume' 
+                    : 'Paused - Click to Resume<br/>Use mouse to look, W/A/S/D to move.';
+                setReticuleVisible(false);
+                if (isTouchDevice) {
+                    reticule.style.pointerEvents = 'none';
+                    if (pauseButton) pauseButton.style.display = 'none';
+                }
+                if (typeof toggleMenu === 'function') toggleMenu(true);
+            }
+
+            if (isTouchDevice) {
+                pauseButton = document.createElement('div');
+                pauseButton.id = 'pause-button';
+                pauseButton.innerHTML = '&#10074;&#10074;'; // Pause icon
+                Object.assign(pauseButton.style, {
+                    position: 'fixed', top: '15px', right: '15px',
+                    width: '44px', height: '44px', background: 'rgba(0, 0, 0, 0.4)',
+                    color: 'white', borderRadius: '50%', textAlign: 'center',
+                    lineHeight: '44px', fontSize: '18px', zIndex: '2001',
+                    cursor: 'pointer', display: 'none'
+                });
+                document.body.appendChild(pauseButton);
+                pauseButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    controls.isLocked = false;
+                    onUnlock();
+                });
+            }
+
             document.body.addEventListener('click', function () {
                 if (shopEntryTarget) {
-                    // If popup is up, clicking anywhere continues
                     shopEntryTarget.action();
                     shopEntryTarget = null;
                     hideShopEntryPopup();
                     return;
                 }
-                if (controls.isLocked) { // If already locked, check for interaction
-                    if (currentHoverTarget && currentHoverTarget.action) {
-                        currentHoverTarget.action(); // Execute the action (e.g., navigate)
+                if (!controls.isLocked) {
+                    if (isTouchDevice) {
+                        controls.isLocked = true;
+                        onLock();
+                    } else {
+                        controls.lock();
                     }
-                } else { // If not locked, lock controls
-                    controls.lock();
+                } else if (currentHoverTarget && currentHoverTarget.action) {
+                    currentHoverTarget.action();
                 }
             });
-            controls.addEventListener('lock', function () {
-                infoDiv.style.display = 'none';
-                setReticuleVisible(true);
-                // When locking controls (resuming game), hide the menu:
-                if (typeof toggleMenu === 'function') toggleMenu(false);
-            });
-            controls.addEventListener('unlock', function () {
-                infoDiv.style.display = 'block';
-                infoDiv.innerHTML = 'Paused - Click to Resume<br/>Use mouse to look, W/A/S/D to move.';
-                setReticuleVisible(false);
-                // Show the menu overlay when paused
-                if (typeof toggleMenu === 'function') toggleMenu(true);
-            });
+
+            controls.addEventListener('lock', onLock);
+            controls.addEventListener('unlock', onUnlock);
 
             // --- LIGHTING ---
             const ambientLight = new THREE.AmbientLight(0x607070, 2);
