@@ -620,7 +620,7 @@
         let player; // A THREE.Group representing the player
         const clock = new THREE.Clock();
         const thirdPersonCameraOffset = new THREE.Vector3(0, 3, 8); // Third-person camera offset
-        let isFirstPersonView = false;
+        let isFirstPersonView = true;
 
         // Player settings, combining values from both files
         const playerSettings = {
@@ -631,8 +631,9 @@
             sensitivity: 0.002 // Kept from PlanetMiner2
         };
 
-        const keys = { w: false, a: false, s: false, d: false, space: false };
         const planetCenter = new THREE.Vector3(0, 0, 0);
+        let dominantBodyPosition = planetCenter;
+        const keys = { w: false, a: false, s: false, d: false, space: false };
 
         let isLocked = false;
         let mobileLookTouchId = -1;
@@ -645,11 +646,13 @@
         const BLOCK_SIZE = 1;
         const PLANET_RADIUS_FACTOR = 0.8;
         const ISO_LEVEL = 0.5;
+        const PLANET_RADIUS = GRID_SIZE / 2 * BLOCK_SIZE * PLANET_RADIUS_FACTOR;
 
         // Moon properties
         const GRID_SIZE_MOON = 20;
         const MOON_RADIUS_FACTOR = 0.9;
         const MOON_ORBIT_DISTANCE = GRID_SIZE * BLOCK_SIZE * 0.75;
+        const MOON_RADIUS = GRID_SIZE_MOON / 2 * BLOCK_SIZE * MOON_RADIUS_FACTOR;
 
         let voxelData = [];
         let voxelDataMoon = [];
@@ -827,7 +830,7 @@
                 case 'KeyD': keys.d = true; break;
                 case 'Space':
                     if (player && player.onGround) {
-                        const upDirection = player.position.clone().normalize();
+                        const upDirection = player.position.clone().sub(dominantBodyPosition).normalize();
                         player.velocity.add(upDirection.multiplyScalar(playerSettings.jumpStrength));
                         player.onGround = false;
                     }
@@ -845,6 +848,30 @@
                 case 'KeyV': 
                     isFirstPersonView = !isFirstPersonView;
                     break;
+                case 'KeyL':
+                    const currentDistToPlanet = player.position.distanceTo(planetCenter);
+                    const currentDistToMoon = player.position.distanceTo(marchingCubesMeshMoon.position);
+
+                    let targetPosition;
+                    let targetBodyCenter;
+
+                    if (currentDistToPlanet < currentDistToMoon) { // Currently on planet, teleport to moon
+                        targetBodyCenter = marchingCubesMeshMoon.position;
+                        targetPosition = targetBodyCenter.clone().add(
+                            targetBodyCenter.clone().sub(planetCenter).normalize().multiplyScalar(MOON_RADIUS + playerSettings.height)
+                        );
+                    } else { // Currently on moon, teleport to planet
+                        targetBodyCenter = planetCenter;
+                        targetPosition = targetBodyCenter.clone().add(
+                            targetBodyCenter.clone().sub(marchingCubesMeshMoon.position).normalize().multiplyScalar(PLANET_RADIUS + playerSettings.height)
+                        );
+                    }
+                    player.position.copy(targetPosition);
+                    player.velocity.set(0, 0, 0);
+                    // Reorient player to be upright on the new body
+                    const newUp = player.position.clone().sub(targetBodyCenter).normalize();
+                    player.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), newUp);
+                    break;
             }
         }
 
@@ -853,7 +880,7 @@
             const movementX = event.movementX || 0;
             const movementY = event.movementY || 0;
 
-            const playerUp = player.position.clone().normalize();
+            const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
             const yawDelta = -movementX * playerSettings.sensitivity;
             const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(playerUp, yawDelta);
             player.quaternion.premultiply(yawQuaternion);
@@ -944,8 +971,8 @@
                 const newCube = new THREE.Mesh(newCubeGeometry, cubeMaterial);
                 newCube.position.copy(newPosition);
                 
-                // Orient the cube to the planet surface first
-                newCube.lookAt(planetCenter);
+                // Orient the cube to the dominant body's surface
+                newCube.lookAt(dominantBodyPosition);
 
                 // Then apply a random rotation around a random axis by 90 degrees.
                 const axes = [new THREE.Vector3(1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,1)];
@@ -1085,7 +1112,7 @@
 
         function updateCamera() {
             if (!player) return;
-            camera.up.copy(player.position).normalize();
+            camera.up.copy(player.position).sub(dominantBodyPosition).normalize();
             const headPosition = new THREE.Vector3();
             player.head.getWorldPosition(headPosition);
 
@@ -1116,12 +1143,35 @@
 
             if (isLocked && player) {
                 // --- Player Update Logic ---
-                const playerUp = player.position.clone().normalize();
-                const gravityDirection = planetCenter.clone().sub(player.position).normalize();
+                const distToPlanet = player.position.distanceTo(planetCenter);
+                const distToMoon = player.position.distanceTo(marchingCubesMeshMoon.position);
+
+                let dominantBody, dominantBodyRadius;
+                dominantBodyPosition = planetCenter; // Initialize with planetCenter
+                if (distToPlanet < distToMoon) {
+                    dominantBody = marchingCubesMesh;
+                    dominantBodyPosition = planetCenter;
+                    dominantBodyRadius = PLANET_RADIUS;
+                } else {
+                    dominantBody = marchingCubesMeshMoon;
+                    dominantBodyPosition = marchingCubesMeshMoon.position;
+                    dominantBodyRadius = MOON_RADIUS;
+                }
+
+                const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
+                const gravityDirection = dominantBodyPosition.clone().sub(player.position).normalize();
+
+                // Non-linear gravity falloff
+                const distFromSurface = player.position.distanceTo(dominantBodyPosition) - dominantBodyRadius;
+                const l1_distance = MOON_ORBIT_DISTANCE / 2; // Simplified L1 point
+                let gravityFactor = 1.0;
+                if (distFromSurface > 0 && distFromSurface < l1_distance) {
+                    gravityFactor = 1.0 - Math.pow(distFromSurface / l1_distance, 2);
+                }
 
                 // 1. Apply gravity
                 if (!player.onGround) {
-                    player.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength));
+                    player.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength * gravityFactor));
                 }
 
                 // 2. Get movement input and project onto tangent plane
@@ -1148,7 +1198,7 @@
                 // 3. Update position based on velocity
                 player.position.add(player.velocity.clone().multiplyScalar(delta));
 
-                // 4. Collision detection and response (from original PlanetMiner2)
+                // 4. Collision detection and response
                 const groundObjects = [marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes);
                 const rayOrigin = player.position.clone().add(playerUp.clone().multiplyScalar(-playerSettings.height * 0.5));
                 raycaster.set(rayOrigin, gravityDirection);
@@ -1184,9 +1234,9 @@
                     }
                 }
 
-                // 5. Orient player to stand upright on the sphere
+                // 5. Orient player to stand upright on the dominant body
                 const playerCurrentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);
-                const newUp = player.position.clone().normalize();
+                const newUp = player.position.clone().sub(dominantBodyPosition).normalize();
                 const correction = new THREE.Quaternion().setFromUnitVectors(playerCurrentUp, newUp);
                 player.quaternion.slerp(correction.multiply(player.quaternion), 0.2);
             }
