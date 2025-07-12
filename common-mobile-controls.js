@@ -61,6 +61,7 @@ export function setupMobileControls(THREE, controls, move) {
     let touchStartX = 0;
     let touchStartY = 0;
     let isDragging = false;
+    let moveForwardTimeout;
 
     reticule.addEventListener('touchstart', (e) => {
         e.preventDefault();
@@ -70,7 +71,8 @@ export function setupMobileControls(THREE, controls, move) {
             touchStartY = touch.clientY;
             isDragging = false;
             // Set a timeout to distinguish a tap from a drag
-            setTimeout(() => {
+            clearTimeout(moveForwardTimeout);
+            moveForwardTimeout = setTimeout(() => {
                 if (!isDragging) {
                     move.forward = true;
                 }
@@ -100,6 +102,7 @@ export function setupMobileControls(THREE, controls, move) {
 
     reticule.addEventListener('touchend', (e) => {
         e.preventDefault();
+        clearTimeout(moveForwardTimeout);
         move.forward = false;
         move.backward = false;
         move.left = false;
