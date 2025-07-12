@@ -54,100 +54,70 @@ export function setupMobileControls(THREE, controls, move) {
 
     // --- It's a touch device, proceed with mobile setup ---
 
-    // ADD VIRTUAL JOYSTICK AND CSS
-    const joystickSize = 150;
-    const stickSize = 70;
+    // --- It's a touch device, proceed with mobile setup ---
+    const reticule = document.getElementById('reticule');
+    if (!reticule) return;
 
-    const style = document.createElement('style');
-    style.innerHTML = `
-        #joystick-container {
-            position: fixed;
-            bottom: 30px;
-            left: 30px;
-            width: ${joystickSize}px;
-            height: ${joystickSize}px;
-            background: rgba(128, 128, 128, 0.3);
-            border-radius: 50%;
-            display: none;
-            z-index: 1001;
-            user-select: none;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isDragging = false;
+
+    reticule.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (controls.isLocked) {
+            const touch = e.touches[0];
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+            isDragging = false;
+            // Set a timeout to distinguish a tap from a drag
+            setTimeout(() => {
+                if (!isDragging) {
+                    move.forward = true;
+                }
+            }, 150);
         }
-        #joystick-stick {
-            position: absolute;
-            top: ${joystickSize / 2 - stickSize / 2}px;
-            left: ${joystickSize / 2 - stickSize / 2}px;
-            width: ${stickSize}px;
-            height: ${stickSize}px;
-            background: rgba(200, 200, 200, 0.5);
-            border-radius: 50%;
+    }, { passive: false });
+
+    reticule.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (controls.isLocked) {
+            isDragging = true;
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - touchStartX;
+            const deltaY = touch.clientY - touchStartY;
+
+            // Normalize the drag vector
+            const dragVector = new THREE.Vector2(deltaX, deltaY);
+            dragVector.normalize();
+
+            // Move based on the drag direction
+            if (dragVector.y < -0.5) move.forward = true; else move.forward = false;
+            if (dragVector.y > 0.5) move.backward = true; else move.backward = false;
+            if (dragVector.x < -0.5) move.left = true; else move.left = false;
+            if (dragVector.x > 0.5) move.right = true; else move.right = false;
         }
-        #look-area {
-            position: fixed;
-            top: 0;
-            right: 0;
-            width: 50vw;
-            height: 100vh;
-            z-index: 1000;
-            display: none;
-            user-select: none;
-        }
-    `;
-    document.head.appendChild(style);
+    }, { passive: false });
 
-    const joystickContainer = document.createElement('div');
-    joystickContainer.id = 'joystick-container';
-    const joystickStick = document.createElement('div');
-    joystickStick.id = 'joystick-stick';
-    joystickContainer.appendChild(joystickStick);
-
-    const lookArea = document.createElement('div');
-    lookArea.id = 'look-area';
-
-    document.body.appendChild(joystickContainer);
-    document.body.appendChild(lookArea);
-
-    // JOYSTICK LOGIC
-    function handleJoystickMove(event) {
-        event.preventDefault();
-        const touch = event.touches[0];
-        const rect = joystickContainer.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-
-        const deltaX = touch.clientX - centerX;
-        const deltaY = touch.clientY - centerY;
-        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        const angle = Math.atan2(deltaY, deltaX);
-
-        const maxDist = joystickSize / 2;
-        const stickX = Math.min(maxDist, distance) * Math.cos(angle);
-        const stickY = Math.min(maxDist, distance) * Math.sin(angle);
-
-        joystickStick.style.transform = `translate(${stickX}px, ${stickY}px)`;
-
-        const deadZone = 0.1;
-        const normalizedX = deltaX / maxDist;
-        const normalizedY = deltaY / maxDist;
-
-        move.forward = normalizedY < -deadZone;
-        move.backward = normalizedY > deadZone;
-        move.left = normalizedX < -deadZone;
-        move.right = normalizedX > deadZone;
-    }
-
-    function resetJoystick() {
-        joystickStick.style.transform = 'translate(0, 0)';
+    reticule.addEventListener('touchend', (e) => {
+        e.preventDefault();
         move.forward = false;
         move.backward = false;
         move.left = false;
         move.right = false;
-    }
+        isDragging = false;
+    }, { passive: false });
 
-    joystickContainer.addEventListener('touchstart', handleJoystickMove, { passive: false });
-    joystickContainer.addEventListener('touchmove', handleJoystickMove, { passive: false });
-    joystickContainer.addEventListener('touchend', resetJoystick, { passive: false });
+    // Since the reticule is now the control, we need to handle looking around differently.
+    // A common approach is to use the rest of the screen for looking.
+    const lookArea = document.createElement('div');
+    lookArea.style.position = 'fixed';
+    lookArea.style.top = '0';
+    lookArea.style.left = '0';
+    lookArea.style.width = '100vw';
+    lookArea.style.height = '100vh';
+    lookArea.style.zIndex = '999'; // Behind the reticule
+    document.body.appendChild(lookArea);
 
-    // LOOK (SWIPE) LOGIC
     let lookStartX = 0;
     let lookStartY = 0;
     let isLooking = false;
@@ -155,6 +125,8 @@ export function setupMobileControls(THREE, controls, move) {
 
     lookArea.addEventListener('touchstart', (e) => {
         if (controls.isLocked) {
+            // Ignore touches on the reticule
+            if (e.target === reticule) return;
             e.preventDefault();
             const touch = e.touches[0];
             lookStartX = touch.clientX;
@@ -183,18 +155,7 @@ export function setupMobileControls(THREE, controls, move) {
         }
     }, { passive: false });
 
-    lookArea.addEventListener('touchend', () => { isLooking = false; });
-
-    // SHOW/HIDE CONTROLS
-    if (controls) {
-        controls.addEventListener('lock', () => {
-            joystickContainer.style.display = 'block';
-            lookArea.style.display = 'block';
-        });
-        controls.addEventListener('unlock', () => {
-            joystickContainer.style.display = 'none';
-            lookArea.style.display = 'none';
-            resetJoystick();
-        });
-    }
+    lookArea.addEventListener('touchend', () => {
+        isLooking = false;
+    });
 }
