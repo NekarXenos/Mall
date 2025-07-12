@@ -312,36 +312,53 @@ function getBrownMaterialForZ(z, zMin, zMax, x = 0, y = 0, diskRadius = 1) {
     const totalLayers = Math.round((zMax - zMin) / blockMeshSize);
     const layerIndex = Math.round((z - zMin) / blockMeshSize);
 
-    // If this is the middle Z-layer, use a very dark brown (no radial effect)
+    // Calculate radial properties first
+    const dist = Math.sqrt(x * x + y * y);
+    const normalizedDistance = Math.min(dist / diskRadius, 1.0); // Clamp at 1.0
+    const emissiveIntensity = 1.0 - normalizedDistance; // Linear fade from 1 (center) to 0 (edge)
+
+    // Band colors as hex values
+    const bandColors = [
+        0xfff6c0, // Inner core: light yellow
+        0xffe010, // Outer core: golden yellow
+        0xdd2010, // Mantle: brighter brick red
+        0x332211, // Outer: dark reddish brown
+    ];
+
+    // If this is the middle Z-layer, use a very dark brown but still apply the radial emission
     if (layerIndex === Math.floor(totalLayers / 2)) {
-        const color = new THREE.Color();
-        color.setHSL(20/360, 0.5, 0.08); // Very dark brown
-        return new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.2 });
+        return new THREE.MeshStandardMaterial({
+            color: 0x23160d, // Very dark brown
+            roughness: 0.7,
+            metalness: 0.2,
+            emissive: 0x120a05, // Dim emission
+            emissiveIntensity: emissiveIntensity // Use the calculated radial intensity
+        });
     }
 
-    // Otherwise, use the radial banding as before
-    const dist = Math.sqrt(x * x + y * y);
-    const bands = 4;
-    const bandIndex = Math.floor(Math.abs(dist / diskRadius) * bands);
+    // --- Calculate banded color for the 'color' property ---
+    const bands = 4; // Use an integer for clearer bands
+    const bandIndex = Math.floor(normalizedDistance * bands);
+    const colorHex = bandColors[Math.min(bandIndex, bandColors.length - 1)];
 
-    // HSL for each band: [hue, saturation, lightness]
-    // 0: dark reddish brown, 1: brick red, 2: golden yellow, 3: light yellow
-    const bandColors = [
-        [55/360, 0.45, 0.78],  // Inner core: light yellow
-        [45/360, 0.55, 0.55],  // Outer core: golden yellow
-        [18/360, 0.55, 0.32],  // Mantle: brighter brick red
-        [12/360, 0.45, 0.18],  // Outer: dark reddish brown
-    ];
-    const [h, s, l] = bandColors[Math.min(bandIndex, bandColors.length - 1)];
+    // --- Calculate smooth gradient for the 'emissive' color ---
+    const numColorSegments = bandColors.length - 1;
+    const scaledDistance = normalizedDistance * numColorSegments;
+    const colorIndex1 = Math.floor(scaledDistance);
+    const colorIndex2 = Math.min(colorIndex1 + 1, numColorSegments);
+    const interpolationFactor = scaledDistance - colorIndex1;
 
-    // Z-layer effect (optional, subtle)
-    const brownL = 0.26;
-    const zLightness = 1 + 0.012 * (layerIndex / Math.max(1, totalLayers - 1));
-    const finalL = Math.min(l * zLightness, 1);
+    const emissiveColorStart = new THREE.Color(bandColors[colorIndex1]);
+    const emissiveColorEnd = new THREE.Color(bandColors[colorIndex2]);
+    const emissiveColor = new THREE.Color().lerpColors(emissiveColorStart, emissiveColorEnd, interpolationFactor);
 
-    const color = new THREE.Color();
-    color.setHSL(h, s, finalL);
-    return new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.2 });
+    return new THREE.MeshStandardMaterial({
+        color: colorHex,
+        roughness: 0.7,
+        metalness: 0.2,
+        emissive: emissiveColor,
+        emissiveIntensity: emissiveIntensity
+    });
 }
 
 // 4. Place voxels in a disk shape
@@ -543,6 +560,13 @@ function lineIntersectsBox(start, end, box) {
         // Y position: above disk, a bit higher than diskCenterY + diskRadius
         const planetBaseY = diskCenterY  + blockMeshSize * 1.5;
         const planetZ = diskCenterZ + blockMeshSize;
+
+        // Add a point light in front of the disk to illuminate the letters
+        const diskPointLight = new THREE.PointLight(0xffe066, 2, diskRadius * 1.5);
+        diskPointLight.position.set(diskCenterX, diskCenterY, planetZ);
+        diskPointLight.castShadow = true; // Optional: for more dynamic lighting
+        scene.add(diskPointLight);
+
 
         // X position: center the word
         const planetStartX = diskCenterX - totalWidth / 2 + blockMeshSize / 2;
