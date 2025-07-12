@@ -1,10 +1,17 @@
-<!DOCTYPE html>
+'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Marching Cubes Planet Miner (FPS) with Building</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
     <style>
         body {
             margin: 0;
@@ -198,6 +205,9 @@
     </div>
 
     <script type="module">
+        import * as THREE from 'three';
+        import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+
         // Lookup Tables for Marching Cubes (copied from MarchingCubes.js for self-containment)
         const EdgeVertexIndices = [
             [0, 1], [1, 3], [3, 2], [2, 0], [4, 5], [5, 7], [7, 6], [6, 4],
@@ -602,7 +612,6 @@
         let blockInventory = 0; // Tracks the number of blocks in the player's inventory
         let cubes = []; // Array to store individual THREE.Mesh cube objects (built blocks)
         let cubeParent; // Group to hold all individual built cubes
-        let cubeGeometry; // Geometry for individual built cubes
         let cubeMaterial; // Material for individual built cubes
         let blockInventoryCountSpan; // Reference to the HTML element for inventory display
         // --- End Building-related Global Variables ---
@@ -686,8 +695,7 @@
 
             cubeParent = new THREE.Group();
             scene.add(cubeParent);
-            cubeGeometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-            cubeMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, roughness: 0.4, metalness: 0.2 });
+            cubeMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.2, metalness: 0.8 });
 
             createPlayer(); // New function to create the player model
 
@@ -932,14 +940,59 @@
                     return;
                 }
 
-                const newCube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+                const newCubeGeometry = createChamferedBlockGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                const newCube = new THREE.Mesh(newCubeGeometry, cubeMaterial);
                 newCube.position.copy(newPosition);
+                
+                // Orient the cube to the planet surface first
                 newCube.lookAt(planetCenter);
+
+                // Then apply a random rotation around a random axis by 90 degrees.
+                const axes = [new THREE.Vector3(1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,1)];
+                const randomAxis = axes[Math.floor(Math.random() * 3)];
+                const randomAngle = (Math.floor(Math.random() * 4)) * Math.PI / 2; // 0, 90, 180, 270 degrees
+                const randomRotation = new THREE.Quaternion().setFromAxisAngle(randomAxis, randomAngle);
+                newCube.quaternion.multiply(randomRotation);
+
                 cubeParent.add(newCube);
                 cubes.push(newCube);
                 blockInventory--;
                 updateInventoryDisplay();
             }
+        }
+
+        function createChamferedBlockGeometry(width, height, depth) {
+            const w = width / 2;
+            const h = height / 2;
+            const d = depth / 2;
+
+            const points = [];
+
+            const getRandomChamfer = (dim) => THREE.MathUtils.randFloat(dim / 10, dim / 3);
+
+            const corners = [
+                new THREE.Vector3(w, h, d),   new THREE.Vector3(w, h, -d),
+                new THREE.Vector3(w, -h, d),  new THREE.Vector3(w, -h, -d),
+                new THREE.Vector3(-w, h, d),  new THREE.Vector3(-w, h, -d),
+                new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
+            ];
+
+            corners.forEach(corner => {
+                const sx = Math.sign(corner.x);
+                const sy = Math.sign(corner.y);
+                const sz = Math.sign(corner.z);
+
+                const chamferX = getRandomChamfer(width);
+                const chamferY = getRandomChamfer(height);
+                const chamferZ = getRandomChamfer(depth);
+
+                points.push(new THREE.Vector3(corner.x - sx * chamferX, corner.y, corner.z));
+                points.push(new THREE.Vector3(corner.x, corner.y - sy * chamferY, corner.z));
+                points.push(new THREE.Vector3(corner.x, corner.y, corner.z - sz * chamferZ));
+            });
+
+            const geometry = new ConvexGeometry(points);
+            return geometry;
         }
 
         function generatePlanet() {
@@ -1149,4 +1202,4 @@
         };
     </script>
 </body>
-</html>
+</html>'''
