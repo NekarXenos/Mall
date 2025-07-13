@@ -180,49 +180,6 @@
             z-index: 2000;
             display: none;
         }
-
-        /* Styles for the i-character popup */
-        #ichar-popup {
-            display: none; /* Hidden by default */
-            position: absolute;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(20, 20, 40, 0.9);
-            border: 2px solid #00bbff;
-            border-radius: 10px;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            z-index: 2001; /* Higher than back-wall-popup */
-            font-size: 1.1rem;
-            width: 90%;
-            max-width: 400px;
-            box-shadow: 0 0 15px rgba(0, 187, 255, 0.5);
-        }
-        #ichar-popup p {
-            margin: 0 0 15px 0;
-        }
-        #ichar-popup .popup-buttons button {
-            background-color: #00bbff;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            margin: 0 10px;
-            font-weight: bold;
-            transition: background-color 0.2s;
-        }
-        #ichar-popup .popup-buttons button:hover {
-            background-color: #00ddff;
-        }
-        #ichar-popup .popup-buttons button#popup-no {
-            background-color: #444;
-        }
-        #ichar-popup .popup-buttons button#popup-no:hover {
-            background-color: #666;
-        }
     </style>
 </head>
 <!-- Google tag (gtag.js) -->
@@ -239,8 +196,6 @@
         <a href="../index.html" style="color: white; text-decoration: none; background-color: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px;">Back to Main</a>
     </div>
     <div id="threejs-container"></div>
-
-    <div id="aiming-dot"></div>
 
     <!-- Blocker and Instructions for Pointer Lock -->
     <div id="blocker">
@@ -269,15 +224,6 @@
 
     <!-- Back Wall Popup (for redirect notice) -->
     <div id="back-wall-popup"></div>
-
-    <!-- I-Character Popup -->
-    <div id="ichar-popup">
-        <p>Interested in commissioning a painting?</p>
-        <div class="popup-buttons">
-            <button id="popup-yes">Yes, let's talk!</button>
-            <button id="popup-no">Not right now</button>
-        </div>
-    </div>
 
     <script>
         // --- PointerLockControls Class (embedded) ---
@@ -382,7 +328,6 @@
         // --- Main Application Logic ---
         let scene, camera, renderer, controls;
         let raycaster, menuData;
-        let wireframeEnabled = false;
         
         // FPS Player state
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
@@ -394,8 +339,6 @@
         let currentHoveredArtwork = null; // Declare globally
         let wallThickness, roomSize; // Declare globally
         let interactiveArtworks = []; // To store artwork meshes for raycasting
-        let iCharacterInteractiveMeshes = []; // For the i-character
-        let icharPopup; // For the i-character popup
         const objects = []; // For collision detection
 
         let digitalSwitchingImagePlane; // Declare globally
@@ -544,15 +487,13 @@
 
             
 
-            const aimingDot = document.getElementById('aiming-dot');
             // Setup pointer lock controls
             controls = new PointerLockControls(camera, document.body);
             instructions.addEventListener('click', function () { controls.lock(); });
-            controls.addEventListener('lock', () => { instructions.style.display = 'none'; blocker.style.display = 'none'; menuContainer.style.display = 'none'; if(aimingDot) aimingDot.style.display = 'block'; });
-            controls.addEventListener('unlock', () => { blocker.style.display = 'block'; instructions.style.display = 'flex'; menuContainer.style.display = 'flex'; renderMenuColumns([]); if(aimingDot) aimingDot.style.display = 'none'; });
+            controls.addEventListener('lock', () => { instructions.style.display = 'none'; blocker.style.display = 'none'; menuContainer.style.display = 'none'; });
+            controls.addEventListener('unlock', () => { blocker.style.display = 'block'; instructions.style.display = 'flex'; menuContainer.style.display = 'flex'; renderMenuColumns([]); });
             scene.add(controls.getObject());
 
-            // Keyboard controls
             // Keyboard controls
             const onKeyDown = function (event) {
                 switch (event.code) {
@@ -561,27 +502,8 @@
                     case 'ArrowDown': case 'KeyS': moveBackward = true; break;
                     case 'ArrowRight': case 'KeyD': moveRight = true; break;
                     case 'Space': /* if (canJump === true) velocity.y += 1; canJump = false; */ break; // Removed jump logic as per Mall.html
-                    case 'KeyP': // Toggle wireframe
-                        wireframeEnabled = !wireframeEnabled;
-                        scene.traverse(function (object) {
-                            if (object.isMesh) {
-                                if (object.material) {
-                                    if (Array.isArray(object.material)) {
-                                        object.material.forEach(material => {
-                                            material.wireframe = wireframeEnabled;
-                                        });
-                                    } else {
-                                        object.material.wireframe = wireframeEnabled;
-                                    }
-                                }
-                            }
-                        });
-                        break;
                     case 'Escape': // Handle Escape key
-                        if (icharPopup && icharPopup.style.display === 'block') {
-                            icharPopup.style.display = 'none';
-                            controls.lock();
-                        } else if (artworkModal.style.display === 'flex') {
+                        if (artworkModal.style.display === 'flex') {
                             hideArtworkModal(); // If artwork modal is open, close it first
                         } else if (menuContainer.style.display === 'flex') {
                             // If menu is already open, navigate back to main page
@@ -1016,122 +938,6 @@
                     hideArtworkModal();
                 }
             });
-
-            // --- I-Character Setup ---
-            icharPopup = document.getElementById('ichar-popup');
-            const popupButtonYes = document.getElementById('popup-yes');
-            const popupButtonNo = document.getElementById('popup-no');
-
-            if (popupButtonYes && popupButtonNo && icharPopup) {
-                popupButtonYes.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    window.location.href = 'mailto:nekarx@gmail.com?subject=Painting Commission Inquiry';
-                    icharPopup.style.display = 'none';
-                    controls.lock();
-                });
-
-                popupButtonNo.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    icharPopup.style.display = 'none';
-                    controls.lock();
-                });
-            }
-
-            document.addEventListener('click', onSceneClick);
-
-            // Create i-character
-            const iCharacterGroup = new THREE.Group();
-
-            const position = { x: 0, y: 0, z: 0 }; // } = options;
-
-    // --- Character State and Parts ---
-    let isRevealed = false;
-    let isAimingAtHead = false;
-    let canToggleReveal = true;
-
-    const characterGroup = new THREE.Group();
-    characterGroup.position.set(position.x, position.y, position.z);
-
- // --- Create the Character Meshes and Materials ---
-    // Character Proportions (adjusted to be close to 1.77 units total height from feet to top of head)
-    const legHeight = 0.15;
-    const torsoHeight = 0.8;
-    const armHeight = 0.15;
-    const headRadius = 0.22; // Diameter 0.44
-
-    const bodyMaterial = new THREE.MeshStandardMaterial({
-        color: 0x0077ff, // Shiny blue
-        metalness: 0.8,
-        roughness: 0.2,
-        emissive: 0x0033aa, // Slight glow
-        emissiveIntensity: 0.3
-    });
-
-    // Legs
-    const legGeometry = new THREE.BoxGeometry(0.2, legHeight, 0.3); // width, height, depth
-    const leftLeg = new THREE.Mesh(legGeometry, bodyMaterial);
-    leftLeg.position.set(-0.2, legHeight * 1.5, 0); // Position relative to character group (feet at y=0)
-    leftLeg.castShadow = true;
-    characterGroup.add(leftLeg);
-
-    const rightLeg = new THREE.Mesh(legGeometry, bodyMaterial);
-    rightLeg.position.set(0.2, legHeight * 1.5, 0);
-    rightLeg.castShadow = true;
-    characterGroup.add(rightLeg);
-
-    // Torso
-    const torsoGeometry = new THREE.BoxGeometry(0.3, torsoHeight, 0.3);
-    const torso = new THREE.Mesh(torsoGeometry, bodyMaterial);
-    torso.position.set(0, legHeight + (torsoHeight / 2), 0); // Position above legs
-    torso.castShadow = true;
-    torso.receiveShadow = true; // Allow torso to receive shadows
-    characterGroup.add(torso);
-
-    // Arms
-    const armGeometry = new THREE.BoxGeometry(0.2, armHeight, 0.3);
-    const leftArm = new THREE.Mesh(armGeometry, bodyMaterial);
-    leftArm.position.set(-0.2, legHeight + torsoHeight - (armHeight / 2), 0); // Position beside torso
-    leftArm.castShadow = true;
-    leftArm.receiveShadow = true; // Allow left arm to receive shadows
-    characterGroup.add(leftArm);
-
-    const rightArm = new THREE.Mesh(armGeometry, bodyMaterial);
-    rightArm.position.set(0.2, legHeight + torsoHeight - (armHeight / 2), 0);
-    rightArm.castShadow = true;
-    rightArm.receiveShadow = true; // Allow right arm to receive shadows
-    characterGroup.add(rightArm);
-
-
-            //const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x00bbff, metalness: 0.8, roughness: 0.2, emissive: 0x222222 });
-            const headMaterial = new THREE.MeshStandardMaterial({ color: 0x00bbff, emissive: 0x00bbff, emissiveIntensity: 0.1 });
-
-            const bodyGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.8, 16);
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            body.position.y = 0.4;
-            body.castShadow = true;
-
-            
-
-            const headGeometry = new THREE.SphereGeometry(0.2, 32, 32);
-            const head = new THREE.Mesh(headGeometry, headMaterial);
-            head.position.y = 1 + 0.2; // top of body + radius of head
-            head.castShadow = true;
-
-            iCharacterGroup.add(characterGroup);
-            iCharacterGroup.add(head);
-
-            iCharacterGroup.position.set(-4, 0, -4); // Place it
-            scene.add(iCharacterGroup);
-
-            // Add a light for the character
-            const charLight = new THREE.PointLight(0x00bbff, 1, 5);
-            charLight.position.set(0, 1.5, -3.5);
-            scene.add(charLight);
-
-            // Make it interactive
-            head.userData.isICharacter = true;
-            body.userData.isICharacter = true;
-            iCharacterInteractiveMeshes.push(head, body);
         }
 
         function showArtworkModal(imagePath) {
@@ -1147,42 +953,6 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function onSceneClick() {
-            if (!controls.isLocked) {
-                // If menu is open, clicks are handled by the menu's own event listeners.
-                return;
-            }
-
-            raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-            const intersects = raycaster.intersectObjects(iCharacterInteractiveMeshes, false);
-
-            if (intersects.length > 0) {
-                // Hit the i-character
-                if (icharPopup) {
-                    icharPopup.style.display = 'block';
-                    controls.unlock();
-                }
-            }
-        }
-
-        function onSceneClick() {
-            if (!controls.isLocked) {
-                // If menu is open, clicks are handled by the menu's own event listeners.
-                return;
-            }
-
-            raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-            const intersects = raycaster.intersectObjects(iCharacterInteractiveMeshes, false);
-
-            if (intersects.length > 0) {
-                // Hit the i-character
-                if (icharPopup) {
-                    icharPopup.style.display = 'block';
-                    controls.unlock();
-                }
-            }
         }
         
         function hideArtworkModal() {
@@ -1401,10 +1171,10 @@
 
                 // Raycasting for artwork hover
                 raycaster.setFromCamera({ x: 0, y: 0 }, camera); // Ray from center of screen
-                const artworkIntersects = raycaster.intersectObjects(interactiveArtworks, false); // Only check artworks
+                const intersects = raycaster.intersectObjects(interactiveArtworks, false); // Only check artworks
 
-                if (artworkIntersects.length > 0) {
-                    const intersectedObject = artworkIntersects[0].object;
+                if (intersects.length > 0) {
+                    const intersectedObject = intersects[0].object;
                     const artworkData = intersectedObject.userData.artworkData;
                     const artworkHeightWorld = intersectedObject.userData.targetHeight; // Get the stored height
 
@@ -1437,25 +1207,6 @@
                     if (currentHoveredArtwork && artworkInfoPopup) {
                         artworkInfoPopup.style.display = 'none';
                         currentHoveredArtwork = null;
-                    }
-                }
-
-                // i-character animation and interaction
-                const iCharHead = iCharacterInteractiveMeshes[0];
-                if (iCharHead) {
-                    // Bobbing animation
-                    iCharHead.position.y = 1.2 + Math.sin(time * 0.002) * 0.05;
-
-                    // Raycasting for hover effect
-                    const iCharIntersects = raycaster.intersectObjects(iCharacterInteractiveMeshes, false);
-                    const aimingDot = document.getElementById('aiming-dot');
-
-                    if (iCharIntersects.length > 0) {
-                        iCharHead.material.emissiveIntensity = 1.5;
-                        if (aimingDot) aimingDot.style.borderColor = '#00FF00';
-                    } else {
-                        iCharHead.material.emissiveIntensity = 0.7;
-                        if (aimingDot) aimingDot.style.borderColor = 'white';
                     }
                 }
 

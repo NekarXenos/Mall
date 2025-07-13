@@ -1041,86 +1041,23 @@
 
             // Create i-character
             const iCharacterGroup = new THREE.Group();
-
-            const position = { x: 0, y: 0, z: 0 }; // } = options;
-
-    // --- Character State and Parts ---
-    let isRevealed = false;
-    let isAimingAtHead = false;
-    let canToggleReveal = true;
-
-    const characterGroup = new THREE.Group();
-    characterGroup.position.set(position.x, position.y, position.z);
-
- // --- Create the Character Meshes and Materials ---
-    // Character Proportions (adjusted to be close to 1.77 units total height from feet to top of head)
-    const legHeight = 0.15;
-    const torsoHeight = 0.8;
-    const armHeight = 0.15;
-    const headRadius = 0.22; // Diameter 0.44
-
-    const bodyMaterial = new THREE.MeshStandardMaterial({
-        color: 0x0077ff, // Shiny blue
-        metalness: 0.8,
-        roughness: 0.2,
-        emissive: 0x0033aa, // Slight glow
-        emissiveIntensity: 0.3
-    });
-
-    // Legs
-    const legGeometry = new THREE.BoxGeometry(0.2, legHeight, 0.3); // width, height, depth
-    const leftLeg = new THREE.Mesh(legGeometry, bodyMaterial);
-    leftLeg.position.set(-0.2, legHeight * 1.5, 0); // Position relative to character group (feet at y=0)
-    leftLeg.castShadow = true;
-    characterGroup.add(leftLeg);
-
-    const rightLeg = new THREE.Mesh(legGeometry, bodyMaterial);
-    rightLeg.position.set(0.2, legHeight * 1.5, 0);
-    rightLeg.castShadow = true;
-    characterGroup.add(rightLeg);
-
-    // Torso
-    const torsoGeometry = new THREE.BoxGeometry(0.3, torsoHeight, 0.3);
-    const torso = new THREE.Mesh(torsoGeometry, bodyMaterial);
-    torso.position.set(0, legHeight + (torsoHeight / 2), 0); // Position above legs
-    torso.castShadow = true;
-    torso.receiveShadow = true; // Allow torso to receive shadows
-    characterGroup.add(torso);
-
-    // Arms
-    const armGeometry = new THREE.BoxGeometry(0.2, armHeight, 0.3);
-    const leftArm = new THREE.Mesh(armGeometry, bodyMaterial);
-    leftArm.position.set(-0.2, legHeight + torsoHeight - (armHeight / 2), 0); // Position beside torso
-    leftArm.castShadow = true;
-    leftArm.receiveShadow = true; // Allow left arm to receive shadows
-    characterGroup.add(leftArm);
-
-    const rightArm = new THREE.Mesh(armGeometry, bodyMaterial);
-    rightArm.position.set(0.2, legHeight + torsoHeight - (armHeight / 2), 0);
-    rightArm.castShadow = true;
-    rightArm.receiveShadow = true; // Allow right arm to receive shadows
-    characterGroup.add(rightArm);
-
-
-            //const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x00bbff, metalness: 0.8, roughness: 0.2, emissive: 0x222222 });
-            const headMaterial = new THREE.MeshStandardMaterial({ color: 0x00bbff, emissive: 0x00bbff, emissiveIntensity: 0.1 });
+            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.8, roughness: 0.2, emissive: 0x222222 });
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0x00bbff, emissive: 0x00bbff, emissiveIntensity: 0.7 });
 
             const bodyGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.8, 16);
             const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
             body.position.y = 0.4;
             body.castShadow = true;
 
-            
-
             const headGeometry = new THREE.SphereGeometry(0.2, 32, 32);
             const head = new THREE.Mesh(headGeometry, headMaterial);
-            head.position.y = 1 + 0.2; // top of body + radius of head
+            head.position.y = 0.8 + 0.2; // top of body + radius of head
             head.castShadow = true;
 
-            iCharacterGroup.add(characterGroup);
+            iCharacterGroup.add(body);
             iCharacterGroup.add(head);
 
-            iCharacterGroup.position.set(-4, 0, -4); // Place it
+            iCharacterGroup.position.set(0, 0, -3.5); // Place it in front of the digital screen
             scene.add(iCharacterGroup);
 
             // Add a light for the character
@@ -1444,7 +1381,7 @@
                 const iCharHead = iCharacterInteractiveMeshes[0];
                 if (iCharHead) {
                     // Bobbing animation
-                    iCharHead.position.y = 1.2 + Math.sin(time * 0.002) * 0.05;
+                    iCharHead.position.y = 1.0 + Math.sin(time * 0.002) * 0.05;
 
                     // Raycasting for hover effect
                     const iCharIntersects = raycaster.intersectObjects(iCharacterInteractiveMeshes, false);

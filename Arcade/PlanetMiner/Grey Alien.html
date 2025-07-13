@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Low-Poly Grey Alien</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #333;
+            font-family: 'Inter', sans-serif;
+            color: white;
+        }
+        canvas {
+            display: block;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            width: 100%; /* Ensure canvas takes full width */
+            height: 100%; /* Ensure canvas takes full height */
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Use mouse to rotate view.</div>
+    <script>
+        let scene, camera, renderer, controls;
+        let alienGroup; // Group to hold all alien parts
+
+        // Initialize the scene and components when the window loads
+        window.onload = function() {
+            init();
+            animate();
+        };
+
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x222222); // Dark background
+
+            // Camera setup
+            // Adjusted camera position for a better view of the alien
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 2, 8);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // OrbitControls for mouse view control
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; // Smooth camera movement
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            controls.maxPolarAngle = Math.PI / 2; // Prevent camera from going below the ground
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040); // Soft white light
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            // Create the low-poly Grey alien
+            alienGroup = new THREE.Group();
+            scene.add(alienGroup);
+
+            // Materials for the alien
+            // Grey material for the alien's skin
+            const greySkinMaterial = new THREE.MeshStandardMaterial({ color: 0x889988, flatShading: true });
+            // Darker material for the eyes
+            const darkEyeMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, flatShading: true });
+
+            // 1. Head (Large, elongated dodecahedron for low-poly look)
+            const headGeometry = new THREE.DodecahedronGeometry(1.5, 0); // Large head
+            headGeometry.scale(1, 1.2, 1); // Slightly elongated
+            const head = new THREE.Mesh(headGeometry, greySkinMaterial);
+            head.position.y = 1.5; // Position relative to the body
+            alienGroup.add(head);
+
+            // 2. Eyes (Two large, dark spheres)
+            const eyeGeometry = new THREE.SphereGeometry(0.4, 6, 6); // Low-poly sphere for eyes
+            const leftEye = new THREE.Mesh(eyeGeometry, darkEyeMaterial);
+            leftEye.position.set(-0.7, 1.8, 1.3); // Position on the head
+            alienGroup.add(leftEye);
+
+            const rightEye = new THREE.Mesh(eyeGeometry, darkEyeMaterial);
+            rightEye.position.set(0.7, 1.8, 1.3); // Position on the head
+            alienGroup.add(rightEye);
+
+            // 3. Body (Simple box or cylinder)
+            const bodyGeometry = new THREE.BoxGeometry(1.5, 2.5, 1); // Slim body
+            const body = new THREE.Mesh(bodyGeometry, greySkinMaterial);
+            body.position.y = -0.5; // Centered
+            alienGroup.add(body);
+
+            // 4. Limbs (Thin cylinders for arms and legs)
+            // Arms
+            const armGeometry = new THREE.CylinderGeometry(0.3, 0.3, 1.8, 6); // Thin arms
+            const leftArm = new THREE.Mesh(armGeometry, greySkinMaterial);
+            leftArm.position.set(-1.0, 0.5, 0);
+            leftArm.rotation.z = Math.PI * 0.1; // Slightly angled
+            alienGroup.add(leftArm);
+
+            const rightArm = new THREE.Mesh(armGeometry, greySkinMaterial);
+            rightArm.position.set(1.0, 0.5, 0);
+            rightArm.rotation.z = -Math.PI * 0.1; // Slightly angled
+            alienGroup.add(rightArm);
+
+            // Legs
+            const legGeometry = new THREE.CylinderGeometry(0.4, 0.3, 2.0, 6); // Thin legs
+            const leftLeg = new THREE.Mesh(legGeometry, greySkinMaterial);
+            leftLeg.position.set(-0.4, -2.5, 0);
+            alienGroup.add(leftLeg);
+
+            const rightLeg = new THREE.Mesh(legGeometry, greySkinMaterial);
+            rightLeg.position.set(0.4, -2.5, 0);
+            alienGroup.add(rightLeg);
+
+            // 5. Hands (Small spheres/dodecahedrons)
+            const handGeometry = new THREE.DodecahedronGeometry(0.3, 0);
+            const leftHand = new THREE.Mesh(handGeometry, greySkinMaterial);
+            leftHand.position.set(-1.0, -0.4, 0); // Attached to arm
+            alienGroup.add(leftHand);
+
+            const rightHand = new THREE.Mesh(handGeometry, greySkinMaterial);
+            rightHand.position.set(1.0, -0.4, 0); // Attached to arm
+            alienGroup.add(rightHand);
+
+            // 6. Feet (Flattened boxes or tetrahedrons)
+            const footGeometry = new THREE.BoxGeometry(0.8, 0.3, 1.2);
+            footGeometry.scale(1, 0.6, 1.5); // Squashed and elongated
+            const leftFoot = new THREE.Mesh(footGeometry, greySkinMaterial);
+            leftFoot.position.set(-0.4, -3.6, 0.2); // Attached to leg
+            leftFoot.rotation.x = -Math.PI / 12;
+            alienGroup.add(leftFoot);
+
+            const rightFoot = new THREE.Mesh(footGeometry, greySkinMaterial);
+            rightFoot.position.set(0.4, -3.6, 0.2); // Attached to leg
+            rightFoot.rotation.x = -Math.PI / 12;
+            alienGroup.add(rightFoot);
+
+            // Adjust alien group position to be centered
+            alienGroup.position.y = -0.5;
+
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Update controls
+            controls.update();
+
+            // Render scene
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

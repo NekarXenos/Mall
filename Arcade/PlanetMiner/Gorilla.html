@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Gorilla</title>
+    <style>
+        /* Basic styling for the body and canvas to ensure full-screen rendering */
+        body {
+            margin: 0;
+            overflow: hidden; /* Hide scrollbars */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #add8e6; /* Light blue background for the entire page */
+        }
+        canvas {
+            display: block; /* Remove extra space below canvas */
+            width: 100vw; /* Make canvas fill viewport width */
+            height: 100vh; /* Make canvas fill viewport height */
+            background-color: #add8e6; /* Light blue background for the canvas */
+        }
+    </style>
+</head>
+<body>
+    <!-- Import Three.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Import OrbitControls for interactive camera navigation
+         FIX: Using the same CDN link for OrbitControls as in Mafia.html for consistency and to resolve constructor issues. -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        let scene, camera, renderer, gorillaGroup, controls;
+
+        // Ensure the script runs only after the entire window content is loaded
+        window.onload = function() {
+            init(); // Initialize the Three.js scene
+            animate(); // Start the animation loop
+        };
+
+        /**
+         * Initializes the Three.js scene, camera, renderer, lighting,
+         * and constructs the gorilla character.
+         */
+        function init() {
+            // 1. Scene Setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xadd8e6); // Set a light blue background color
+
+            // 2. Camera Setup
+            // PerspectiveCamera(fov, aspect, near, far)
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 20); // Initial camera position (x, y, z) to view the gorilla
+
+            // 3. Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true }); // Enable antialiasing for smoother edges
+            renderer.setSize(window.innerWidth, window.innerHeight); // Set renderer size to full window
+            document.body.appendChild(renderer.domElement); // Add the renderer's canvas to the DOM
+
+            // 4. OrbitControls for Camera Interaction
+            // Allows users to rotate, pan, and zoom the camera with mouse/touch.
+            // FIX: Instantiating with 'THREE.OrbitControls' as this is how it's exposed
+            // by the 'OrbitControls.js' script from jsdelivr.net.
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; // Enable damping for smooth camera movement
+            controls.dampingFactor = 0.25; // How much the camera "drags"
+            controls.screenSpacePanning = false; // Prevent camera from panning vertically if orbit is locked
+            controls.maxPolarAngle = Math.PI / 2 - 0.1; // Limit vertical rotation to prevent going below ground
+
+            // 5. Lighting Setup
+            // Ambient light: illuminates all objects in the scene equally from all directions
+            const ambientLight = new THREE.AmbientLight(0x404040, 2); // Soft white light, intensity 2
+            scene.add(ambientLight);
+
+            // Directional light: simulates light from a distant source (like the sun)
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5); // White light, intensity 1.5
+            directionalLight.position.set(5, 10, 7); // Position the light source
+            scene.add(directionalLight);
+
+            // 6. Gorilla Material
+            // MeshStandardMaterial reacts well to lighting and can have realistic properties
+            const gorillaMaterial = new THREE.MeshStandardMaterial({ color: 0x36454F }); // Charcoal grey color
+
+            // 7. Create Gorilla Group
+            // A group helps in treating the entire gorilla as a single object for positioning/rotation
+            gorillaGroup = new THREE.Group();
+
+            // 8. Body (Block)
+            const bodyGeometry = new THREE.BoxGeometry(4, 6, 3); // width, height, depth
+            const body = new THREE.Mesh(bodyGeometry, gorillaMaterial);
+            body.position.y = 3; // Position body slightly above the ground plane
+            gorillaGroup.add(body);
+
+            // 9. Head (Dodecahedron)
+            const headGeometry = new THREE.DodecahedronGeometry(2); // radius
+            const head = new THREE.Mesh(headGeometry, gorillaMaterial);
+            head.position.set(0, 7.5, 0); // Position above the body
+            gorillaGroup.add(head);
+
+            // 10. Ears (Donut shapes / TorusGeometry)
+            const earGeometry = new THREE.TorusGeometry(0.5, 0.2, 16, 100); // radius, tube, radialSegments, tubularSegments
+            const leftEar = new THREE.Mesh(earGeometry, gorillaMaterial);
+            leftEar.position.set(-1.8, 7.8, 0); // Position relative to head
+            leftEar.rotation.y = Math.PI / 2; // Rotate to face outward
+            gorillaGroup.add(leftEar);
+
+            const rightEar = new THREE.Mesh(earGeometry, gorillaMaterial);
+            rightEar.position.set(1.8, 7.8, 0); // Position relative to head
+            rightEar.rotation.y = Math.PI / 2; // Rotate to face outward
+            gorillaGroup.add(rightEar);
+
+            // 11. Lips (Squashed Donut / TorusGeometry)
+            const lipsGeometry = new THREE.TorusGeometry(0.8, 0.3, 16, 100);
+            const lips = new THREE.Mesh(lipsGeometry, gorillaMaterial);
+            lips.scale.set(1, 0.5, 1.2); // Scale Y-axis to squash, Z-axis for slight protrusion
+            lips.position.set(0, 6.5, 1.8); // Position on the front of the head
+            lips.rotation.x = Math.PI / 2; // Rotate to be horizontal
+            gorillaGroup.add(lips);
+
+            // 12. Nose (Dodecahedron)
+            const noseGeometry = new THREE.DodecahedronGeometry(0.5);
+            const nose = new THREE.Mesh(noseGeometry, gorillaMaterial);
+            nose.position.set(0, 7.0, 2.0); // Position on the front of the head
+            gorillaGroup.add(nose);
+
+            // 13. Eyes (Dodecahedrons)
+            const eyeGeometry = new THREE.DodecahedronGeometry(0.3);
+            const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Black color for eyes
+            const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            leftEye.position.set(-0.8, 8.2, 1.7); // Position on the head
+            gorillaGroup.add(leftEye);
+
+            const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            rightEye.position.set(0.8, 8.2, 1.7); // Position on the head
+            gorillaGroup.add(rightEye);
+
+            // 14. Shoulders (Dodecahedrons)
+            const shoulderGeometry = new THREE.DodecahedronGeometry(1.2);
+            const leftShoulder = new THREE.Mesh(shoulderGeometry, gorillaMaterial);
+            leftShoulder.position.set(-2.5, 5.5, 0); // Position relative to body
+            gorillaGroup.add(leftShoulder);
+
+            const rightShoulder = new THREE.Mesh(shoulderGeometry, gorillaMaterial);
+            rightShoulder.position.set(2.5, 5.5, 0); // Position relative to body
+            gorillaGroup.add(rightShoulder);
+
+            // 15. Chest (Dodecahedron)
+            const chestGeometry = new THREE.DodecahedronGeometry(2.5);
+            const chest = new THREE.Mesh(chestGeometry, gorillaMaterial);
+            chest.position.set(0, 4.5, 1); // Position slightly in front of the body
+            gorillaGroup.add(chest);
+
+            /**
+             * Helper function to create a jointed limb (e.g., arm or leg) composed of two cylinders.
+             * It returns the main group for the limb and the group for the lower part,
+             * allowing attachment of hands/feet.
+             * @param {number} limbLength - The length of the upper and lower parts of the limb.
+             * @param {number} limbRadius - The radius of the limb cylinders.
+             * @param {number} rotationPointOffset - Offset for the joint to create a gap.
+             * @param {THREE.Material} limbMaterial - The material for the limb parts.
+             * @returns {object} An object containing the limbGroup and lowerPartGroup.
+             */
+            function createJointedLimb(limbLength, limbRadius, rotationPointOffset, limbMaterial) {
+                const limbGroup = new THREE.Group();
+
+                // Upper Part (e.g., upper arm, upper leg)
+                const upperPartGeometry = new THREE.CylinderGeometry(limbRadius, limbRadius, limbLength, 32);
+                const upperPart = new THREE.Mesh(upperPartGeometry, limbMaterial);
+                // Position so its top is at the limbGroup's origin, making the joint at the origin
+                upperPart.position.y = -limbLength / 2;
+                limbGroup.add(upperPart);
+
+                // Lower Part Group (e.g., forearm, lower leg)
+                const lowerPartGroup = new THREE.Group();
+                // Position the lower part group relative to the upper part, at the "joint"
+                lowerPartGroup.position.y = -limbLength - rotationPointOffset;
+                limbGroup.add(lowerPartGroup);
+
+                // Lower Part mesh (slightly thinner for visual distinction)
+                const lowerPartGeometry = new THREE.CylinderGeometry(limbRadius * 0.9, limbRadius * 0.9, limbLength * 0.9, 32);
+                const lowerPart = new THREE.Mesh(lowerPartGeometry, limbMaterial);
+                // Position so its top is at the lowerPartGroup's origin
+                lowerPart.position.y = - (limbLength * 0.9) / 2;
+                lowerPartGroup.add(lowerPart);
+
+                return { limbGroup, lowerPartGroup }; // Return groups for hierarchical assembly
+            }
+
+            // 16. Arms
+            const armLength = 4;
+            const armRadius = 0.7;
+            const elbowOffset = 0.5; // Creates a small gap at the elbow for clarity
+
+            // Left Arm
+            const { limbGroup: leftArmGroup, lowerPartGroup: leftForearmGroup } = createJointedLimb(armLength, armRadius, elbowOffset, gorillaMaterial);
+            leftArmGroup.position.set(-2.5, 5.5, 0); // Attach to left shoulder position
+            leftArmGroup.rotation.z = Math.PI / 4; // Slight forward bend at the shoulder
+            gorillaGroup.add(leftArmGroup);
+
+            // Left Hand (Dodecahedron)
+            const handGeometry = new THREE.DodecahedronGeometry(0.8);
+            const leftHand = new THREE.Mesh(handGeometry, gorillaMaterial);
+            leftHand.position.y = -(armLength * 0.9) - 0.4; // Position at the end of the forearm
+            leftForearmGroup.add(leftHand); // Add hand to the forearm group
+
+            // Right Arm
+            const { limbGroup: rightArmGroup, lowerPartGroup: rightForearmGroup } = createJointedLimb(armLength, armRadius, elbowOffset, gorillaMaterial);
+            rightArmGroup.position.set(2.5, 5.5, 0); // Attach to right shoulder position
+            rightArmGroup.rotation.z = -Math.PI / 4; // Slight forward bend at the shoulder
+            gorillaGroup.add(rightArmGroup);
+
+            // Right Hand (Dodecahedron)
+            const rightHand = new THREE.Mesh(handGeometry, gorillaMaterial);
+            rightHand.position.y = -(armLength * 0.9) - 0.4; // Position at the end of the forearm
+            rightForearmGroup.add(rightHand); // Add hand to the forearm group
+
+            // 17. Legs
+            const legLength = 3;
+            const legRadius = 0.9;
+            const kneeOffset = 0.5; // Creates a small gap at the knee for clarity
+
+            // Left Leg
+            const { limbGroup: leftLegGroup, lowerPartGroup: leftLowerLegGroup } = createJointedLimb(legLength, legRadius, kneeOffset, gorillaMaterial);
+            leftLegGroup.position.set(-1.5, 0, 0); // Attach to bottom left of the body
+            leftLegGroup.rotation.x = -Math.PI / 8; // Slight forward bend at the hip
+            gorillaGroup.add(leftLegGroup);
+
+            // Left Foot (Dodecahedron)
+            const footGeometry = new THREE.DodecahedronGeometry(1);
+            const leftFoot = new THREE.Mesh(footGeometry, gorillaMaterial);
+            leftFoot.position.y = -(legLength * 0.9) - 0.5; // Position at the end of the lower leg
+            leftFoot.rotation.x = Math.PI / 2; // Rotate to be flat on the ground
+            leftLowerLegGroup.add(leftFoot); // Add foot to the lower leg group
+
+            // Right Leg
+            const { limbGroup: rightLegGroup, lowerPartGroup: rightLowerLegGroup } = createJointedLimb(legLength, legRadius, kneeOffset, gorillaMaterial);
+            rightLegGroup.position.set(1.5, 0, 0); // Attach to bottom right of the body
+            rightLegGroup.rotation.x = -Math.PI / 8; // Slight forward bend at the hip
+            gorillaGroup.add(rightLegGroup);
+
+            // Right Foot (Dodecahedron)
+            const rightFoot = new THREE.Mesh(footGeometry, gorillaMaterial);
+            rightFoot.position.y = -(legLength * 0.9) - 0.5; // Position at the end of the lower leg
+            rightFoot.rotation.x = Math.PI / 2; // Rotate to be flat on the ground
+            rightLowerLegGroup.add(rightFoot); // Add foot to the lower leg group
+
+            // Add the entire gorilla group to the scene
+            scene.add(gorillaGroup);
+
+            // 18. Ground Plane (for visual context)
+            const planeGeometry = new THREE.PlaneGeometry(50, 50); // width, height
+            const planeMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22, side: THREE.DoubleSide }); // Forest green, rendered on both sides
+            const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane.rotation.x = Math.PI / 2; // Rotate to be horizontal (plane is created in XY plane by default)
+            plane.position.y = -3; // Position below the gorilla's feet
+            scene.add(plane);
+
+            // 19. Event Listener for Window Resizing
+            // Ensures the scene remains responsive to browser window size changes
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        /**
+         * Handles window resize events to update camera aspect ratio and renderer size.
+         */
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight; // Update camera aspect ratio
+            camera.updateProjectionMatrix(); // Recalculate projection matrix
+            renderer.setSize(window.innerWidth, window.innerHeight); // Resize renderer
+        }
+
+        /**
+         * The main animation loop.
+         * It updates the camera controls and renders the scene on every frame.
+         */
+        function animate() {
+            requestAnimationFrame(animate); // Request the next animation frame
+
+            controls.update(); // Update OrbitControls (required if damping is enabled)
+
+            renderer.render(scene, camera); // Render the scene from the camera's perspective
+        }
+    </script>
+</body>
+</html>

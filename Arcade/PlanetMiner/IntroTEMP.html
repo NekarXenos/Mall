@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Planet Miner Instanced</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #1a202c;
+      font-family: 'Inter', sans-serif;
+    }
+    canvas {
+      display: block;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-size: 14px;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #4a5568;
+    }
+  </style>
+</head>
+<body>
+<div id="info">Use mouse to orbit, scroll to zoom.</div>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x1a202c);
+renderer.outputEncoding = THREE.sRGBEncoding;
+document.body.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.25;
+controls.maxPolarAngle = Math.PI / 2;
+
+camera.position.set(0, 7, 25);
+controls.update();
+
+scene.add(new THREE.AmbientLight(0x101010, 1));
+
+const light = new THREE.DirectionalLight(0xffeedd, 1);
+light.position.set(5, 20, 15);
+light.castShadow = true;
+scene.add(light);
+
+const blockMeshSize = 0.4;
+const diskRadius = 2.2; // 5 cubes diameter * 0.4
+const zMin = -blockMeshSize * 2.5;
+const zMax = blockMeshSize / 2;
+
+function getDiskColor(x, y, z) {
+  const dist = Math.sqrt(x * x + y * y);
+  const nd = Math.min(dist / diskRadius, 1.0);
+  const emissiveColors = [0xfff6c0, 0xffe010, 0xdd2010, 0x332211];
+  const seg = emissiveColors.length - 1;
+  const sd = nd * seg;
+  const i1 = Math.floor(sd);
+  const i2 = Math.min(i1 + 1, seg);
+  const f = sd - i1;
+  const c1 = new THREE.Color(emissiveColors[i1]);
+  const c2 = new THREE.Color(emissiveColors[i2]);
+  return c1.lerp(c2, f).multiplyScalar(1 - nd);
+}
+
+const voxelPositions = [];
+const voxelColors = [];
+for (let x = -diskRadius; x <= diskRadius; x += blockMeshSize) {
+  for (let y = -diskRadius; y <= diskRadius; y += blockMeshSize) {
+    if (x * x + y * y <= diskRadius * diskRadius) {
+      for (let z = zMin; z < zMax; z += blockMeshSize) {
+        voxelPositions.push(new THREE.Vector3(x, y, z));
+        voxelColors.push(getDiskColor(x, y, z));
+      }
+    }
+  }
+}
+
+const voxelGeometry = new THREE.BoxGeometry(blockMeshSize, blockMeshSize, blockMeshSize);
+const voxelMaterial = new THREE.MeshStandardMaterial({
+  roughness: 0.7,
+  metalness: 0.2,
+  onBeforeCompile: shader => {
+    shader.vertexColors = true;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <dithering_fragment>',
+      '#include <dithering_fragment>\n' +
+      'diffuseColor.rgb *= vColor.rgb;\n' +
+      'emissiveColor.rgb = vColor.rgb * 0.5;'
+    );
+  },
+  vertexColors: true
+});
+
+const instancedMesh = new THREE.InstancedMesh(voxelGeometry, voxelMaterial, voxelPositions.length);
+const dummy = new THREE.Object3D();
+const colorArray = new Float32Array(voxelColors.length * 3);
+voxelPositions.forEach((pos, i) => {
+  dummy.position.copy(pos);
+  dummy.updateMatrix();
+  instancedMesh.setMatrixAt(i, dummy.matrix);
+  const c = voxelColors[i];
+  colorArray[i * 3 + 0] = c.r;
+  colorArray[i * 3 + 1] = c.g;
+  colorArray[i * 3 + 2] = c.b;
+});
+instancedMesh.instanceColor = new THREE.InstancedBufferAttribute(colorArray, 3);
+scene.add(instancedMesh);
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
