@@ -1517,7 +1517,7 @@
                 const playerPillarBuffer = 0.1; // Small buffer to keep player in front of pillar\n
                 const minZBound = pillarFrontZ + playerPillarBuffer; // Player's Z must be >= this value\n\n
                 // For the front wall, use the existing buffer\n
-                const maxZBound = roomSize / 2 - wallBuffer;
+                const maxZBound = roomSize / 2 - buffer;
                 
                 camPos.x = Math.max(minXBound, Math.min(maxXBound, camPos.x));
                 camPos.z = Math.max(minZBound, Math.min(maxZBound, camPos.z));
