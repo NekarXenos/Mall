@@ -223,6 +223,20 @@
         #ichar-popup .popup-buttons button#popup-no:hover {
             background-color: #666;
         }
+
+        #aiming-dot {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border: 2px solid white;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 101;
+            display: none; /* Hidden by default */
+        }
     </style>
 </head>
 <!-- Google tag (gtag.js) -->
@@ -383,6 +397,8 @@
         let scene, camera, renderer, controls;
         let raycaster, menuData;
         let wireframeEnabled = false;
+
+        const pillarRadius = 0.25;
         
         // FPS Player state
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
@@ -787,7 +803,7 @@
                 metalness: 0.1,
                 roughness: 0.2
             });
-            const pillarRadius = 0.25;
+            //const pillarRadius = 0.25;
             const pillarHeight = wallHeight;
             const pillarGeometry = new THREE.CylinderGeometry(pillarRadius, pillarRadius, pillarHeight, 32);
 
@@ -1125,7 +1141,7 @@
 
             // Add a light for the character
             const charLight = new THREE.PointLight(0x00bbff, 1, 5);
-            charLight.position.set(0, 1.5, -3.5);
+            charLight.position.set(-4, 1.5, -3.5);
             scene.add(charLight);
 
             // Make it interactive
@@ -1480,10 +1496,32 @@
                 // Prevent moving outside the room (wall collision)
                 const camPos = playerObject.position;
                 const buffer = wallThickness + 0.1; // A small buffer to prevent getting stuck
-                const minBound = -roomSize / 2 + buffer;
+                /*const minBound = -roomSize / 2 + buffer;
                 const maxBound = roomSize / 2 - buffer;
                 camPos.x = Math.max(minBound, Math.min(maxBound, camPos.x));
-                camPos.z = Math.max(minBound, Math.min(maxBound, camPos.z));
+                camPos.z = Math.max(minBound, Math.min(maxBound, camPos.z)); */
+
+                
+                const wallBuffer = wallThickness + 0.5; // A small buffer to prevent getting stuck\n\n
+                // X-axis bounds (for side walls, where paintings are)\n
+                const minXBound = -roomSize / 2 + wallBuffer;
+                const maxXBound = roomSize / 2 - wallBuffer;
+                
+                // Z-axis bounds\n
+                // For the back wall (where pillars are), restrict movement to be in front of pillars\n
+                // Pillars are at z = -roomSize / 2 + pillarRadius\n
+                // We want the player to be slightly in front of the pillars.\n
+                // Let's use pillarRadius as a base for the buffer from the pillar's center,\n
+                // plus a small additional buffer to ensure the player is clearly in front.\n
+                const pillarFrontZ = -roomSize / 2 + pillarRadius + 0.5; // Z-coordinate of the pillar's center\n
+                const playerPillarBuffer = 0.1; // Small buffer to keep player in front of pillar\n
+                const minZBound = pillarFrontZ + playerPillarBuffer; // Player's Z must be >= this value\n\n
+                // For the front wall, use the existing buffer\n
+                const maxZBound = roomSize / 2 - wallBuffer;
+                
+                camPos.x = Math.max(minXBound, Math.min(maxXBound, camPos.x));
+                camPos.z = Math.max(minZBound, Math.min(maxZBound, camPos.z));
+                
 
                 // --- Front wall detection and redirect logic ---
                 // Front wall is at z = +roomSize/2
