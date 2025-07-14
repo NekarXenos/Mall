@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Exploding Low-Poly Planet</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'https://cdn.skypack.dev/three@0.158.0';
+
+let scene = new THREE.Scene();
+let camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 6);
+
+let renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+let light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(3, 3, 3);
+scene.add(light);
+
+// Create low-poly planet using an IcosahedronGeometry
+let radius = 1;
+let detail = 1; // more detail = more triangles
+let baseGeo = new THREE.IcosahedronGeometry(radius, detail);
+
+// Displace some vertices to make low-poly mountains
+let positionAttr = baseGeo.attributes.position;
+for (let i = 0; i < positionAttr.count; i++) {
+  let v = new THREE.Vector3().fromBufferAttribute(positionAttr, i);
+  v.normalize().multiplyScalar(radius + Math.random() * 0.2);
+  positionAttr.setXYZ(i, v.x, v.y, v.z);
+}
+baseGeo.computeVertexNormals();
+
+// Convert geometry to triangles
+baseGeo = baseGeo.toNonIndexed();
+
+// Hold each triangle separately
+let triangleMeshes = [];
+let faceCount = baseGeo.attributes.position.count / 3;
+
+for (let i = 0; i < faceCount; i++) {
+  let shape = new THREE.Shape();
+  let a = new THREE.Vector3().fromBufferAttribute(baseGeo.attributes.position, i * 3);
+  let b = new THREE.Vector3().fromBufferAttribute(baseGeo.attributes.position, i * 3 + 1);
+  let c = new THREE.Vector3().fromBufferAttribute(baseGeo.attributes.position, i * 3 + 2);
+
+  shape.moveTo(a.x, a.y);
+  shape.lineTo(b.x, b.y);
+  shape.lineTo(c.x, c.y);
+  shape.lineTo(a.x, a.y);
+
+  // Extrude the triangle slightly for 3D depth
+  let extrudeSettings = {
+    steps: 1,
+    depth: 0.05,
+    bevelEnabled: false
+  };
+
+  let geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+  geometry.translate(0, 0, -0.025); // center
+
+  let material = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(`hsl(${Math.random()*360}, 60%, 60%)`),
+    flatShading: true
+  });
+
+  let mesh = new THREE.Mesh(geometry, material);
+
+  // Position the face at its triangle centroid
+  let centroid = new THREE.Vector3().add(a).add(b).add(c).divideScalar(3);
+  mesh.position.copy(centroid);
+  mesh.lookAt(new THREE.Vector3(0, 0, 0)); // orient outwards
+
+  scene.add(mesh);
+  triangleMeshes.push({ mesh, normal: centroid.clone().normalize() });
+}
+
+// Animation
+let clock = new THREE.Clock();
+let exploded = false;
+let rotationTime = 2; // seconds to rotate once
+
+function animate() {
+  let elapsed = clock.getElapsedTime();
+
+  // Rotate planet as a whole
+  if (elapsed < rotationTime) {
+    triangleMeshes.forEach(({ mesh }) => {
+      mesh.rotation.y += 0.01;
+    });
+  } else if (!exploded) {
+    // Trigger explosion
+    exploded = true;
+    triangleMeshes.forEach((tri, i) => {
+      tri.velocity = tri.normal.clone().multiplyScalar(0.02 + Math.random() * 0.03);
+    });
+  } else {
+    // Exploding animation
+    triangleMeshes.forEach(tri => {
+      tri.mesh.position.add(tri.velocity);
+    });
+  }
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

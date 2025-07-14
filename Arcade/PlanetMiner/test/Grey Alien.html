@@ -90,10 +90,10 @@
             const darkEyeMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, flatShading: true });
 
             // 1. Head (Large, elongated dodecahedron for low-poly look)
-            const headGeometry = new THREE.DodecahedronGeometry(1.5, 1); // Large head  
-            headGeometry.scale(1, 1, 1); // Slightly elongated
+            const headGeometry = new THREE.DodecahedronGeometry(1.5, 0); // Large head
+            headGeometry.scale(1, 1.2, 1); // Slightly elongated
             const head = new THREE.Mesh(headGeometry, greySkinMaterial);
-            head.position.y = 1.7; // Position relative to the body
+            head.position.y = 1.5; // Position relative to the body
             alienGroup.add(head);
 
             // 2. Eyes (Two large, dark spheres)

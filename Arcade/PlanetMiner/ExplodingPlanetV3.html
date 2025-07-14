@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Low-Poly Exploding Planet</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        .info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            z-index: 100;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="info" class="info">Drag to rotate the view. The planet will explode after one rotation.</div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Perlin Noise Implementation ---
+        // This object provides a simple 2D Perlin noise generator.
+        // It's used to create the undulating surface of the planet.
+        const Perlin = {
+            // Generates a random 2D unit vector.
+            rand_vect: function(){
+                let theta = Math.random() * 2 * Math.PI;
+                return {x: Math.cos(theta), y: Math.sin(theta)};
+            },
+            // Calculates the dot product between a gradient vector and a distance vector.
+            dot_prod_grid: function(x, y, vx, vy){
+                let g_vect;
+                let d_vect = {x: x - vx, y: y - vy};
+                const wrapped_vx = vx & 255; // Wrap coordinates to 0-255 for the grid
+                const wrapped_vy = vy & 255;
+                if (this.G) {
+                    g_vect = this.G[wrapped_vy][wrapped_vx];
+                } else {
+                    g_vect = this.rand_vect(); // Fallback if grid not seeded
+                }
+                return d_vect.x * g_vect.x + d_vect.y * g_vect.y;
+            },
+            // Smootherstep function for interpolation, provides C2 continuity.
+            smootherstep: function(x){
+                return 6*x**5 - 15*x**4 + 10*x**3;
+            },
+            // Linear interpolation with smootherstep for the interpolation factor.
+            interp: function(x, a, b){
+                return a + this.smootherstep(x) * (b-a);
+            },
+            // Seeds the Perlin noise with a grid of random gradient vectors.
+            seed: function(){
+                this.G = [];
+                for (let i = 0; i < 256; i++) {
+                    this.G[i] = [];
+                    for (let j = 0; j < 256; j++) {
+                        this.G[i][j] = this.rand_vect();
+                    }
+                }
+            },
+            // Gets the Perlin noise value for a given (x, y) coordinate.
+            get: function(x, y) {
+                if (!this.G) { this.seed(); } // Seed if not already seeded
+                let xf = Math.floor(x);
+                let yf = Math.floor(y);
+                // Calculate dot products at the four corners of the grid cell
+                let tl = this.dot_prod_grid(x, y, xf,   yf);   // Top-left
+                let tr = this.dot_prod_grid(x, y, xf+1, yf); // Top-right
+                let bl = this.dot_prod_grid(x, y, xf,   yf+1); // Bottom-left
+                let br = this.dot_prod_grid(x, y, xf+1, yf+1); // Bottom-right
+                // Interpolate horizontally
+                let xt = this.interp(x-xf, tl, tr);
+                let xb = this.interp(x-xf, bl, br);
+                // Interpolate vertically
+                return this.interp(y-yf, xt, xb);
+            }
+        };
+        Perlin.seed(); // Initialize Perlin noise
+
+        // --- Scene Setup ---
+        let scene, camera, renderer, controls;
+        let planet, ocean;
+        let animatedMeshes = []; // Array to hold meshes that will be animated during explosion
+        let clock = new THREE.Clock(); // Clock for time-based animations
+        let explosionTime = 0; // Tracks time specifically for the explosion animation
+        let hasExploded = false; // Flag to ensure explosion triggers only once
+        const rotationDuration = 10; // Duration for one full rotation of the planet in seconds
+
+        // Initializes the Three.js scene, camera, renderer, and controls.
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5; // Position the camera to view the planet
+
+            renderer = new THREE.WebGLRenderer({ antialias: true }); // Enable anti-aliasing for smoother edges
+            renderer.setSize(window.innerWidth, window.innerHeight); // Set renderer size to full window
+            renderer.setPixelRatio(window.devicePixelRatio); // Adjust for high-DPI screens
+            document.body.appendChild(renderer.domElement); // Add the renderer's canvas to the DOM
+
+            controls = new OrbitControls(camera, renderer.domElement); // Add orbit controls for camera interaction
+            controls.enableDamping = true; // Enable damping for smoother camera movement
+            controls.dampingFactor = 0.05;
+
+            // Add ambient light to illuminate all objects equally
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            // Add a directional light to simulate a sun-like light source
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 5, 5); // Position the light
+            scene.add(directionalLight);
+
+            createPlanetAndOcean(); // Create the planet and ocean meshes
+            window.addEventListener('resize', onWindowResize, false); // Add resize listener
+        }
+
+        // Creates the low-poly planet landmass and surrounding ocean.
+        function createPlanetAndOcean() {
+            // --- Planet Landmass ---
+            // Use an IcosahedronGeometry for a spherical shape, with high detail (subdivisions 6)
+            const planetGeometry = new THREE.IcosahedronGeometry(2, 6);
+            const positions = planetGeometry.attributes.position; // Get position attribute for vertex manipulation
+            const colors = []; // Array to store vertex colors
+            const limeGreen = new THREE.Color(0x32CD32); // Light green color
+            const forestGreen = new THREE.Color(0x228B22); // Darker green color
+
+            // Iterate over each vertex to apply Perlin noise and color
+            for (let i = 0; i < positions.count; i++) {
+                const vertex = new THREE.Vector3().fromBufferAttribute(positions, i);
+                // Apply Perlin noise to create elevation variations
+                let noise = (Perlin.get(vertex.x * 1.5, vertex.y * 1.5) + Perlin.get(vertex.z * 1.5, vertex.x * 1.5)) * 0.5;
+                let elevation = Math.max(0, noise) * 0.4; // Ensure elevation is non-negative
+                // Normalize and scale the vertex based on elevation to create mountains/valleys
+                vertex.normalize().multiplyScalar(2 + elevation);
+                positions.setXYZ(i, vertex.x, vertex.y, vertex.z); // Update vertex position
+
+                // Assign color based on elevation, lerping between forest and lime green
+                const color = new THREE.Color();
+                color.lerpColors(forestGreen, limeGreen, Math.min(elevation * 3, 1.0));
+                colors.push(color.r, color.g, color.b); // Add color components to the array
+            }
+            // Set the color attribute for the geometry
+            planetGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            planetGeometry.computeVertexNormals(); // Recalculate normals after position changes for correct lighting
+
+            // Create a MeshStandardMaterial for the planet, enabling vertex colors and flat shading
+            const planetMaterial = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                flatShading: true, // For a low-poly look
+            });
+            planet = new THREE.Mesh(planetGeometry, planetMaterial);
+            scene.add(planet); // Add planet to the scene
+
+            // --- Ocean ---
+            // Create a slightly smaller IcosahedronGeometry for the ocean
+            const oceanGeometry = new THREE.IcosahedronGeometry(1.95, 6);
+            // Create a transparent, reflective material for the ocean
+            const oceanMaterial = new THREE.MeshStandardMaterial({
+                color: 0x1e90ff, // Dodger blue color
+                roughness: 0.1,
+                metalness: 0.4,
+                transparent: true,
+                opacity: 0.8
+            });
+            ocean = new THREE.Mesh(oceanGeometry, oceanMaterial);
+            scene.add(ocean); // Add ocean to the scene
+        }
+
+        /**
+         * Creates a new BufferGeometry that transforms each triangle of the source geometry into a 3D prism.
+         * The prisms are extruded inwards towards the center of the planet.
+         * @param {THREE.BufferGeometry} sourceGeometry The original geometry (must be non-indexed).
+         * @param {number} extrusionDepth The depth of the inward extrusion for each prism.
+         * @returns {THREE.BufferGeometry} The new geometry composed of prisms.
+         */
+        function createPrismGeometry(sourceGeometry, extrusionDepth) {
+            const newGeometry = new THREE.BufferGeometry();
+            const positions = [];
+            const normals = [];
+            const colors = [];
+            const explosionDirections = [];
+            const rotationAxes = [];
+            const rotationSpeeds = [];
+            const deviationDirections = [];
+            const deviationSpeeds = [];
+
+            const originalPositions = sourceGeometry.attributes.position;
+            const originalColors = sourceGeometry.attributes.color;
+
+            const triangleCount = originalPositions.count / 3;
+
+            for (let i = 0; i < triangleCount; i++) {
+                const baseIndex = i * 3;
+
+                // Get the three vertices of the current triangle
+                const vA = new THREE.Vector3().fromBufferAttribute(originalPositions, baseIndex + 0);
+                const vB = new THREE.Vector3().fromBufferAttribute(originalPositions, baseIndex + 1);
+                const vC = new THREE.Vector3().fromBufferAttribute(originalPositions, baseIndex + 2);
+
+                // Calculate the centroid of the triangle and its explosion direction (normalized from origin)
+                const centroid = new THREE.Vector3().add(vA).add(vB).add(vC).divideScalar(3);
+                const explosionDir = centroid.clone().normalize();
+
+                // Calculate inner vertices by extruding inwards along the explosion direction
+                const vA_inner = vA.clone().sub(explosionDir.clone().multiplyScalar(extrusionDepth));
+                const vB_inner = vB.clone().sub(explosionDir.clone().multiplyScalar(extrusionDepth));
+                const vC_inner = vC.clone().sub(explosionDir.clone().multiplyScalar(extrusionDepth));
+
+                // Get original colors if available
+                const cA = originalColors ? new THREE.Color().fromBufferAttribute(originalColors, baseIndex + 0) : null;
+                const cB = originalColors ? new THREE.Color().fromBufferAttribute(originalColors, baseIndex + 1) : null;
+                const cC = originalColors ? new THREE.Color().fromBufferAttribute(originalColors, baseIndex + 2) : null;
+
+                // Generate random attributes for this prism (shared by all its vertices)
+                const randomAxis = new THREE.Vector3(
+                    Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1
+                ).normalize();
+                const randomSpeed = Math.random() * 5 + 0.5;
+                const randomDeviationDirection = new THREE.Vector3(
+                    Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1
+                ).normalize();
+                const randomDeviationSpeed = Math.random() * 0.5 + 0.1;
+
+                // Helper to add vertex data for a single point
+                const addVertex = (vertex, color) => {
+                    positions.push(vertex.x, vertex.y, vertex.z);
+                    explosionDirections.push(explosionDir.x, explosionDir.y, explosionDir.z);
+                    rotationAxes.push(randomAxis.x, randomAxis.y, randomAxis.z);
+                    rotationSpeeds.push(randomSpeed);
+                    deviationDirections.push(randomDeviationDirection.x, randomDeviationDirection.y, randomDeviationDirection.z);
+                    deviationSpeeds.push(randomDeviationSpeed);
+                    if (color) {
+                        colors.push(color.r, color.g, color.b);
+                    } else {
+                        // Push dummy color if no original color (will be overridden by baseColor uniform)
+                        colors.push(0.0, 0.0, 0.0); 
+                    }
+                };
+
+                // --- Add Faces for the Prism ---
+
+                // Outer Face (original triangle)
+                addVertex(vA, cA); addVertex(vB, cB); addVertex(vC, cC);
+
+                // Inner Face (reversed winding for correct normal)
+                addVertex(vA_inner, cA); addVertex(vC_inner, cC); addVertex(vB_inner, cB);
+
+                // Side Face 1 (vA, vB, vB_inner, vA_inner)
+                addVertex(vA, cA); addVertex(vB, cB); addVertex(vA_inner, cA); // Triangle 1
+                addVertex(vB, cB); addVertex(vB_inner, cB); addVertex(vA_inner, cA); // Triangle 2
+
+                // Side Face 2 (vB, vC, vC_inner, vB_inner)
+                addVertex(vB, cB); addVertex(vC, cC); addVertex(vB_inner, cB); // Triangle 1
+                addVertex(vC, cC); addVertex(vC_inner, cC); addVertex(vB_inner, cB); // Triangle 2
+
+                // Side Face 3 (vC, vA, vA_inner, vC_inner)
+                addVertex(vC, cC); addVertex(vA, cA); addVertex(vC_inner, cC); // Triangle 1
+                addVertex(vA, cA); addVertex(vA_inner, cA); addVertex(vC_inner, cC); // Triangle 2
+            }
+
+            newGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            newGeometry.setAttribute('direction', new THREE.Float32BufferAttribute(explosionDirections, 3));
+            newGeometry.setAttribute('rotationAxis', new THREE.Float32BufferAttribute(rotationAxes, 3));
+            newGeometry.setAttribute('rotationSpeed', new THREE.Float32BufferAttribute(rotationSpeeds, 1));
+            newGeometry.setAttribute('deviationDirection', new THREE.Float32BufferAttribute(deviationDirections, 3));
+            newGeometry.setAttribute('deviationSpeed', new THREE.Float32BufferAttribute(deviationSpeeds, 1));
+            
+            // Only add originalColor attribute if the source had colors, otherwise it's not needed by shader
+            if (originalColors) {
+                newGeometry.setAttribute('originalColor', new THREE.Float32BufferAttribute(colors, 3));
+            }
+
+            newGeometry.computeVertexNormals(); // Compute normals for the new prism faces
+            return newGeometry;
+        }
+
+
+        /**
+         * Creates an exploded mesh from a source mesh's geometry.
+         * This function deconstructs the source geometry into individual 3D prisms,
+         * calculates an explosion direction for each prism, and applies a custom
+         * shader for the explosion animation.
+         * @param {THREE.Mesh} sourceMesh The original mesh to explode.
+         * @param {boolean} useVertexColors True if the exploded mesh should use vertex colors from the source.
+         * @returns {THREE.Mesh} The new exploded mesh.
+         */
+        function createExplodedMesh(sourceMesh, useVertexColors) {
+            const sourceGeometry = sourceMesh.geometry;
+            // Ensure geometry is non-indexed for easier triangle processing
+            const nonIndexedGeom = sourceGeometry.index ? sourceGeometry.toNonIndexed() : sourceGeometry.clone();
+
+            // Create the new prism geometry
+            const extrusionDepth = 0.1; // Adjust this value to control how deep the extrusion is
+            const prismGeometry = createPrismGeometry(nonIndexedGeom, extrusionDepth);
+
+            // Create a custom shader material for the explosion effect
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0.0 }, // Time uniform for animation
+                    // 'baseColor' uniform: used when not using vertex colors (e.g., for ocean)
+                    baseColor: { value: sourceMesh.material.color || new THREE.Color(0x808080) }, // Default grey if no color
+                    useVertexColor: { value: useVertexColors }, // Boolean uniform to switch shader logic
+                    opacity: { value: sourceMesh.material.opacity } // Opacity from original material
+                },
+                vertexShader: `
+                    // Three.js automatically provides 'position' and 'normal' attributes.
+                    // Custom attributes and uniforms
+                    attribute vec3 direction; // Direction for explosion movement
+                    attribute vec3 rotationAxis; // Axis for random rotation
+                    attribute float rotationSpeed; // Speed for random rotation
+                    attribute vec3 deviationDirection; // Direction for slight deviation
+                    attribute float deviationSpeed; // Speed for deviation
+
+                    uniform float time;      // Animation time
+                    uniform bool useVertexColor; // Flag to determine color source
+                    uniform vec3 baseColor;  // Uniform color for non-vertex colored meshes
+
+                    // Declare 'originalColor' attribute. If not provided by geometry, it defaults to (0,0,0).
+                    attribute vec3 originalColor;
+
+                    varying vec3 vColor; // Color passed to the fragment shader
+
+                    // Function to rotate a vector around an axis
+                    vec3 rotateVector(vec3 v, vec3 axis, float angle) {
+                        // This is Rodrigues' rotation formula
+                        return v * cos(angle) + cross(axis, v) * sin(angle) + axis * dot(axis, v) * (1.0 - cos(angle));
+                    }
+
+                    void main() {
+                        // Determine the color to pass to the fragment shader based on 'useVertexColor'
+                        if (useVertexColor) {
+                            vColor = originalColor; // Use the attribute from the geometry
+                        } else {
+                            vColor = baseColor; // Use the uniform color for the material
+                        }
+
+                        // Calculate explosion movement with initial inward pull
+                        // The function 10.0 * time * time - 2.0 * time will make the fragment
+                        // move inwards first (negative value) and then outwards (positive value).
+                        // It reaches a minimum at time = 0.1 and returns to origin at time = 0.2.
+                        float explosionDistance = 10.0 * time * time - 2.0 * time;
+                        vec3 explodedPosition = position + direction * explosionDistance * 5.0; // Multiplied by 5.0 to scale the overall explosion effect.
+
+                        // Apply random rotation to the fragment
+                        float angle = rotationSpeed * time;
+                        vec3 rotatedPosition = rotateVector(explodedPosition, rotationAxis, angle);
+
+                        // Apply slight deviation
+                        vec3 deviatedPosition = rotatedPosition + deviationDirection * deviationSpeed * time * 0.5; // Deviation strength can be adjusted by 0.5
+
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(deviatedPosition, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float opacity; // Opacity uniform
+                    varying vec3 vColor;   // Color received from the vertex shader
+
+                    void main() {
+                        gl_FragColor = vec4(vColor, opacity); // Final fragment color
+                    }
+                `,
+                transparent: true, // Enable transparency for the material
+                side: THREE.DoubleSide // Render both front and back faces of the triangles
+            });
+
+            return new THREE.Mesh(prismGeometry, material); // Use the new prism geometry
+        }
+
+        // Triggers the planet explosion effect.
+        function triggerExplosion() {
+            // Hide original static meshes (planet and ocean)
+            planet.visible = false;
+            ocean.visible = false;
+
+            // Create exploded versions of the planet and ocean
+            const explodedPlanet = createExplodedMesh(planet, true); // Planet uses vertex colors
+            const explodedOcean = createExplodedMesh(ocean, false); // Ocean uses a single material color
+
+            scene.add(explodedPlanet); // Add exploded planet to the scene
+            scene.add(explodedOcean);   // Add exploded ocean to the scene
+
+            // Add the new exploded meshes to the list of meshes that need their shaders animated
+            animatedMeshes.push(explodedPlanet, explodedOcean);
+        }
+
+        // Handles window resizing to maintain correct aspect ratio and renderer size.
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight; // Update camera aspect ratio
+            camera.updateProjectionMatrix(); // Update projection matrix after aspect ratio change
+            renderer.setSize(window.innerWidth, window.innerHeight); // Resize renderer
+        }
+
+        // Main animation loop.
+        function animate() {
+            requestAnimationFrame(animate); // Request next animation frame
+
+            const delta = clock.getDelta(); // Time elapsed since last frame
+            const elapsedTime = clock.getElapsedTime(); // Total elapsed time since clock started
+            
+            if (!hasExploded) {
+                // --- Rotation Phase ---
+                // Rotate the planet and ocean until rotationDuration is reached
+                if (elapsedTime <= rotationDuration) {
+                    const rotationY = (elapsedTime / rotationDuration) * Math.PI * 2; // Calculate Y rotation
+                    planet.rotation.y = rotationY;
+                    ocean.rotation.y = rotationY;
+                } else {
+                    document.getElementById('info').innerText = 'BOOM!'; // Update info text
+                    triggerExplosion(); // Trigger the explosion
+                    hasExploded = true; // Set flag to prevent re-triggering explosion
+                }
+            } else {
+                // --- Explosion Phase ---
+                explosionTime += delta; // Accumulate time for explosion animation
+                // Update the 'time' uniform for all animated meshes' shaders
+                animatedMeshes.forEach(mesh => {
+                    if (mesh.material && mesh.material.uniforms && mesh.material.uniforms.time) {
+                        mesh.material.uniforms.time.value = explosionTime;
+                    }
+                });
+            }
+
+            controls.update(); // Update orbit controls (for damping)
+            renderer.render(scene, camera); // Render the scene
+        }
+
+        // --- Start ---
+        // Initialize the scene and start the animation loop when the window loads.
+        window.onload = function() {
+            init();
+            animate();
+        };
+    </script>
+</body>
+</html>
