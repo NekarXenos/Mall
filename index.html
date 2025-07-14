@@ -225,6 +225,9 @@
             if (from === 'art') {
                 controls.getObject().position.set(4, playerHeight, 15); // In front of art gallery
                 controls.getObject().rotation.y = Math.PI / 2; // Face -X direction
+            } else if (from === 'design') {
+                controls.getObject().position.set(0, playerHeight, 19); // In front of art gallery
+                // controls.getObject().rotation.y = Math.PI // / 2; // Face -Z direction
             } else {
                 controls.getObject().position.set(0, playerHeight, 0.5); // Start position
                 controls.getObject().rotation.y = Math.PI; // Look towards positive Z (down the corridor)
