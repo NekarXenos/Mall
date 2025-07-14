@@ -237,35 +237,6 @@
             z-index: 101;
             display: none; /* Hidden by default */
         }
-
-        /* Styles for Digital Art Navigation Arrows */
-        .nav-arrow {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 5rem;
-            font-weight: bold;
-            color: white;
-            text-shadow: 0 0 15px rgba(0,0,0,0.8);
-            opacity: 0.4;
-            transition: opacity 0.2s, transform 0.2s;
-            display: none; /* Hidden by default */
-            z-index: 102;
-            pointer-events: none; /* So they don't interfere with raycasting */
-        }
-
-        #nav-arrow-left {
-            left: calc(50% - 180px); /* Adjust position */
-        }
-
-        #nav-arrow-right {
-            right: calc(50% - 180px); /* Adjust position */
-        }
-
-        .nav-arrow.highlighted {
-            opacity: 0.9;
-            transform: translateY(-50%) scale(1.1);
-        }
     </style>
 </head>
 <!-- Google tag (gtag.js) -->
@@ -284,10 +255,6 @@
     <div id="threejs-container"></div>
 
     <div id="aiming-dot"></div>
-
-    <!-- Digital Art Navigation Arrows -->
-    <div id="nav-arrow-left" class="nav-arrow">&lt;</div>
-    <div id="nav-arrow-right" class="nav-arrow">&gt;</div>
 
     <!-- Blocker and Instructions for Pointer Lock -->
     <div id="blocker">
@@ -469,9 +436,6 @@
         let lastScrollFinishTime = 0; // Time when the text finished scrolling
         const delayAfterScroll = 2000; // 2 seconds delay after text finishes scrolling before next image (in ms)
 
-        // Navigation arrows for digital art
-        let navArrowLeft, navArrowRight;
-
         const menuContainer = document.getElementById('menu-container');
         const blocker = document.getElementById('blocker');
         const instructions = document.getElementById('instructions');
@@ -556,10 +520,6 @@
         function init() {
             // Get the artwork info popup element
             artworkInfoPopup = document.getElementById('artwork-info-popup');
-
-            // Get references to navigation arrows
-            navArrowLeft = document.getElementById('nav-arrow-left');
-            navArrowRight = document.getElementById('nav-arrow-right');
 
 
             // Create a simple menu structure for the art gallery
@@ -1207,47 +1167,37 @@
 
         function onSceneClick() {
             if (!controls.isLocked) {
-                return; // Clicks only processed when locked
+                // If menu is open, clicks are handled by the menu's own event listeners.
+                return;
             }
 
             raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+            const intersects = raycaster.intersectObjects(iCharacterInteractiveMeshes, false);
 
-            // 1. Check for i-character click
-            const iCharIntersects = raycaster.intersectObjects(iCharacterInteractiveMeshes, false);
-            if (iCharIntersects.length > 0) {
+            if (intersects.length > 0) {
+                // Hit the i-character
                 if (icharPopup) {
                     icharPopup.style.display = 'block';
                     controls.unlock();
                 }
-                return; // Stop processing if i-char was clicked
+            }
+        }
+
+        function onSceneClick() {
+            if (!controls.isLocked) {
+                // If menu is open, clicks are handled by the menu's own event listeners.
+                return;
             }
 
-            // 2. Check for digital artwork click for navigation
-            const digitalArtIntersects = raycaster.intersectObjects([digitalSwitchingImagePlane], false);
-            if (digitalArtIntersects.length > 0 && digitalArtIntersects[0].distance < 8) {
-                const intersectPoint = digitalArtIntersects[0].point;
-                // Use local coordinates to be independent of the plane's world position
-                const localPoint = digitalSwitchingImagePlane.worldToLocal(intersectPoint.clone());
+            raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+            const intersects = raycaster.intersectObjects(iCharacterInteractiveMeshes, false);
 
-                // Reset the auto-play timer to give manual control precedence
-                lastScrollFinishTime = performance.now();
-                // Stop any text that might be scrolling
-                isTextScrolling = false;
-
-                if (localPoint.x < 0) { // Clicked left side
-                    currentShuffledIndex--;
-                    if (currentShuffledIndex < 0) {
-                        currentShuffledIndex = shuffledDigitalArtIndices.length - 1; // Wrap to last
-                    }
-                } else { // Clicked right side
-                    currentShuffledIndex++;
-                    if (currentShuffledIndex >= shuffledDigitalArtIndices.length) {
-                        currentShuffledIndex = 0; // Wrap to first
-                    }
+            if (intersects.length > 0) {
+                // Hit the i-character
+                if (icharPopup) {
+                    icharPopup.style.display = 'block';
+                    controls.unlock();
                 }
-                // Update the image to the new index
-                const nextArtworkIndex = shuffledDigitalArtIndices[currentShuffledIndex];
-                updateDigitalSwitchingImage(nextArtworkIndex);
             }
         }
         
@@ -1322,7 +1272,7 @@
         
         function formatArtworkInfo(artwork) {
             if (!artwork) return "";
-            let info = `${artwork.name}`;
+            let info = `${artwork.name}`; 
             if (artwork.artist) info += ` by ${artwork.artist}`;
             if (artwork.year) info += `, ${artwork.year}`;
             if (artwork.medium) info += `, ${artwork.medium}`;
@@ -1504,26 +1454,6 @@
                         artworkInfoPopup.style.display = 'none';
                         currentHoveredArtwork = null;
                     }
-                }
-
-                // Raycasting for digital art navigation arrows
-                const digitalArtIntersects = raycaster.intersectObjects([digitalSwitchingImagePlane], false);
-                if (digitalArtIntersects.length > 0 && digitalArtIntersects[0].distance < 8) { // Only show if close enough
-                    const localPoint = digitalSwitchingImagePlane.worldToLocal(digitalArtIntersects[0].point.clone());
-
-                    navArrowLeft.style.display = 'block';
-                    navArrowRight.style.display = 'block';
-
-                    if (localPoint.x < 0) { // Hovering on the left half
-                        navArrowLeft.classList.add('highlighted');
-                        navArrowRight.classList.remove('highlighted');
-                    } else { // Hovering on the right half
-                        navArrowRight.classList.add('highlighted');
-                        navArrowLeft.classList.remove('highlighted');
-                    }
-                } else {
-                    navArrowLeft.style.display = 'none';
-                    navArrowRight.style.display = 'none';
                 }
 
                 // i-character animation and interaction
