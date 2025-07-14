@@ -278,8 +278,7 @@
   gtag('config', 'G-FWN6NL8B16');
 </script>
 <body>
-    <div style="position: absolute; top: 10px; left: 10px; z-index: 999;">
-        <a href="../index.html" style="color: white; text-decoration: none; background-color: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px;">Back to Main</a>
+        <a href="../index.html?from=art" style="color: white; text-decoration: none; background-color: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px;">Back to Main</a>
     </div>
     <div id="threejs-container"></div>
 
@@ -580,7 +579,7 @@
                     {
                         name: "Back to Main Page",
                         subtitle: "Return to the main mall area",
-                        link: "../index.html"
+                        link: "../index.html?from=art"
                     }
                 ]
             };
@@ -641,7 +640,7 @@
                             hideArtworkModal(); // If artwork modal is open, close it first
                         } else if (menuContainer.style.display === 'flex') {
                             // If menu is already open, navigate back to main page
-                            window.location.href = '../index.html';
+                            window.location.href = '../index.html?from=art';
                         }
                         break;
                 }
@@ -1607,7 +1606,7 @@
                     } else {
                         // If popup is already shown and player keeps pressing W, check duration
                         if (backWallForwardStart && (time - backWallForwardStart > 1.0)) {
-                            window.location.href = '../index.html';
+                            window.location.href = '../index.html?from=art';
                         }
                     }
                 } else {
