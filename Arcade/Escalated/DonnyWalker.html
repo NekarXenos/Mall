@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Low Poly Sonny Crockett TMP</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.1/three.module.min.js"
+        }
+      }
+    </script>
+    <style>body { margin: 0; overflow: hidden; }</style>
+  </head>
+  <body>
+    <div id="instructions" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-family: sans-serif; text-align: center; background: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; cursor: pointer; z-index:100;">
+        Click to control character<br>
+        W/A/S/D: Move<br>
+        Mouse: Look<br>
+        Right Mouse Button: Orbit Camera
+    </div>
+    <!-- Main script block, using type="module" for module imports -->
+    <script type="module">
+      // Import Three.js as a module from cdnjs
+      // Now using the import map
+      import * as THREE from 'three';
+      // OrbitControls removed for new control scheme
+
+      // Scene setup
+      const scene = new THREE.Scene();
+      const clock = new THREE.Clock(); // Clock for delta time in animations
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      // Define colors for materials
+      const cream = new THREE.Color(0xfff5cc);
+      const skin = new THREE.Color(0xffdab9);
+      const goldBrown = new THREE.Color(0xcd853f);
+
+      // Create materials for different parts of the character and environment
+      const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+      const creamMat = new THREE.MeshStandardMaterial({ color: cream });
+      const blueMat = new THREE.MeshStandardMaterial({ color: 0x87ceeb });
+      const skinMat = new THREE.MeshStandardMaterial({ color: skin });
+      const hairMat = new THREE.MeshStandardMaterial({ color: goldBrown });
+      const blackMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
+
+      // Add lights to illuminate the scene
+      const light = new THREE.HemisphereLight(0xffffbb, 0x080820, 1); // Soft ambient light
+      scene.add(light);
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5); // Direct light source
+      directionalLight.position.set(5, 10, 7); // Position the directional light
+      scene.add(directionalLight);
+
+      // Main character group, will contain all character meshes
+      const characterGroup = new THREE.Group();
+      scene.add(characterGroup);
+      // Adjust the whole character's vertical position so its feet are at or near the floor level
+      characterGroup.position.y = -1; 
+
+      // --- Character Parts Definition ---
+      // Torso (Shirt) - Acts as the central body part to which limbs are attached
+      const shirt = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.85, 0.2), blueMat);
+      shirt.position.set(0, 1.9, 0.1); // Position relative to the characterGroup's origin
+      characterGroup.add(shirt);
+
+      // Jacket Front panels (blocks beside shirt)
+      const jacketLeft = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.3, 0.6), creamMat);
+      const jacketRight = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.3, 0.6), creamMat);
+      jacketLeft.position.set(-0.3, 1.7, 0);
+      jacketRight.position.set(0.3, 1.7, 0);
+      characterGroup.add(jacketLeft, jacketRight);
+	  
+      // Jacket Back
+      const jacket = new THREE.Mesh(new THREE.BoxGeometry(1, 1.3, 0.5), creamMat);
+      jacket.position.set(0, 1.7, -0.2);
+      characterGroup.add(jacket);
+
+      // Head (dodecahedron geometry for a low-poly look)
+      const head = new THREE.Mesh(new THREE.DodecahedronGeometry(0.6), skinMat);
+      head.position.set(0, 3, 0);
+      characterGroup.add(head);
+
+      // Hair (blocky quiff style)
+      const hair = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.3), hairMat);
+      hair.position.set(0, 3.4, 0.2);
+      characterGroup.add(hair);
+
+      // Sunglasses (simple black block)
+      const glasses = new THREE.Mesh(new THREE.BoxGeometry(1, 0.3, 0.5), blackMat);
+      glasses.position.set(0, 3, 0.25);
+      characterGroup.add(glasses);
+
+      // --- Limbs: Hierarchical Structure for Animation ---
+      // Each limb consists of upper and lower parts grouped together to allow for joint rotation.
+
+      // Left Leg
+      const leftLegGroup = new THREE.Group();
+      leftLegGroup.position.set(-0.2, 1.3, 0); // Attach point to torso (hip)
+      characterGroup.add(leftLegGroup);
+
+      const leftUpperLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.25, 0.6, 6), creamMat);
+      leftUpperLeg.position.y = -0.3; // Position relative to its group's origin (hip joint)
+      leftLegGroup.add(leftUpperLeg);
+
+      const leftLowerLegGroup = new THREE.Group();
+      leftLowerLegGroup.position.y = -0.6; // Attach point to upper leg (knee joint)
+      leftLegGroup.add(leftLowerLegGroup);
+
+      const leftCalve = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.2, 0.6, 6), creamMat);
+      leftCalve.position.y = -0.3; // Position relative to its group's origin (knee joint)
+      leftLowerLegGroup.add(leftCalve);
+
+      const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.5), whiteMat);
+      leftShoe.position.set(0, -0.6, 0.1); // Position relative to lower leg (ankle joint)
+      leftLowerLegGroup.add(leftShoe);
+
+
+      // Right Leg (structure mirrors the left leg)
+      const rightLegGroup = new THREE.Group();
+      rightLegGroup.position.set(0.2, 1.3, 0); // Attach point to torso (hip)
+      characterGroup.add(rightLegGroup);
+
+      const rightUpperLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.25, 0.6, 6), creamMat);
+      rightUpperLeg.position.y = -0.3; // Position relative to its group's origin (hip joint)
+      rightLegGroup.add(rightUpperLeg);
+
+      const rightLowerLegGroup = new THREE.Group();
+      rightLowerLegGroup.position.y = -0.6; // Attach point to upper leg (knee joint)
+      rightLegGroup.add(rightLowerLegGroup);
+
+      const rightCalve = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.2, 0.6, 6), creamMat);
+      rightCalve.position.y = -0.3; // Position relative to its group's origin (knee joint)
+      rightLowerLegGroup.add(rightCalve);
+
+      const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.5), whiteMat);
+      rightShoe.position.set(0, -0.6, 0.1); // Position relative to lower leg (ankle joint)
+      rightLowerLegGroup.add(rightShoe);
+
+
+      // Left Arm
+      const leftArmGroup = new THREE.Group();
+      leftArmGroup.position.set(-0.6, 2.4, 0); // Attach point to torso (shoulder)
+      characterGroup.add(leftArmGroup);
+
+      const leftUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.2, 0.5, 6), creamMat);
+      leftUpperArm.position.y = -0.25; // Position relative to its group's origin (shoulder joint)
+      leftArmGroup.add(leftUpperArm);
+
+      const leftForeArmGroup = new THREE.Group();
+      leftForeArmGroup.position.y = -0.5; // Attach point to upper arm (elbow joint)
+      leftArmGroup.add(leftForeArmGroup);
+
+      const leftForeArm = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.5, 6), creamMat);
+      leftForeArm.position.y = -0.25; // Position relative to its group's origin (elbow joint)
+      leftForeArmGroup.add(leftForeArm);
+
+      const leftHand = new THREE.Mesh(new THREE.DodecahedronGeometry(0.25), skinMat);
+      leftHand.position.set(0, -0.6, 0); // Position relative to forearm (wrist joint)
+      leftForeArmGroup.add(leftHand);
+
+
+      // Right Arm (structure mirrors the left arm)
+      const rightArmGroup = new THREE.Group();
+      rightArmGroup.position.set(0.6, 2.4, 0); // Attach point to torso (shoulder)
+      characterGroup.add(rightArmGroup);
+
+      const rightUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.2, 0.5, 6), creamMat);
+      rightUpperArm.position.y = -0.25; // Position relative to its group's origin (shoulder joint)
+      rightArmGroup.add(rightUpperArm);
+
+      const rightForeArmGroup = new THREE.Group();
+      rightForeArmGroup.position.y = -0.5; // Attach point to upper arm (elbow joint)
+      rightArmGroup.add(rightForeArmGroup);
+
+      const rightForeArm = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.5, 6), creamMat);
+      rightForeArm.position.y = -0.25; // Position relative to its group's origin (elbow joint)
+      rightForeArmGroup.add(rightForeArm);
+
+      const rightHand = new THREE.Mesh(new THREE.DodecahedronGeometry(0.25), skinMat);
+      rightHand.position.set(0, -0.6, 0); // Position relative to forearm (wrist joint)
+      rightForeArmGroup.add(rightHand);
+
+
+      // --- Environment Setup: Floor and Walls ---
+      const floorSize = 20; // Dimensions of the square floor
+      const wallHeight = 5;
+      const characterRadius = 0.5; // Approximate radius of the character for wall collision detection
+
+      // Floor plane
+      const floorGeometry = new THREE.PlaneGeometry(floorSize, floorSize);
+      const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x808080, side: THREE.DoubleSide });
+      const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+      floor.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+      floor.position.y = -1.3; // Place slightly below the character's feet
+      scene.add(floor);
+
+      // Walls for the square area
+      const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x404040 });
+      const wallThickness = 0.2; // Thickness of the walls
+
+      // Front Wall
+      const frontWall = new THREE.Mesh(new THREE.BoxGeometry(floorSize, wallHeight, wallThickness), wallMaterial);
+      frontWall.position.set(0, floor.position.y + wallHeight / 2 + 0.1, -floorSize / 2);
+      scene.add(frontWall);
+
+      // Back Wall
+      const backWall = new THREE.Mesh(new THREE.BoxGeometry(floorSize, wallHeight, wallThickness), wallMaterial);
+      backWall.position.set(0, floor.position.y + wallHeight / 2 + 0.1, floorSize / 2);
+      scene.add(backWall);
+
+      // Left Wall
+      const leftWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, floorSize), wallMaterial);
+      leftWall.position.set(-floorSize / 2, floor.position.y + wallHeight / 2 + 0.1, 0);
+      scene.add(leftWall);
+
+      // Right Wall
+      const rightWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, floorSize), wallMaterial);
+      rightWall.position.set(floorSize / 2, floor.position.y + wallHeight / 2 + 0.1, 0);
+      scene.add(rightWall);
+
+
+      // --- Mouse Control and Character Movement ---
+      // New control variables
+      let moveForward = false;
+      let moveBackward = false;
+      let moveLeft = false;
+      let moveRight = false;
+      let isRMBDown = false;
+
+      const playerVelocity = new THREE.Vector3();
+      const playerMoveSpeed = 2.5; // units per second
+
+      let cameraYaw = 0;
+      let cameraPitch = Math.PI / 6; // Initial pitch
+      const cameraDistance = 5;
+      const minPitch = -0.4; // Approx -23 degrees, prevents going under floor
+      const maxPitch = Math.PI * 0.48;  // Approx 86 degrees, allows looking high over character
+      const mouseSensitivity = 0.002;
+
+      // Initial character orientation
+      characterGroup.rotation.y = cameraYaw;
+
+      // Event listeners for new controls
+      document.addEventListener('keydown', onKeyDown);
+      document.addEventListener('keyup', onKeyUp);
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mousedown', onMouseDown);
+      document.addEventListener('mouseup', onMouseUp);
+      renderer.domElement.addEventListener('contextmenu', (event) => event.preventDefault()); // Prevent context menu on RMB
+
+      const instructions = document.getElementById('instructions');
+      instructions.addEventListener('click', () => {
+        renderer.domElement.requestPointerLock();
+      });
+
+      document.addEventListener('pointerlockchange', () => {
+        if (document.pointerLockElement === renderer.domElement) {
+          instructions.style.display = 'none';
+        } else {
+          instructions.style.display = 'block';
+          isRMBDown = false; // Reset RMB state if pointer lock is lost
+        }
+      }, false);
+
+      function onKeyDown(event) {
+        switch (event.code) {
+          case 'KeyW': moveForward = true; break;
+          case 'KeyA': moveLeft = true; break;
+          case 'KeyS': moveBackward = true; break;
+          case 'KeyD': moveRight = true; break;
+        }
+      }
+
+      function onKeyUp(event) {
+        switch (event.code) {
+          case 'KeyW': moveForward = false; break;
+          case 'KeyA': moveLeft = false; break;
+          case 'KeyS': moveBackward = false; break;
+          case 'KeyD': moveRight = false; break;
+        }
+      }
+
+      function onMouseDown(event) {
+        if (event.button === 2) { // Right mouse button
+          isRMBDown = true;
+        }
+      }
+
+      function onMouseUp(event) {
+        if (event.button === 2) { // Right mouse button
+          isRMBDown = false;
+        }
+      }
+
+      function onMouseMove(event) {
+        if (document.pointerLockElement !== renderer.domElement) return;
+
+        const movementX = event.movementX || 0;
+        const movementY = event.movementY || 0;
+
+        cameraYaw -= movementX * mouseSensitivity;
+        cameraPitch -= movementY * mouseSensitivity;
+        cameraPitch = Math.max(minPitch, Math.min(maxPitch, cameraPitch));
+
+        if (!isRMBDown) {
+          characterGroup.rotation.y = cameraYaw; // Character yaws with camera
+        }
+      }
+
+      // --- Animation Variables ---
+      let time = 0; // Counter for animation progression
+      const walkSpeed = 0.05; // Speed of the walking animation cycle
+      const legSwingAngle = Math.PI / 6; // Maximum angle for leg swing (e.g., 30 degrees)
+      const kneeBendAngle = Math.PI / 8; // Maximum angle for knee bend (e.g., 22.5 degrees)
+      const armSwingAngle = Math.PI / 4; // Maximum angle for arm swing (e.g., 45 degrees)
+      const elbowBendAngle = Math.PI / 8; // Maximum angle for elbow bend (e.g., 22.5 degrees)
+
+      // --- Animation Loop ---
+      function animate() {
+        requestAnimationFrame(animate); // Request the next animation frame
+
+        const delta = clock.getDelta();
+
+        // --- Player Movement ---
+        playerVelocity.set(0, 0, 0);
+        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(characterGroup.quaternion); // Changed local forward to +Z
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(characterGroup.quaternion);
+
+        if (moveForward) playerVelocity.add(forward);
+        if (moveBackward) playerVelocity.sub(forward);
+        if (moveLeft) playerVelocity.add(right);    // Corrected: if 'right' vector points left, adding it moves left.
+        if (moveRight) playerVelocity.sub(right);   // Corrected: subtracting it moves right.
+
+        if (playerVelocity.lengthSq() > 0) { // Only normalize and move if there's input
+            playerVelocity.normalize().multiplyScalar(playerMoveSpeed * delta);
+            characterGroup.position.add(playerVelocity);
+        }
+
+        // Clamp character's position within the defined wall boundaries
+        characterGroup.position.x = Math.max(-floorSize / 2 + characterRadius, Math.min(floorSize / 2 - characterRadius, characterGroup.position.x));
+        characterGroup.position.z = Math.max(-floorSize / 2 + characterRadius, Math.min(floorSize / 2 - characterRadius, characterGroup.position.z));
+
+        // --- Walking Animation ---
+        const isCharacterActuallyMoving = moveForward || moveBackward || moveLeft || moveRight;
+
+        if (isCharacterActuallyMoving) {
+            time += walkSpeed; // Increment time for animation cycle
+        } else {
+            time = 0; // Reset animation time if not moving, for a standing pose
+        }
+
+        // Apply limb animations based on 'time'. If time is 0, sin(0) is 0, so limbs are at rest.
+        // Legs swing in opposite phases
+        leftLegGroup.rotation.x = Math.sin(time) * legSwingAngle;
+        rightLegGroup.rotation.x = Math.sin(time + Math.PI) * legSwingAngle;
+        leftLowerLegGroup.rotation.x = Math.sin(time * 2) * kneeBendAngle;
+        rightLowerLegGroup.rotation.x = Math.sin((time + Math.PI) * 2) * kneeBendAngle;
+
+        // Arms swing opposite to their corresponding legs
+        leftArmGroup.rotation.x = Math.sin(time + Math.PI) * armSwingAngle;
+        rightArmGroup.rotation.x = Math.sin(time) * armSwingAngle;
+        leftForeArmGroup.rotation.x = Math.sin((time + Math.PI) * 2) * elbowBendAngle;
+        rightForeArmGroup.rotation.x = Math.sin(time * 2) * elbowBendAngle;
+
+
+        // --- Camera Update ---
+        // Define a pivot point on the character (e.g., chest/upper torso)
+        // characterGroup.position.y is -1. Pivot offset of 2.0 means world pivot Y is 1.0.
+        const pivotOffsetFromCharacterOrigin = new THREE.Vector3(0, 2.0, 0);
+        const pivotPoint = characterGroup.position.clone().add(pivotOffsetFromCharacterOrigin);
+
+        // Calculate camera's offset from this pivot point
+        let cameraRelativeOffset = new THREE.Vector3(0, 0, -cameraDistance); // Base offset from pivot
+
+        const pitchQuaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), cameraPitch);
+        cameraRelativeOffset.applyQuaternion(pitchQuaternion);
+
+        const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), cameraYaw);
+        cameraRelativeOffset.applyQuaternion(yawQuaternion); // Apply yaw to the already pitched offset
+
+        camera.position.copy(pivotPoint).add(cameraRelativeOffset);
+        camera.lookAt(pivotPoint); // Camera always looks at the pivot point
+
+        // Render the scene from the camera's perspective
+        renderer.render(scene, camera);
+      }
+
+      // Handle window resizing: Adjust camera aspect ratio and renderer size
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // Start the animation loop once the window has fully loaded
+      window.onload = function () {
+          animate();
+      }
+    </script>
+  </body>
+</html>

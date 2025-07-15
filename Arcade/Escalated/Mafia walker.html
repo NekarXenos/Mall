@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Low-Poly Mafia Character</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #333; font-family: 'Inter', sans-serif; color: white; }
+        canvas { display: block; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        #info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.5); padding: 10px 15px; border-radius: 8px; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div id="info">Use mouse to rotate view.</div>
+    <script>
+        let scene, camera, renderer, controls, clock;
+        let characterGroup; // Group to hold all character parts
+
+        // Animation parameters
+        let animationTime = 0;
+        const pathRadius = 20; // Size of the figure eight path
+        const walkSpeed = 0.5; // Speed of movement along the path (rad/sec)
+        const limbAnimationSpeedFactor = 5; // Multiplier for limb swing frequency relative to path speed
+        const armSwingAmplitude = Math.PI / 5;
+        const legSwingAmplitude = Math.PI / 4;
+        const forearmBendAmplitude = Math.PI / 7;
+        const calfBendAmplitude = Math.PI / 7;
+
+        let initialRotations = {};
+        let leftArm, rightArm, leftForeArm, rightForeArm, leftLeg, rightLeg, leftCalf, rightCalf;
+
+        const GROUND_SIZE = 50;
+        const WALL_HEIGHT = 8;
+
+        window.onload = function() {
+            init();
+            animate();
+        };
+
+        function init() {
+            // Scene setup
+            clock = new THREE.Clock();
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x222222); // Dark background
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 15, 35); // Adjusted camera position for better overview
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true; // Enable shadows
+            document.body.appendChild(renderer.domElement);
+
+            // OrbitControls for mouse view control
+            // OrbitControls are loaded from a CDN, ensure it's accessible.
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; // Smooth camera movement
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            controls.maxPolarAngle = Math.PI / 2; // Prevent camera from going below the ground
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040); // Soft white light
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            // Ground plane
+            const groundGeometry = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
+            const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, side: THREE.DoubleSide });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+            ground.position.y = 0; // Position it at y=0
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Walls
+            const WALL_THICKNESS = 1;
+            const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x555555 });
+
+            const wallNGeo = new THREE.BoxGeometry(GROUND_SIZE + WALL_THICKNESS * 2, WALL_HEIGHT, WALL_THICKNESS);
+            const wallNorth = new THREE.Mesh(wallNGeo, wallMaterial);
+            wallNorth.position.set(0, WALL_HEIGHT / 2, -GROUND_SIZE / 2 - WALL_THICKNESS / 2);
+            wallNorth.castShadow = true; wallNorth.receiveShadow = true;
+            scene.add(wallNorth);
+
+            const wallSouth = new THREE.Mesh(wallNGeo, wallMaterial);
+            wallSouth.position.set(0, WALL_HEIGHT / 2, GROUND_SIZE / 2 + WALL_THICKNESS / 2);
+            wallSouth.castShadow = true; wallSouth.receiveShadow = true;
+            scene.add(wallSouth);
+
+            const wallEGeo = new THREE.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, GROUND_SIZE);
+            const wallEast = new THREE.Mesh(wallEGeo, wallMaterial);
+            wallEast.position.set(GROUND_SIZE / 2 + WALL_THICKNESS / 2, WALL_HEIGHT / 2, 0);
+            wallEast.castShadow = true; wallEast.receiveShadow = true;
+            scene.add(wallEast);
+
+            const wallWest = new THREE.Mesh(wallEGeo, wallMaterial);
+            wallWest.position.set(-GROUND_SIZE / 2 - WALL_THICKNESS / 2, WALL_HEIGHT / 2, 0);
+            wallWest.castShadow = true; wallWest.receiveShadow = true;
+            scene.add(wallWest);
+
+            // Create the low-poly Mafia character
+            characterGroup = new THREE.Group();
+            scene.add(characterGroup);
+
+            // Materials
+            const coatMaterial = new THREE.MeshStandardMaterial({ color: 0x212121, flatShading: true }); // Dark trench coat
+            const skinMaterial = new THREE.MeshStandardMaterial({ color: 0xFAD49B, flatShading: true }); // Skin tone
+            const fedoraMaterial = new THREE.MeshStandardMaterial({ color: 0x3A3A3A, flatShading: true }); // Dark grey fedora
+            const fedBandMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, flatShading: true }); // white hat band
+            const gunMaterial = new THREE.MeshStandardMaterial({ color: 0x4A4A4A, flatShading: true }); // Gun metal grey
+            const shoeMaterial = new THREE.MeshStandardMaterial({ color: 0x1A1A1A, flatShading: true, side: THREE.DoubleSide }); // Dark shoes
+
+            // 1. Body (Block)
+            const bodyGeometry = new THREE.BoxGeometry(2.5, 6, 1.7);
+            const body = new THREE.Mesh(bodyGeometry, coatMaterial);
+            body.position.z = -0.5; // Position slightly backward
+            characterGroup.add(body);
+
+            // 2. Head (Dodecahedron)
+            const headGeometry = new THREE.DodecahedronGeometry(1.2, 0); // Radius, detail (0 for low poly)
+            const head = new THREE.Mesh(headGeometry, skinMaterial);
+            head.rotation.x = -0.2; // Rotate to lie flat
+            head.position.y = 3.2; // Position above body
+            characterGroup.add(head);
+
+            const hairGeometry = new THREE.BoxGeometry(1.8, 1.5, 1.5); // Box for hair
+            const hair = new THREE.Mesh(hairGeometry, coatMaterial);
+            //hair.rotation.x = -0.2; // Rotate to lie flat
+            hair.position.set(0, 3.2, -0.5);
+            characterGroup.add(hair);
+
+
+            // Sunglasses
+            const shadesGeometry = new THREE.CylinderGeometry(1, 1, 1, 6); // Radius top, radius bottom, height, radial segments
+            shadesGeometry.scale(0.5, 1, 1); // Squashed
+            const shades = new THREE.Mesh(shadesGeometry, shoeMaterial);
+            shades.rotation.x = Math.PI /2; // 
+            shades.rotation.y = Math.PI /2; // 
+            shades.position.set(0, 3.5, 0.5);
+           characterGroup.add(shades);
+
+            // 3. Fedora
+            const fedoraTop1Geometry = new THREE.SphereGeometry(1, 6, 4); // Radius, widthSegments, heightSegments for low poly
+            fedoraTop1Geometry.scale(0.7, 1, 1); // Squashed
+            const fedoraTop1 = new THREE.Mesh(fedoraTop1Geometry, fedoraMaterial);
+            fedoraTop1.position.x = 0.3; // On top of the head
+            fedoraTop1.position.y = 4.1; // On top of the head
+            characterGroup.add(fedoraTop1);
+
+            const fedoraTop2Geometry = new THREE.SphereGeometry(1, 6, 4); // Slightly smaller top part
+            fedoraTop2Geometry.scale(0.7, 1, 1); // Squashed
+            const fedoraTop2 = new THREE.Mesh(fedoraTop2Geometry, fedoraMaterial);
+            fedoraTop2.position.x = -0.3; // On top of the head
+            fedoraTop2.position.y = 4.1; // On top of the head
+            characterGroup.add(fedoraTop2);
+
+            const fedoraBrimGeometry = new THREE.TorusGeometry(1.3, 0.5, 3, 6); // Radius, tube, radialSegments, tubularSegments
+            fedoraBrimGeometry.scale(1, 1, 0.5); // Squashed
+            const fedoraBrim = new THREE.Mesh(fedoraBrimGeometry, fedoraMaterial);
+            fedoraBrim.rotation.z = Math.PI / 2;
+            fedoraBrim.rotation.x = Math.PI / 2 + 0.1; // Rotate to lie flat and slightly tilted
+            fedoraBrim.position.y = 3.8; // At the base of the fedora top
+            characterGroup.add(fedoraBrim);
+
+            const fedoraBandGeometry = new THREE.TorusGeometry(1, 0.2, 4, 6); // Radius, tube, radialSegments, tubularSegments
+            fedoraBandGeometry.scale(1,1, 1.5); // Squashed
+            const fedoraBand = new THREE.Mesh(fedoraBandGeometry, fedBandMaterial);
+            //fedoraBand.rotation.z = Math.PI / 2;
+            fedoraBand.rotation.x = Math.PI / 2 + 0.1; // Rotate to lie flat and slightly tilted
+            fedoraBand.position.y = 4; // At the base of the fedora top
+            characterGroup.add(fedoraBand);
+
+
+            // 4. Limbs (Cylinders for arms and legs)
+            // Arms
+            const upperArmGeometry = new THREE.CylinderGeometry(0.5, 0.45, 1.5, 6);
+            leftArm = new THREE.Mesh(upperArmGeometry, coatMaterial);
+            leftArm.position.set(-1.3, 1.2, 0);
+            leftArm.rotation.x = Math.PI * 0.05; // Slightly bent
+            characterGroup.add(leftArm);
+
+            const lowerArmGeometry = new THREE.CylinderGeometry(0.45, 0.4, 1.5, 6);
+            leftForeArm = new THREE.Mesh(lowerArmGeometry, coatMaterial);
+            leftForeArm.position.set(-1.3, -0.1, 0);
+            leftForeArm.rotation.x = -Math.PI * 0.05; // Slightly bent
+            characterGroup.add(leftForeArm);
+
+            rightArm = new THREE.Mesh(upperArmGeometry, coatMaterial);
+            rightArm.position.set(1.3, 1.2, 0);
+            rightArm.rotation.x = Math.PI * 0.05; // Slightly bent
+            characterGroup.add(rightArm);
+
+            rightForeArm = new THREE.Mesh(lowerArmGeometry, coatMaterial); // Corrected variable name
+            rightForeArm.position.set(1.3, -0.1, 0);
+            rightForeArm.rotation.x = -Math.PI * 0.05; // Slightly bent
+            characterGroup.add(rightForeArm);
+
+
+            // Legs
+            const upperLegGeometry = new THREE.CylinderGeometry(0.8, 0.6, 2, 6);
+            leftLeg = new THREE.Mesh(upperLegGeometry, coatMaterial);
+            leftLeg.rotation.x = -Math.PI * 0.1; // Slightly bent
+            leftLeg.position.set(-0.6, -2.5, -0.2);
+            characterGroup.add(leftLeg);
+
+            const lowerLegGeometry = new THREE.CylinderGeometry(0.6, 0.4, 2, 6);
+            leftCalf = new THREE.Mesh(lowerLegGeometry, coatMaterial);
+            leftCalf.rotation.x = Math.PI * 0.05; // Slightly bent
+            leftCalf.position.set(-0.6, -4.2, -0.1);
+            characterGroup.add(leftCalf);
+
+
+            rightLeg = new THREE.Mesh(upperLegGeometry, coatMaterial);
+            rightLeg.rotation.x = -Math.PI * 0.1; // Slightly bent
+            rightLeg.position.set(0.6, -2.5, -0.2);
+            characterGroup.add(rightLeg);
+
+            rightCalf = new THREE.Mesh(lowerLegGeometry, coatMaterial);
+            rightCalf.rotation.x = Math.PI * 0.05; // Slightly bent
+            rightCalf.position.set(0.6, -4.2, -0.1);
+            characterGroup.add(rightCalf);
+
+
+            // 5. Hands (Dodecahedron)
+            const handGeometry = new THREE.DodecahedronGeometry(0.6, 0);
+            const leftHand = new THREE.Mesh(handGeometry, skinMaterial);
+            leftHand.position.set(-1.3, -1, 0); // Attached to arm
+            characterGroup.add(leftHand);
+
+            const rightHand = new THREE.Mesh(handGeometry, skinMaterial);
+            rightHand.position.set(1.3, -1, 0); // Attached to arm
+            characterGroup.add(rightHand);
+
+            // 6. Feet (Tetrahedrons)
+            const footGeometry = new THREE.TetrahedronGeometry(1, 0); // Radius, detail
+            footGeometry.scale(1, 0.6, 1.5); // Squashed and elongated
+            const leftFoot = new THREE.Mesh(footGeometry, shoeMaterial);
+            leftFoot.position.set(-0.6, -5.2, 0.3); // Attached to leg
+            leftFoot.rotation.x = -Math.PI / 8;
+            characterGroup.add(leftFoot);
+
+            // For the right foot, clone the geometry and then apply the negative scale
+            const rightFootGeometry = footGeometry.clone(); // Clone the geometry
+            rightFootGeometry.scale(-1, 1, 1); // Mirrored on X-axis
+            const rightFoot = new THREE.Mesh(rightFootGeometry, shoeMaterial);
+            rightFoot.position.set(0.6, -5.2, 0.3); // Attached to leg
+            rightFoot.rotation.x = -Math.PI / 8;
+            //rightFoot.rotation.set(Math.PI, Math.PI, Math.PI); // Rotate to face the correct direction
+            characterGroup.add(rightFoot);
+
+            // 7. Tommy Gun (Cylinders)
+            const gunGroup = new THREE.Group();
+            gunGroup.position.set(-1.8, -0.5, 0.5); // Position next to the right arm
+            //gunGroup.rotation.z = Math.PI / 10; // Slightly angled
+            characterGroup.add(gunGroup);
+
+            // Gun Barrel
+            const barrelGeometry = new THREE.CylinderGeometry(0.15, 0.15, 2.5, 6);
+            const barrel = new THREE.Mesh(barrelGeometry, gunMaterial);
+            barrel.rotation.z = Math.PI / 2;
+            barrel.rotation.y = Math.PI / 2;
+            barrel.position.set(0.5, 0, 0.5);
+            gunGroup.add(barrel);
+
+            // Gun Body
+            /* const gunBodyGeometry = new THREE.CylinderGeometry(0.3, 0.3, 1, 6);
+            const gunBody = new THREE.Mesh(gunBodyGeometry, gunMaterial);
+            gunBody.position.x = 0.5;
+            gunBody.rotation.y = Math.PI / 2;
+            gunBody.rotation.z = Math.PI / 2;
+            gunGroup.add(gunBody); */
+
+            // Gun Magazine (drum)
+            const magazineGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.3, 8);
+            const magazine = new THREE.Mesh(magazineGeometry, gunMaterial);
+            magazine.rotation.x = Math.PI / 2;
+            magazine.position.set(0.5, -0.5, 0.2);
+            gunGroup.add(magazine);
+
+            // Gun Stock
+            const stockGeometry = new THREE.BoxGeometry(0.5, 0.7, 2);
+            const stock = new THREE.Mesh(stockGeometry, gunMaterial);
+            stock.position.set(0.5, -0.2, -0.5);
+            //stock.rotation.x = Math.PI / 2;
+            //stock.rotation.z = Math.PI / 2;
+            //stock.rotation.y = Math.PI / 2;
+            gunGroup.add(stock);
+
+            const handleGeometry = new THREE.BoxGeometry(0.3, 1, 0.5);
+            const handle = new THREE.Mesh(handleGeometry, gunMaterial);
+            handle.position.set(0.5, -0.5, 0);
+            //stock.rotation.x = Math.PI / 2;
+            //stock.rotation.z = Math.PI / 2;
+            //stock.rotation.y = Math.PI / 2;
+            gunGroup.add(handle);
+
+            const handle2 = new THREE.Mesh(handleGeometry, gunMaterial);
+            handle2.position.set(0.5, -0.5, 1);
+            //stock.rotation.x = Math.PI / 2;
+            //stock.rotation.z = Math.PI / 2;
+            //stock.rotation.y = Math.PI / 2;
+            gunGroup.add(handle2);
+
+
+            // Adjust character group position so feet are at y=0
+            // Feet are at y = -5.2 relative to characterGroup origin.
+            characterGroup.position.y = 5.2; 
+
+            // Make character and its parts cast shadows
+            characterGroup.traverse(function(object) {
+                if (object.isMesh) {
+                    object.castShadow = true;
+                }
+            });
+
+            // Store initial rotations for limbs
+            initialRotations.leftArm = leftArm.rotation.clone();
+            initialRotations.leftForeArm = leftForeArm.rotation.clone();
+            initialRotations.rightArm = rightArm.rotation.clone();
+            initialRotations.rightForeArm = rightForeArm.rotation.clone();
+            initialRotations.leftLeg = leftLeg.rotation.clone();
+            initialRotations.leftCalf = leftCalf.rotation.clone();
+            initialRotations.rightLeg = rightLeg.rotation.clone();
+            initialRotations.rightCalf = rightCalf.rotation.clone();
+
+
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const deltaTime = clock.getDelta();
+            animationTime += deltaTime * walkSpeed;
+
+            // Figure-eight path (Lissajous curve)
+            const currentPathTime = animationTime;
+            const newX = pathRadius * Math.sin(currentPathTime);
+            const newZ = (pathRadius / 2) * Math.sin(2 * currentPathTime); // Make Z half the X amplitude for a more standard 8
+
+            characterGroup.position.x = newX;
+            characterGroup.position.z = newZ;
+            // characterGroup.position.y remains constant as set in init()
+
+            // Character orientation - look along the path
+            const lookAheadTime = currentPathTime + 0.01; // A small step ahead for tangent
+            const lookAtX = pathRadius * Math.sin(lookAheadTime);
+            const lookAtZ = (pathRadius / 2) * Math.sin(2 * lookAheadTime);
+            characterGroup.lookAt(lookAtX, characterGroup.position.y, lookAtZ);
+
+            // Limb animation
+            const limbCycleTime = animationTime * limbAnimationSpeedFactor;
+            const mainSwingAngle = Math.sin(limbCycleTime);
+            const secondaryBendAngle = Math.sin(limbCycleTime - Math.PI / 3); // Phase offset for forelimbs/calves
+
+            // Arms
+            leftArm.rotation.x = initialRotations.leftArm.x + mainSwingAngle * armSwingAmplitude;
+            leftForeArm.rotation.x = initialRotations.leftForeArm.x + secondaryBendAngle * forearmBendAmplitude;
+
+            rightArm.rotation.x = initialRotations.rightArm.x - mainSwingAngle * armSwingAmplitude;
+            rightForeArm.rotation.x = initialRotations.rightForeArm.x - secondaryBendAngle * forearmBendAmplitude;
+
+            // Legs
+            leftLeg.rotation.x = initialRotations.leftLeg.x - mainSwingAngle * legSwingAmplitude;
+            leftCalf.rotation.x = initialRotations.leftCalf.x + secondaryBendAngle * calfBendAmplitude;
+
+            rightLeg.rotation.x = initialRotations.rightLeg.x + mainSwingAngle * legSwingAmplitude;
+            rightCalf.rotation.x = initialRotations.rightCalf.x - secondaryBendAngle * calfBendAmplitude;
+
+            // Update controls
+            controls.update();
+            // Render scene
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

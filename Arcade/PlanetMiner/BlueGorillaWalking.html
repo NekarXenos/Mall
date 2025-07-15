@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Animated Gorilla</title>
+    <style>
+        /* Basic styling for the body and canvas to ensure full-screen rendering */
+        body {
+            margin: 0;
+            overflow: hidden; /* Hide scrollbars */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #add8e6; /* Light blue background for the entire page */
+        }
+        canvas {
+            display: block; /* Remove extra space below canvas */
+            width: 100vw; /* Make canvas fill viewport width */
+            height: 100vh; /* Make canvas fill viewport height */
+            background-color: #add8e6; /* Light blue background for the canvas */
+        }
+    </style>
+</head>
+<body>
+    <!-- Import Three.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Import OrbitControls for interactive camera navigation -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        // Scene, camera, renderer, and controls
+        let scene, camera, renderer, controls;
+        
+        // Gorilla and animation variables
+        let gorillaGroup;
+        let leftArmGroup, rightArmGroup, leftLegGroup, rightLegGroup;
+        let leftForearmGroup, rightForearmGroup, leftLowerLegGroup, rightLowerLegGroup;
+        let clock, velocity, speed;
+        const worldBoundary = 24; // Half the size of the 50x50 plane, with a small buffer
+
+        // Ensure the script runs only after the entire window content is loaded
+        window.onload = function() {
+            init(); // Initialize the Three.js scene
+            animate(); // Start the animation loop
+        };
+
+        /**
+         * Initializes the Three.js scene, camera, renderer, lighting,
+         * and constructs the gorilla character.
+         */
+        function init() {
+            // 1. Scene Setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xadd8e6); // Set a light blue background color
+            
+            // Initialize clock for animation timing
+            clock = new THREE.Clock();
+
+            // 2. Camera Setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 15, 30); // Position camera to see the gorilla and its movement
+
+            // 3. Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // 4. OrbitControls for Camera Interaction
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.25;
+            controls.screenSpacePanning = false;
+            controls.maxPolarAngle = Math.PI / 2 - 0.1;
+
+            // 5. Lighting Setup
+            const ambientLight = new THREE.AmbientLight(0x404040, 2);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            directionalLight.position.set(5, 10, 7);
+            scene.add(directionalLight);
+
+            // 6. Gorilla Materials
+            const gorillaMaterial = new THREE.MeshStandardMaterial({ color: 0x36454F }); // Charcoal grey
+            const blueFurMaterial = new THREE.MeshStandardMaterial({ color: 0x113366 }); // Blue fur
+
+            // 7. Create Gorilla Group
+            gorillaGroup = new THREE.Group();
+            
+            // Initialize movement vectors
+            velocity = new THREE.Vector3(0, 0, -1); // Initial direction
+            speed = 0.08; // Movement speed
+
+            // 8. Body (Block)
+            const bodyGeometry = new THREE.BoxGeometry(4, 5, 3); 
+            const body = new THREE.Mesh(bodyGeometry, blueFurMaterial);
+            body.rotation.x = 0.3;
+            body.position.set(0, 4, -0.5);
+            gorillaGroup.add(body);
+
+            // 9. Head (Dodecahedron)
+            const headGeometry = new THREE.DodecahedronGeometry(2);
+            const head = new THREE.Mesh(headGeometry, gorillaMaterial);
+            head.rotation.x = 0.1;
+            head.position.set(0, 7.5, 0.5);
+            gorillaGroup.add(head);
+
+            // Add Flat Top Hair (BoxGeometry)
+            const hairGeometry = new THREE.BoxGeometry(2.5, 3, 2.6);
+            const flatTopHair = new THREE.Mesh(hairGeometry, blueFurMaterial);
+            flatTopHair.position.set(0, head.position.y + 0.5, head.position.z - 0.5);
+            flatTopHair.rotation.x = 0.1;
+            gorillaGroup.add(flatTopHair);
+
+            // 10. Ears (TorusGeometry)
+            const earGeometry = new THREE.TorusGeometry(0.5, 0.3, 6, 6);
+            const leftEar = new THREE.Mesh(earGeometry, gorillaMaterial);
+            leftEar.position.set(-1.75, 7.75, 0.5);
+            leftEar.rotation.y = 0.2 -Math.PI / 2;
+            gorillaGroup.add(leftEar);
+
+            const rightEar = leftEar.clone();
+            rightEar.position.x = -leftEar.position.x;
+            rightEar.rotation.y = -leftEar.rotation.y;
+            gorillaGroup.add(rightEar);
+
+            // 11. Lips (TorusGeometry)
+            const lipsGeometry = new THREE.TorusGeometry(0.8, 0.8, 6, 6);
+            const lips = new THREE.Mesh(lipsGeometry, gorillaMaterial);
+            lips.scale.set(1, 0.5, 1.2);
+            lips.position.set(0, 7, 1.7);
+            gorillaGroup.add(lips);
+
+            // 12. Nose (Dodecahedron)
+            const noseGeometry = new THREE.DodecahedronGeometry(0.5);
+            const nose = new THREE.Mesh(noseGeometry, gorillaMaterial);
+            nose.scale.set(1, 0.5, 1); 
+            nose.position.set(0, 7.75, 2.3);
+            gorillaGroup.add(nose);
+
+            // 13. Eyes (Dodecahedrons)
+            const eyeGeometry = new THREE.DodecahedronGeometry(0.2);
+            const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x001122 });
+            const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            leftEye.position.set(-0.5, 8, 2.2);
+            gorillaGroup.add(leftEye);
+
+            const rightEye = leftEye.clone();
+            rightEye.position.x = -leftEye.position.x;
+            gorillaGroup.add(rightEye);
+
+            // 14. Shoulders (Dodecahedrons)
+            const shoulderGeometry = new THREE.DodecahedronGeometry(1.5);
+            const leftShoulder = new THREE.Mesh(shoulderGeometry, blueFurMaterial);
+            leftShoulder.position.set(-2.5, 5, 0.4);
+            gorillaGroup.add(leftShoulder);
+
+            const rightShoulder = leftShoulder.clone();
+            rightShoulder.position.x = -leftShoulder.position.x;
+            gorillaGroup.add(rightShoulder);
+
+            // 15. Chest (Dodecahedron)
+            const chestGeometry = new THREE.DodecahedronGeometry(2.5);
+            const chest = new THREE.Mesh(chestGeometry, gorillaMaterial);
+            chest.scale.set(1.3, 0.8, 1);
+            chest.rotation.x = 0.1;
+            chest.position.set(0, 5, 0.5);
+            gorillaGroup.add(chest);
+
+            /**
+             * Helper function to create a jointed limb.
+             * Returns groups for the whole limb and the lower part for hierarchical animation.
+             */
+            function createJointedLimb(limbLength, limbRadius, rotationPointOffset, limbMaterial, isArm) {
+                const limbGroup = new THREE.Group();
+                const baseDodecahedronRadius = 1;
+
+                // Upper Part
+                const upperPartGeometry = new THREE.DodecahedronGeometry(baseDodecahedronRadius, 0); 
+                const upperPart = new THREE.Mesh(upperPartGeometry, blueFurMaterial);
+                upperPart.scale.set(limbRadius / baseDodecahedronRadius, limbLength / (baseDodecahedronRadius * 2), limbRadius / baseDodecahedronRadius);
+                upperPart.position.y = -limbLength / 2;
+                limbGroup.add(upperPart);
+
+                // Lower Part Group
+                const lowerPartGroup = new THREE.Group();
+                lowerPartGroup.position.y = -limbLength - rotationPointOffset;
+                limbGroup.add(lowerPartGroup);
+
+                // Lower Part mesh
+                const lowerLimbRadius = isArm ? limbRadius * 1.2 : limbRadius;
+                const lowerLimbLength = isArm ? limbLength * 1.2 : limbLength;
+                const lowerPartGeometry = new THREE.DodecahedronGeometry(baseDodecahedronRadius, 0); 
+                const lowerPart = new THREE.Mesh(lowerPartGeometry, blueFurMaterial);
+                lowerPart.scale.set(lowerLimbRadius / baseDodecahedronRadius, lowerLimbLength / (baseDodecahedronRadius * 2), lowerLimbRadius / baseDodecahedronRadius);
+                lowerPart.position.y = -lowerLimbLength / 2;
+                lowerPartGroup.add(lowerPart);
+
+                return { limbGroup, lowerPartGroup };
+            }
+
+            // 16. Arms
+            const armLength = 4.5;
+            const armRadius = 0.9;
+            const elbowOffset = -2;
+
+            // Left Arm
+            const leftArmData = createJointedLimb(armLength, armRadius, elbowOffset, blueFurMaterial, true);
+            leftArmGroup = leftArmData.limbGroup;
+            leftForearmGroup = leftArmData.lowerPartGroup;
+            leftArmGroup.position.set(-2.5, 5.5, 0);
+            leftArmGroup.rotation.z = -0.1;
+            leftArmGroup.rotation.x = -0.2;
+            gorillaGroup.add(leftArmGroup);
+
+            // Left Hand
+            const handGeometry = new THREE.DodecahedronGeometry(1.3);
+            const leftHand = new THREE.Mesh(handGeometry, gorillaMaterial);
+            leftHand.position.y = -(armLength * 0.9) - 0.4;
+            leftHand.position.z = -0.3;
+            leftForearmGroup.add(leftHand);
+
+            // Right Arm
+            const rightArmData = createJointedLimb(armLength, armRadius, elbowOffset, blueFurMaterial, true);
+            rightArmGroup = rightArmData.limbGroup;
+            rightForearmGroup = rightArmData.lowerPartGroup;
+            rightArmGroup.position.set(2.5, 5.5, 0);
+            rightArmGroup.rotation.z = 0.1;
+            rightArmGroup.rotation.x = -0.2;
+            gorillaGroup.add(rightArmGroup);
+
+            // Right Hand
+            const rightHand = leftHand.clone();
+            rightForearmGroup.add(rightHand);
+
+            // 17. Legs
+            const legLength = 3.5;
+            const legRadius = 1;
+            const kneeOffset = -1;
+
+            // Left Leg
+            const leftLegData = createJointedLimb(legLength, legRadius, kneeOffset, blueFurMaterial, false);
+            leftLegGroup = leftLegData.limbGroup;
+            leftLowerLegGroup = leftLegData.lowerPartGroup;
+            leftLegGroup.position.set(-0.8, 3, -2.5);
+            leftLegGroup.rotation.x = -Math.PI / 8;
+            leftLegGroup.rotation.z = -0.1;
+            gorillaGroup.add(leftLegGroup);
+
+            // Left Foot
+            const footGeometry = new THREE.DodecahedronGeometry(1);
+            footGeometry.scale(1.2, 0.5, 2);
+            const leftFoot = new THREE.Mesh(footGeometry, gorillaMaterial);
+            leftFoot.position.y = -(legLength * 0.9) - 0.5;
+            leftFoot.rotation.x = 0.4;
+            leftLowerLegGroup.add(leftFoot);
+
+            // Right Leg
+            const rightLegData = createJointedLimb(legLength, legRadius, kneeOffset, blueFurMaterial, false);
+            rightLegGroup = rightLegData.limbGroup;
+            rightLowerLegGroup = rightLegData.lowerPartGroup;
+            rightLegGroup.position.set(0.8, 3, -2.5);
+            rightLegGroup.rotation.x = -Math.PI / 8;
+            rightLegGroup.rotation.z = 0.1;
+            gorillaGroup.add(rightLegGroup);
+
+            // Right Foot
+            const rightFoot = leftFoot.clone();
+            rightLowerLegGroup.add(rightFoot);
+
+            // Add the entire gorilla group to the scene
+            scene.add(gorillaGroup);
+            // Adjust Y position so the gorilla's feet are on the ground plane
+            gorillaGroup.position.y = 0.4; 
+
+            // 18. Ground Plane
+            const planeGeometry = new THREE.PlaneGeometry(50, 50);
+            const planeMaterial = new THREE.MeshStandardMaterial({ color: 0x225511, side: THREE.DoubleSide });
+            const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane.rotation.x = Math.PI / 2;
+            plane.position.y = -3;
+            scene.add(plane);
+
+            // 19. Event Listener for Window Resizing
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        /**
+         * Handles window resize events to update camera aspect ratio and renderer size.
+         */
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        /**
+         * The main animation loop.
+         * Updates animations, movement, and renders the scene.
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta(); // Time since last frame
+            const time = clock.getElapsedTime() * 5; // Multiplied for a faster walk cycle
+
+            // --- Walking Animation ---
+            const walkAmplitude = 0.5; // How far limbs swing
+            const kneeBendAmplitude = 0.8; // How much knees bend
+
+            // Leg and arm movements are opposite
+            leftLegGroup.rotation.x = Math.sin(time) * walkAmplitude;
+            rightLegGroup.rotation.x = Math.sin(time + Math.PI) * walkAmplitude;
+            leftArmGroup.rotation.x = Math.sin(time + Math.PI) * walkAmplitude * 1.2; // Arms swing a bit more
+            rightArmGroup.rotation.x = Math.sin(time) * walkAmplitude * 1.2;
+
+            // Knees and elbows bend only when moving forward
+            leftLowerLegGroup.rotation.x = Math.max(0, Math.sin(time + Math.PI / 4)) * kneeBendAmplitude;
+            rightLowerLegGroup.rotation.x = Math.max(0, Math.sin(time + Math.PI + Math.PI / 4)) * kneeBendAmplitude;
+            leftForearmGroup.rotation.x = -Math.max(0, Math.sin(time + Math.PI + Math.PI / 4)) * kneeBendAmplitude * 0.8;
+            rightForearmGroup.rotation.x = -Math.max(0, Math.sin(time + Math.PI / 4)) * kneeBendAmplitude * 0.8;
+
+
+            // --- Movement and Boundary Collision ---
+            // Move the gorilla forward
+            gorillaGroup.position.add(velocity.clone().multiplyScalar(speed));
+
+            // Check for boundary collision and reflect velocity
+            let reflected = false;
+            const normal = new THREE.Vector3();
+
+            if (gorillaGroup.position.x > worldBoundary) {
+                normal.set(-1, 0, 0); // Normal of the +X wall
+                reflected = true;
+            } else if (gorillaGroup.position.x < -worldBoundary) {
+                normal.set(1, 0, 0); // Normal of the -X wall
+                reflected = true;
+            }
+
+            if (gorillaGroup.position.z > worldBoundary) {
+                normal.set(0, 0, -1); // Normal of the +Z wall
+                reflected = true;
+            } else if (gorillaGroup.position.z < -worldBoundary) {
+                normal.set(0, 0, 1); // Normal of the -Z wall
+                reflected = true;
+            }
+
+            if (reflected) {
+                // Reflect the velocity vector
+                velocity.reflect(normal);
+            }
+            
+            // Make the gorilla look in the direction it's moving
+            const lookAtPosition = gorillaGroup.position.clone().add(velocity);
+            gorillaGroup.lookAt(lookAtPosition);
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
