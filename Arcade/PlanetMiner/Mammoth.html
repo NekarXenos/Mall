@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animatable Three.js Mammoth</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // Sky blue background
+        scene.fog = new THREE.Fog(0x87ceeb, 50, 200);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(15, 10, 20);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; // Enable shadows
+        document.body.appendChild(renderer.domElement);
+
+        // --- CONTROLS ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 10;
+        controls.maxDistance = 100;
+        controls.maxPolarAngle = Math.PI / 2; // Don't let camera go below ground
+
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        directionalLight.position.set(-15, 25, 30);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.camera.near = 0.5;
+        directionalLight.shadow.camera.far = 100;
+        directionalLight.shadow.camera.left = -50;
+        directionalLight.shadow.camera.right = 50;
+        directionalLight.shadow.camera.top = 50;
+        directionalLight.shadow.camera.bottom = -50;
+        scene.add(directionalLight);
+
+        // --- GROUND ---
+        const groundGeometry = new THREE.PlaneGeometry(500, 500);
+        const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x6b8e23 }); // Olive green
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // --- MAMMOTH MATERIALS ---
+        const bodyMaterial = new THREE.MeshStandardMaterial({
+            color: 0x6d4c41, // Brown
+            roughness: 0.8,
+            metalness: 0.1
+        });
+        const tuskMaterial = new THREE.MeshStandardMaterial({
+            color: 0xfffdd0, // Cream
+            roughness: 0.4,
+            metalness: 0.2
+        });
+
+        // --- MAMMOTH CREATION ---
+        const mammoth = new THREE.Group();
+        scene.add(mammoth);
+
+        // --- BODY ---
+        const bodyGeometry = new THREE.DodecahedronGeometry(5, 0);
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.scale.set(1.5, 1, 1); // Stretch the body
+        body.castShadow = true;
+        body.receiveShadow = true;
+        mammoth.add(body);
+
+        // --- HEAD ---
+        const headGroup = new THREE.Group();
+        headGroup.position.set(7, 2, 0);
+        body.add(headGroup);
+
+        const headGeometry = new THREE.DodecahedronGeometry(3, 0);
+        const head = new THREE.Mesh(headGeometry, bodyMaterial);
+        head.scale.set(1, 0.8, 0.9);
+        head.castShadow = true;
+        head.receiveShadow = true;
+        headGroup.add(head);
+
+        // --- TUSKS ---
+        function createTusk() {
+            const tusk = new THREE.Group();
+            const torusGeo1 = new THREE.TorusGeometry(2.5, 0.3, 16, 50, Math.PI * 1.2);
+            const tuskPart1 = new THREE.Mesh(torusGeo1, tuskMaterial);
+            tuskPart1.castShadow = true;
+            tusk.add(tuskPart1);
+
+            const torusGeo2 = new THREE.TorusGeometry(1.5, 0.3, 16, 50, Math.PI * 0.8);
+            const tuskPart2 = new THREE.Mesh(torusGeo2, tuskMaterial);
+            tuskPart2.position.set(2.4, -1.8, 0);
+            tuskPart2.rotation.z = -Math.PI / 3;
+            tuskPart2.castShadow = true;
+            //tusk.add(tuskPart2);
+            return tusk;
+        }
+
+        const tuskLeft = createTusk();
+        tuskLeft.position.set(1, -1, 2);
+        tuskLeft.rotation.y = -Math.PI / 8;
+        tuskLeft.rotation.z = Math.PI / 6;
+        headGroup.add(tuskLeft);
+
+        const tuskRight = createTusk();
+        tuskRight.position.set(1, -1, -2);
+        tuskRight.rotation.y = Math.PI / 8;
+        tuskRight.rotation.z = Math.PI / 6;
+        tuskRight.scale.z = -1; // Mirror it
+        headGroup.add(tuskRight);
+
+        // --- LEGS ---
+        function createLeg(isFront = true) {
+            const legGroup = new THREE.Group();
+
+            // Thigh / Shoulder
+            const thighGeometry = new THREE.DodecahedronGeometry(isFront ? 1.8 : 2, 0);
+            const thigh = new THREE.Mesh(thighGeometry, bodyMaterial);
+            thigh.scale.set(0.7, 1.2, 0.7); // Stretch it vertically
+            thigh.position.y = -2;
+            thigh.castShadow = true;
+            legGroup.add(thigh);
+
+            // Lower Limb
+            const limbGeometry = new THREE.CylinderGeometry(0.8, 0.7, 4, 16);
+            const limb = new THREE.Mesh(limbGeometry, bodyMaterial);
+            limb.position.y = -6;
+            limb.castShadow = true;
+            legGroup.add(limb);
+
+            return legGroup;
+        }
+
+        const legFrontLeft = createLeg(true);
+        legFrontLeft.position.set(5, -2.5, 3.5);
+        body.add(legFrontLeft);
+
+        const legFrontRight = createLeg(true);
+        legFrontRight.position.set(5, -2.5, -3.5);
+        body.add(legFrontRight);
+
+        const legBackLeft = createLeg(false);
+        legBackLeft.position.set(-5, -2.5, 3);
+        body.add(legBackLeft);
+
+        const legBackRight = createLeg(false);
+        legBackRight.position.set(-5, -2.5, -3);
+        body.add(legBackRight);
+        
+        mammoth.position.y = 8; // Lift the mammoth so feet are on the ground
+
+        // --- TAIL ---
+        const tailGroup = new THREE.Group();
+        tailGroup.position.set(-7, 1, 0);
+        body.add(tailGroup);
+
+        const tailGeometry = new THREE.CylinderGeometry(0.1, 0.2, 3, 8);
+        const tail = new THREE.Mesh(tailGeometry, bodyMaterial);
+        tail.castShadow = true;
+        tail.rotation.z = Math.PI / 4;
+        tailGroup.add(tail);
+
+
+        // --- ANIMATION ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            // Animation constants
+            const walkSpeed = 2;
+            const walkAmplitude = Math.PI / 6;
+            const bodyBobSpeed = walkSpeed * 2;
+            const bodyBobAmplitude = 0.2;
+
+            // Leg animation
+            legFrontLeft.rotation.x = Math.sin(time * walkSpeed) * walkAmplitude;
+            legBackRight.rotation.x = Math.sin(time * walkSpeed) * walkAmplitude;
+            legFrontRight.rotation.x = -Math.sin(time * walkSpeed) * walkAmplitude;
+            legBackLeft.rotation.x = -Math.sin(time * walkSpeed) * walkAmplitude;
+
+            // Body bobbing motion
+            mammoth.position.y = 8 + Math.sin(time * bodyBobSpeed) * bodyBobAmplitude;
+            
+            // Tail sway
+            tailGroup.rotation.z = Math.sin(time * 1.5) * (Math.PI / 12);
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- RESIZE HANDLER ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

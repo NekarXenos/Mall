@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Baobab Tree</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: sans-serif; background-color: #87ceeb; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: #ffffff;
+            font-size: 16px;
+            text-shadow: 1px 1px 2px #000000;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Drag to rotate, scroll to zoom</div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Basic Scene Setup ---
+        let scene, camera, renderer, controls;
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb); // Sky blue background
+            scene.fog = new THREE.Fog(0x87ceeb, 50, 200);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 20, 50);
+            camera.lookAt(0, 15, 0);
+
+            // Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 10;
+            controls.maxDistance = 150;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent camera from going below the ground
+            controls.target.set(0, 15, 0); // Target the middle of the tree
+
+            // --- Lighting ---
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            directionalLight.position.set(50, 50, 50);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.left = -50;
+            directionalLight.shadow.camera.right = 50;
+            directionalLight.shadow.camera.top = 50;
+            directionalLight.shadow.camera.bottom = -50;
+            scene.add(directionalLight);
+
+            // --- Ground ---
+            const groundGeometry = new THREE.PlaneGeometry(500, 500);
+            const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x98bf64 }); // A grassy green
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // --- Create Tree ---
+            createBaobabTree();
+
+            // --- Event Listeners ---
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // --- Start Animation ---
+            animate();
+        }
+
+        // --- Tree Creation ---
+        function createBaobabTree() {
+            const tree = new THREE.Group();
+
+            // Material for trunk and branches
+            const trunkMaterial = new THREE.MeshStandardMaterial({
+                color: 0x8B5A2B, // A rich brown color
+                roughness: 0.9,
+                metalness: 0.1,
+            });
+
+            // --- Thick Trunk using LatheGeometry for a natural, bulbous shape ---
+            const points = [];
+            points.push(new THREE.Vector2(4, 0));   // Base radius
+            points.push(new THREE.Vector2(7, 2));   // Start of the bulge
+            points.push(new THREE.Vector2(8, 10));  // Max thickness
+            points.push(new THREE.Vector2(7, 18));  // Tapering towards the top
+            points.push(new THREE.Vector2(6, 22));  // Top radius
+            
+            const trunkGeometry = new THREE.LatheGeometry(points, 20);
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.castShadow = true;
+            trunk.receiveShadow = true;
+            tree.add(trunk);
+
+            // --- Branches ---
+            const branchData = [
+                { y: 22, radius: 1.5, height: 12, rotX: 0.8, rotZ: 0.8 },
+                { y: 22, radius: 1.8, height: 15, rotX: -0.6, rotZ: -0.7 },
+                { y: 21.5, radius: 1.2, height: 10, rotX: 0.5, rotZ: -0.9 },
+                { y: 22.5, radius: 2.0, height: 14, rotX: -0.9, rotZ: 0.5 },
+                { y: 21, radius: 1.6, height: 13, rotX: 1.1, rotZ: 0.1 },
+            ];
+
+            branchData.forEach(data => {
+                const branch = createBranch(data.radius, data.height, trunkMaterial);
+                branch.position.y = data.y;
+                branch.rotation.x = data.rotX;
+                branch.rotation.z = data.rotZ;
+                tree.add(branch);
+            });
+
+
+            scene.add(tree);
+        }
+
+        // Helper function to create a single branch with foliage
+        function createBranch(radius, height, material) {
+            const branchGroup = new THREE.Group();
+            
+            const branchGeometry = new THREE.CylinderGeometry(radius, radius * 0.7, height, 12);
+            const branchMesh = new THREE.Mesh(branchGeometry, material);
+            branchMesh.position.y = height / 2; // Position relative to the group's origin
+            branchMesh.castShadow = true;
+            branchMesh.receiveShadow = true;
+            branchGroup.add(branchMesh);
+            
+            // Add smaller sub-branches and foliage
+            const foliageMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22, roughness: 0.8 });
+            for(let i = 0; i < 3; i++) {
+                const subBranchLength = Math.random() * 4 + 2;
+                const subBranchGeom = new THREE.CylinderGeometry(radius * 0.5, radius * 0.2, subBranchLength, 8);
+                const subBranch = new THREE.Mesh(subBranchGeom, material);
+
+                // Position at the end of the main branch
+                subBranch.position.y = height;
+                subBranch.position.x = (Math.random() - 0.5) * 4;
+                subBranch.position.z = (Math.random() - 0.5) * 4;
+                
+                subBranch.rotation.x = (Math.random() - 0.5) * Math.PI / 2;
+                subBranch.rotation.z = (Math.random() - 0.5) * Math.PI / 2;
+                
+                subBranch.castShadow = true;
+                branchGroup.add(subBranch);
+
+                // Add a clump of leaves (a sphere) at the end of the sub-branch
+                const foliageGeom = new THREE.SphereGeometry(radius * 1.5, 8, 8);
+                const foliage = new THREE.Mesh(foliageGeom, foliageMaterial);
+                foliage.position.copy(subBranch.position);
+                foliage.position.y += subBranchLength / 2; // Move to the tip
+                foliage.castShadow = true;
+                branchGroup.add(foliage);
+            }
+
+            return branchGroup;
+        }
+
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- Handle Window Resize ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Start the application ---
+        init();
+
+    </script>
+</body>
+</html>

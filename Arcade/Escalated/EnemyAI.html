@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI NPC with Escalator (Fixed)</title>
+    <style>
+        body { margin: 0; overflow: hidden; } /* Prevent scrollbars */
+        /* Added outline: none to remove the visual focus indicator on the canvas */
+        canvas { display: block; outline: none; }
+    </style>
+</head>
+<body>
+    <!-- 
+      The script tag is now of type="module".
+      This allows us to use modern JavaScript 'import' statements.
+    -->
+    <script type="module">
+        // Import the main THREE.js library and the OrbitControls from a module-compatible CDN.
+        import * as THREE from 'https://cdn.skypack.dev/three@0.128.0';
+        import { OrbitControls } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/controls/OrbitControls.js';
+
+        // Basic Scene Setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Make the canvas focusable to receive keyboard events for player movement.
+        // The tabindex attribute is necessary for the canvas to capture key presses,
+        // especially when OrbitControls is active or when running inside an iframe.
+        renderer.domElement.setAttribute('tabindex', 0);
+
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 10, 7.5);
+        scene.add(directionalLight);
+
+        // Floor
+        const floorGeometry = new THREE.PlaneGeometry(20, 20);
+        const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
+        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = 0; // Ensure floor is at y=0
+        scene.add(floor);
+
+        // Player
+        const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+        const player = new THREE.Mesh(playerGeometry, playerMaterial);
+        player.position.set(0, 0.5, 0); // Start player at origin
+        scene.add(player);
+
+        // NPC
+        const npcGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const npcMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        const npc = new THREE.Mesh(npcGeometry, npcMaterial);
+        npc.position.set(5, 0.5, 5); // Start NPC away from player
+        scene.add(npc);
+
+        // Escalator parameters
+        const numSteps = 10;
+        const stepHeight = 0.4;
+        const stepDepth = 0.5;
+        const stepWidth = 2;
+        const escalatorStepSpeedY = 0.01; // Speed for step vertical movement
+        const escalatorStepSpeedZ = 0.01; // Speed for step horizontal movement
+
+        // Function to create an escalator
+        // 'direction': 1 for upward, -1 for downward
+        function createEscalator(position, direction, numSteps, stepHeight, stepDepth, stepWidth, material) {
+            const escalatorGroup = new THREE.Group();
+            const steps = [];
+            const stepGeometry = new THREE.BoxGeometry(stepWidth, 0.2, stepDepth);
+
+            for (let i = 0; i < numSteps; i++) {
+                const step = new THREE.Mesh(stepGeometry, material);
+                // Position steps relative to the group to form an incline
+                step.position.set(0, i * stepHeight, i * stepDepth);
+                escalatorGroup.add(step);
+                steps.push(step);
+            }
+            escalatorGroup.position.copy(position);
+            scene.add(escalatorGroup);
+            return { escalatorGroup, steps, direction };
+        }
+
+        // Downward Escalator (Yellow)
+        const escalator1Material = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+        const escalator1 = createEscalator(new THREE.Vector3(-5, 0.1, -5), -1, numSteps, stepHeight, stepDepth, stepWidth, escalator1Material);
+
+        // Upward Escalator (Cyan)
+        const escalator2Material = new THREE.MeshStandardMaterial({ color: 0x00ffff });
+        const escalator2 = createEscalator(new THREE.Vector3(5, 0.1, 5), 1, numSteps, stepHeight, stepDepth, stepWidth, escalator2Material);
+
+        // Second Floor
+        const secondFloorGeometry = new THREE.PlaneGeometry(10, 10);
+        const secondFloorMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
+        const secondFloor = new THREE.Mesh(secondFloorGeometry, secondFloorMaterial);
+        secondFloor.rotation.x = -Math.PI / 2;
+        // Position the second floor at the top of the upward escalator
+        const secondFloorBaseY = escalator2.escalatorGroup.position.y + numSteps * stepHeight;
+        secondFloor.position.set(
+            escalator2.escalatorGroup.position.x,
+            secondFloorBaseY,
+            escalator2.escalatorGroup.position.z + numSteps * stepDepth
+        );
+        scene.add(secondFloor);
+
+        // Camera setup - Adjusted to view both escalators and the second floor
+        camera.position.set(0, 10, 20);
+        camera.lookAt(new THREE.Vector3(0, 2, 0)); // Look towards the center of the scene
+
+        // OrbitControls for camera interaction
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // Smooth camera movement
+        controls.dampingFactor = 0.25;
+        // Configure mouse buttons: RMB for orbiting (rotation)
+        controls.mouseButtons = {
+            LEFT: null, // Disable left mouse button for rotation
+            MIDDLE: THREE.MOUSE.DOLLY, // Middle mouse button for zooming
+            RIGHT: THREE.MOUSE.ROTATE // Right mouse button for orbiting
+        };
+        controls.target.set(0, 2, 0); // Set the camera's target to the center of the scene
+
+        // Player movement variables
+        const playerSpeed = 0.1;
+        const keys = {};
+
+        // Event listeners for player movement
+        document.addEventListener('keydown', (event) => {
+            keys[event.key.toLowerCase()] = true;
+        });
+
+        document.addEventListener('keyup', (event) => {
+            keys[event.key.toLowerCase()] = false;
+        });
+
+        // NPC movement variables
+        const npcSpeed = 0.05;
+
+        // Function to get escalator interaction bounds
+        function getEscalatorBounds(escalatorGroup, numSteps, stepWidth, stepDepth, stepHeight) {
+            const groupPos = escalatorGroup.position;
+            // These bounds are approximate and cover the entire escalator area
+            return {
+                minX: groupPos.x - stepWidth / 2,
+                maxX: groupPos.x + stepWidth / 2,
+                minZ: groupPos.z - stepDepth, // Start of the escalator's Z span
+                maxZ: groupPos.z + numSteps * stepDepth + stepDepth, // End of the escalator's Z span
+                minY: groupPos.y,
+                maxY: groupPos.y + numSteps * stepHeight + 0.5 // Covers the height of the steps
+            };
+        }
+
+        // Function to handle object interaction with an escalator
+        function handleEscalatorInteraction(object, escalator) {
+            const bounds = getEscalatorBounds(escalator.escalatorGroup, numSteps, stepWidth, stepDepth, stepHeight);
+            const objectBottomY = object.position.y - object.geometry.parameters.height / 2;
+
+            // Check if the object is horizontally within the escalator's bounds
+            const isOnEscalatorHorizontal = (object.position.x > bounds.minX && object.position.x < bounds.maxX &&
+                                            object.position.z > bounds.minZ && object.position.z < bounds.maxZ);
+
+            if (isOnEscalatorHorizontal) {
+                // Check if the object is vertically aligned with the escalator steps
+                if (objectBottomY >= bounds.minY - 0.1 && objectBottomY <= bounds.maxY + 0.1) {
+                    // Object is on the escalator, apply movement based on direction
+                    if (escalator.direction === 1) { // Upward escalator
+                        object.position.y += escalatorStepSpeedY;
+                        object.position.z += escalatorStepSpeedZ;
+                    } else { // Downward escalator
+                        object.position.y -= escalatorStepSpeedY;
+                        object.position.z -= escalatorStepSpeedZ;
+                    }
+                }
+            }
+        }
+
+        // Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Update player position based on key presses
+            if (keys['w']) player.position.z -= playerSpeed;
+            if (keys['s']) player.position.z += playerSpeed;
+            if (keys['a']) player.position.x -= playerSpeed;
+            if (keys['d']) player.position.x += playerSpeed;
+
+            // Simple NPC AI: Move towards the player
+            const direction = new THREE.Vector3();
+            direction.subVectors(player.position, npc.position).normalize();
+            npc.position.add(direction.multiplyScalar(npcSpeed));
+
+            // Handle player and NPC interaction with escalators
+            handleEscalatorInteraction(player, escalator1);
+            handleEscalatorInteraction(player, escalator2);
+            handleEscalatorInteraction(npc, escalator1);
+            handleEscalatorInteraction(npc, escalator2);
+
+            // Clamp player/NPC Y position to prevent falling through floor or going infinitely high
+            player.position.y = Math.max(0.5, Math.min(player.position.y, secondFloorBaseY + 0.5));
+            npc.position.y = Math.max(0.5, Math.min(npc.position.y, secondFloorBaseY + 0.5));
+
+            // Escalator 1 (Downward) animation
+            for (let i = 0; i < escalator1.steps.length; i++) {
+                const step = escalator1.steps[i];
+                step.position.y -= escalatorStepSpeedY;
+                step.position.z -= escalatorStepSpeedZ;
+                // If step goes below the starting point, reset it to the top
+                if (step.position.y < -0.5) { // A threshold slightly below the lowest step
+                    step.position.y = (numSteps - 1) * stepHeight;
+                    step.position.z = (numSteps - 1) * stepDepth;
+                }
+            }
+
+            // Escalator 2 (Upward) animation
+            for (let i = 0; i < escalator2.steps.length; i++) {
+                const step = escalator2.steps[i];
+                step.position.y += escalatorStepSpeedY;
+                step.position.z += escalatorStepSpeedZ;
+                // If step goes above the top point, reset it to the bottom
+                if (step.position.y > (numSteps - 1) * stepHeight + 0.5) { // Check if step is above top
+                    step.position.y = 0; // Reset to bottom
+                    step.position.z = 0; // Reset to start of incline
+                }
+            }
+
+            // Update OrbitControls
+            controls.update();
+
+            renderer.render(scene, camera);
+        }
+
+        // Ensure animation starts after everything is ready
+        animate();
+
+        // Handle Window Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }, false);
+
+    </script>
+</body>
+</html>

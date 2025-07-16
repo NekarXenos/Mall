@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Off-Road Driving Sim</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/examples/jsm/controls/OrbitControls.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js",
+        "three/examples/jsm/math/ImprovedNoise.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/math/ImprovedNoise.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+    import { ImprovedNoise } from 'three/examples/jsm/math/ImprovedNoise.js';
+
+    let camera, scene, renderer, controls;
+    let terrainMesh, vehicle, clock;
+    const terrainSize = 200;
+    const terrainResolution = 128;
+    const vehicleSize = 2;
+    let velocity = new THREE.Vector3();
+
+    init();
+    animate();
+
+    function init() {
+      clock = new THREE.Clock(); // Initialize the clock
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xaaddff);
+
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 20, 40);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0, 0);
+      controls.update();
+
+      const light = new THREE.DirectionalLight(0xffffff, 1);
+      light.position.set(10, 20, 10);
+      scene.add(light);
+      scene.add(new THREE.AmbientLight(0x888888));
+
+      const geometry = new THREE.PlaneGeometry(terrainSize, terrainSize, terrainResolution, terrainResolution);
+      geometry.rotateX(-Math.PI / 2);
+
+      const noise = new ImprovedNoise();
+      const seed = Math.random() * 100;
+      for (let i = 0; i < geometry.attributes.position.count; i++) {
+        const x = geometry.attributes.position.getX(i);
+        const z = geometry.attributes.position.getZ(i);
+        const y = noise.noise(x / 10, z / 10, seed) * 5;
+        geometry.attributes.position.setY(i, y);
+      }
+      geometry.computeVertexNormals();
+
+      const material = new THREE.MeshStandardMaterial({ color: 0x228822 });
+      terrainMesh = new THREE.Mesh(geometry, material);
+      scene.add(terrainMesh);
+
+      const boxGeometry = new THREE.BoxGeometry(vehicleSize, vehicleSize * 0.5, vehicleSize);
+      const boxMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+      vehicle = new THREE.Mesh(boxGeometry, boxMaterial);
+      vehicle.position.set(0, getHeightAt(0, 0) + 1, 0); // position it on the terrain
+      scene.add(vehicle);
+
+      window.addEventListener('resize', onWindowResize);
+      document.addEventListener('keydown', onKeyDown);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function onKeyDown(event) {
+      const speed = 0.5;
+      switch (event.key) {
+        case 'w': velocity.z -= speed; break;
+        case 's': velocity.z += speed; break;
+        case 'a': velocity.x -= speed; break;
+        case 'd': velocity.x += speed; break;
+      }
+    }
+
+    function updateVehicle() {
+      vehicle.position.add(velocity.clone().multiplyScalar(clock.getDelta())); // Use delta time for consistent movement
+
+      const pos = vehicle.position;
+      const terrainY = getHeightAt(pos.x, pos.z);
+      vehicle.position.y = terrainY + 1;
+
+      velocity.multiplyScalar(0.9);
+    }
+
+    function getHeightAt(x, z) {
+      const geometry = terrainMesh.geometry;
+      const vertices = geometry.attributes.position;
+      const gridX = Math.floor((x + terrainSize / 2) / (terrainSize / terrainResolution));
+      const gridZ = Math.floor((z + terrainSize / 2) / (terrainSize / terrainResolution));
+      const index = gridZ * (terrainResolution + 1) + gridX;
+      if (index >= 0 && index < vertices.count) {
+          return vertices.getY(index);
+      }
+      return 0; // Default height if out of bounds
+    }
+    
+    function animate() {
+      requestAnimationFrame(animate);
+      updateVehicle();
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
+</html>
