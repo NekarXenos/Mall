@@ -696,40 +696,6 @@
             scene.add(deskGroup);
         }
         
-        function createDesignServicesTexture() {
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = 512;
-            canvas.height = 256; // Aspect ratio ~2:1, similar to monitor
-
-            // Background
-            context.fillStyle = '#050515'; // Dark blueish background
-            context.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Text properties
-            context.fillStyle = '#00aaff'; // Tron-like blue/cyan
-            context.font = 'bold 24px "Inter", sans-serif';
-            context.textAlign = 'left';
-            context.textBaseline = 'top';
-
-            const lines = [
-                '• Graphic Design',
-                '• Logo Design',
-                '• 3D Modeling'
-            ];
-            const lineHeight = 40;
-            const startX = 50;
-            const startY = 70;
-
-            for (let i = 0; i < lines.length; i++) {
-                context.fillText(lines[i], startX, startY + (i * lineHeight));
-            }
-
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.needsUpdate = true;
-            return texture;
-        }
-
         function createDeskItems() {
             const deskItemGrp = new THREE.Group();
             const deskTopY = 0.75;
@@ -739,12 +705,8 @@
             const monitorMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
 
             const blueprintTexture = textureLoader.load('images/blueprint.jpg');
-            const defaultScreenMaterial = new THREE.MeshStandardMaterial({ map: blueprintTexture });
+            const screenMaterial = new THREE.MeshStandardMaterial({ map: blueprintTexture });
             
-            // New material for the design services monitor
-            const designServicesTexture = createDesignServicesTexture();
-            const designServicesMaterial = new THREE.MeshStandardMaterial({ map: designServicesTexture });
-
             for(let i = -1; i <= 1; i++) {
                 const monitor = new THREE.Group();
                 const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.2, 16), monitorMaterial);
@@ -754,15 +716,7 @@
                 const screen = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.45, 0.02), monitorMaterial);
                 screen.position.y = deskTopY + 0.3;
                 
-                let display;
-                // The user said "a random desktop monitor". I'll choose the right one (i=1).
-                if (i === 1) { 
-                    display = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.43), designServicesMaterial);
-                    display.userData.isDesignRequest = true; // Flag for click event
-                } else {
-                    display = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.43), defaultScreenMaterial.clone());
-                }
-
+                const display = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.43), screenMaterial.clone());
                 display.position.z = 0.011;
                 display.userData.isMonitorDisplay = true;
                 monitorDisplays.push(display);
@@ -896,22 +850,10 @@
                 }
                 return;
             }
-
-            // Raycast from center of screen for interactive objects
-            raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-
-            // Check for monitor click first
+            // Raycast from center of screen for monitor click
             const monitorIntersects = raycaster.intersectObjects(monitorDisplays, false);
             if (monitorIntersects.length > 0) {
                 const display = monitorIntersects[0].object;
-
-                // Check if it's the special design request monitor
-                if (display.userData.isDesignRequest) {
-                    window.location.href = 'mailto:nekarx@gmail.com?subject=Design Services Inquiry';
-                    return; // Stop further processing
-                }
-
-                // Existing logic for other monitors
                 if (display.userData.isChanged) {
                     window.location.href = 'Xaena/index.html';
                 } else {
@@ -923,10 +865,10 @@
                         display.userData.isChanged = true; // Set the flag
                     });
                 }
-                return; // Click was on a monitor, so we are done.
+                return;
             }
-
-            // Otherwise, check for iCharacter click
+            // Otherwise, fallback to raycast from center (for edge cases)
+            raycaster.setFromCamera({ x: 0, y: 0 }, camera);
             const intersects = iCharacter.raycast(raycaster);
             let hit = intersects.length > 0;
             // If camera is inside the head, treat as hit
@@ -974,22 +916,6 @@
                 const buffer = 0.5;
                 camPos.x = Math.max(-ROOM_WIDTH/2 + buffer, Math.min(ROOM_WIDTH/2 - buffer, camPos.x));
                 camPos.z = Math.max(-ROOM_DEPTH/2 + buffer, Math.min(ROOM_DEPTH/2 - buffer, camPos.z));
-
-                // --- Desk Collision ---
-                const deskRadius = 1.5;
-                const deskBuffer = 0.4; // A bit smaller than wall buffer to avoid getting stuck
-                const distToDeskCenter = Math.sqrt(camPos.x * camPos.x + camPos.z * camPos.z);
-
-                // The desk is a semicircle in the x < 0 half-plane, centered at (0,0) on the XZ plane.
-                if (camPos.x < 0 && distToDeskCenter < deskRadius + deskBuffer) {
-                    // We are inside the desk's bounding circle on the wrong side.
-                    // Calculate the vector from the desk center to the camera position
-                    const collisionNormal = new THREE.Vector2(camPos.x, camPos.z).normalize();
-                    
-                    // Push the camera to the edge of the collision circle
-                    camPos.x = collisionNormal.x * (deskRadius + deskBuffer);
-                    camPos.z = collisionNormal.y * (deskRadius + deskBuffer);
-                }
             
             } else if (isMobile && icharPopup.style.display === 'none') { // Mobile movement only if popup is hidden
                 const moveSpeed = 0.5; // Base movement speed for mobile
@@ -1012,16 +938,6 @@
                 const buffer = 0.5;
                 camPos.x = Math.max(-ROOM_WIDTH/2 + buffer, Math.min(ROOM_WIDTH/2 - buffer, camPos.x));
                 camPos.z = Math.max(-ROOM_DEPTH/2 + buffer, Math.min(ROOM_DEPTH/2 - buffer, camPos.z));
-
-                // --- Desk Collision (Mobile) ---
-                const deskRadius = 1.5;
-                const deskBuffer = 0.4;
-                const distToDeskCenter = Math.sqrt(camPos.x * camPos.x + camPos.z * camPos.z);
-                if (camPos.x < 0 && distToDeskCenter < deskRadius + deskBuffer) {
-                    const collisionNormal = new THREE.Vector2(camPos.x, camPos.z).normalize();
-                    camPos.x = collisionNormal.x * (deskRadius + deskBuffer);
-                    camPos.z = collisionNormal.y * (deskRadius + deskBuffer);
-                }
             }
 
             
