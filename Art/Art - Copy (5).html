@@ -111,36 +111,6 @@
             transform: translateX(-50%); /* Center horizontally relative to its left edge */
         }
 
-        #ichar-hover-popup {
-            position: absolute;
-            top: calc(50% - 50px); /* Position above the aiming dot */
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(0,0,0,0.7);
-            color: white;
-            padding: 8px;
-            border-radius: 5px;
-            display: none;
-            pointer-events: none;
-            z-index: 999;
-            white-space: nowrap;
-        }
-
-        #exit-sign {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-family: "Doto", sans-serif;
-            font-size: 8rem;
-            font-weight: 700;
-            color: #ff4444;
-            text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000, 0 0 30px #ff0000, 0 0 40px #ff0000;
-            display: none;
-            pointer-events: none;
-            z-index: 102;
-        }
-
         /* Styles for the new artwork modal */
         #artwork-modal {
             display: none; /* Hidden by default */
@@ -318,8 +288,6 @@
     <div id="nav-arrow-left" class="nav-arrow">&lt;</div>
     <div id="nav-arrow-right" class="nav-arrow">&gt;</div>
 
-    <div id="exit-sign">EXIT</div>
-
     <!-- Blocker and Instructions for Pointer Lock -->
     <div id="blocker">
         <div id="instructions">
@@ -336,8 +304,6 @@
 
     <!-- Artwork Info Popup -->
     <div id="artwork-info-popup"></div>
-
-    <div id="ichar-hover-popup">Do you want to commission a painting?</div>
 
     <!-- Artwork Modal -->
     <div id="artwork-modal">
@@ -802,15 +768,13 @@
                 wallHeight,
                 wallThickness,
                 rotation, // Euler rotation for each segment
-                loadedTextures,
-                name
+                loadedTextures
             }) {
                 const materials = getRandomWallMaterialsForSet(4, loadedTextures);
                 for (let i = 0; i < 4; i++) {
                     // Use PlaneGeometry for correct texture mapping
                     const segmentGeo = new THREE.PlaneGeometry(segmentWidth, wallHeight);
                     const segment = new THREE.Mesh(segmentGeo, materials[i]);
-                    segment.userData.name = name; // Add name for raycasting
                     segment.receiveShadow = true; // Allow walls to receive shadows
                     // Position the plane so its center is at the correct spot
                     segment.position.copy(start).add(dir.clone().multiplyScalar(i));
@@ -833,8 +797,7 @@
                     wallHeight,
                     wallThickness,
                     rotation: new THREE.Euler(0, Math.PI, 0),
-                    loadedTextures,
-                    name: 'backWall'
+                    loadedTextures
                 });
                 // Front wall (Z = +halfRoom)
                 createWallSegments({
@@ -844,8 +807,7 @@
                     wallHeight,
                     wallThickness,
                     rotation: new THREE.Euler(0, 0, 0),
-                    loadedTextures,
-                    name: 'frontWall'
+                    loadedTextures
                 });
                 // Left wall (X = -halfRoom)
                 createWallSegments({
@@ -855,8 +817,7 @@
                     wallHeight,
                     wallThickness,
                     rotation: new THREE.Euler(0, Math.PI / 2, 0),
-                    loadedTextures,
-                    name: 'leftWall'
+                    loadedTextures
                 });
                 // Right wall (X = +halfRoom)
                 createWallSegments({
@@ -866,8 +827,7 @@
                     wallHeight,
                     wallThickness,
                     rotation: new THREE.Euler(0, -Math.PI / 2, 0),
-                    loadedTextures,
-                    name: 'rightWall'
+                    loadedTextures
                 });
             });
 
@@ -1506,50 +1466,43 @@
 
                 // Raycasting for artwork hover
                 raycaster.setFromCamera({ x: 0, y: 0 }, camera); // Ray from center of screen
-                const intersects = raycaster.intersectObjects(scene.children, true); // Check all objects
+                const artworkIntersects = raycaster.intersectObjects(interactiveArtworks, false); // Only check artworks
 
-                let artworkIntersected = false;
-                let frontWallIntersected = false;
+                if (artworkIntersects.length > 0) {
+                    const intersectedObject = artworkIntersects[0].object;
+                    const artworkData = intersectedObject.userData.artworkData;
+                    const artworkHeightWorld = intersectedObject.userData.targetHeight; // Get the stored height
 
-                if (intersects.length > 0) {
-                    const intersectedObject = intersects[0].object;
+                    // Check if the intersected object is an artwork and if it's a new hover target
+                    if (artworkData && currentHoveredArtwork !== artworkData) {
+                        currentHoveredArtwork = artworkData;
 
-                    // Check for artwork
-                    if (interactiveArtworks.includes(intersectedObject)) {
-                        const artworkData = intersectedObject.userData.artworkData;
-                        const artworkHeightWorld = intersectedObject.userData.targetHeight;
-                        if (artworkData && currentHoveredArtwork !== artworkData) {
-                            currentHoveredArtwork = artworkData;
-                            const artworkTopCenterWorldPosition = new THREE.Vector3();
-                            intersectedObject.getWorldPosition(artworkTopCenterWorldPosition);
-                            artworkTopCenterWorldPosition.y += artworkHeightWorld / 2;
-                            artworkTopCenterWorldPosition.project(camera);
-                            const x = (artworkTopCenterWorldPosition.x * 0.5 + 0.5) * window.innerWidth;
-                            const y = (-artworkTopCenterWorldPosition.y * 0.5 + 0.5) * window.innerHeight;
-                            if (artworkInfoPopup) {
-                                artworkInfoPopup.style.left = `${x + 15}px`;
-                                artworkInfoPopup.style.top = `${y - 15}px`;
-                                artworkInfoPopup.textContent = artworkData.name;
-                                artworkInfoPopup.style.display = 'block';
-                            }
+                        // Calculate the world position of the top center of the artwork
+                        const artworkTopCenterWorldPosition = new THREE.Vector3();
+                        intersectedObject.getWorldPosition(artworkTopCenterWorldPosition); // Get current world position of object's center
+                        artworkTopCenterWorldPosition.y += artworkHeightWorld / 2; // Move up to the top edge
+
+                        // Project this world position to 2D screen coordinates
+                        artworkTopCenterWorldPosition.project(camera);
+
+                        // Calculate screen coordinates
+                        const x = (artworkTopCenterWorldPosition.x * 0.5 + 0.5) * window.innerWidth;
+                        const y = (-artworkTopCenterWorldPosition.y * 0.5 + 0.5) * window.innerHeight;
+
+                        // Ensure artworkInfoPopup is defined before accessing its style
+                        if (artworkInfoPopup) {
+                            artworkInfoPopup.style.left = `${x + 15}px`; // Offset slightly to the right
+                            artworkInfoPopup.style.top = `${y - 15}px`; // Offset slightly upwards
+                            artworkInfoPopup.textContent = artworkData.name;
+                            artworkInfoPopup.style.display = 'block';
                         }
-                        artworkIntersected = true;
                     }
-
-                    // Check for front wall
-                    if (intersectedObject.userData.name === 'frontWall') {
-                        frontWallIntersected = true;
+                } else {
+                    // Ensure artworkInfoPopup is defined before accessing its style
+                    if (currentHoveredArtwork && artworkInfoPopup) {
+                        artworkInfoPopup.style.display = 'none';
+                        currentHoveredArtwork = null;
                     }
-                }
-
-                if (!artworkIntersected && currentHoveredArtwork && artworkInfoPopup) {
-                    artworkInfoPopup.style.display = 'none';
-                    currentHoveredArtwork = null;
-                }
-
-                const exitSign = document.getElementById('exit-sign');
-                if (exitSign) {
-                    exitSign.style.display = frontWallIntersected ? 'block' : 'none';
                 }
 
                 // Raycasting for digital art navigation arrows
@@ -1574,8 +1527,6 @@
 
                 // i-character animation and interaction
                 const iCharHead = iCharacterInteractiveMeshes[0];
-                const icharHoverPopup = document.getElementById('ichar-hover-popup'); // Get the popup element
-
                 if (iCharHead) {
                     // Bobbing animation
                     iCharHead.position.y = 1.2 + Math.sin(time * 0.002) * 0.05;
@@ -1587,11 +1538,9 @@
                     if (iCharIntersects.length > 0) {
                         iCharHead.material.emissiveIntensity = 1.5;
                         if (aimingDot) aimingDot.style.borderColor = '#00FF00';
-                        if (icharHoverPopup) icharHoverPopup.style.display = 'block'; // Show popup
                     } else {
                         iCharHead.material.emissiveIntensity = 0.7;
                         if (aimingDot) aimingDot.style.borderColor = 'white';
-                        if (icharHoverPopup) icharHoverPopup.style.display = 'none'; // Hide popup
                     }
                 }
 
