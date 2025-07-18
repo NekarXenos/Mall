@@ -23,11 +23,11 @@
         let animationTime = 0;
         const pathRadius = 5; // Size of the figure eight path
         const walkSpeed = 0.4; // Speed of movement along the path (rad/sec)
-        const limbAnimationSpeedFactor = 8; // Multiplier for limb swing frequency relative to path speed
-        const armSwingAmplitude = Math.PI / 8; // Math.PI / 5;
-        const legSwingAmplitude =  Math.PI / 6; // Math.PI / 4;
+        const limbAnimationSpeedFactor = 6; // Multiplier for limb swing frequency relative to path speed
+        const armSwingAmplitude = Math.PI / 5;
+        const legSwingAmplitude = Math.PI / 4;
         const forearmBendAmplitude = Math.PI / 7;
-        const calfBendAmplitude =  Math.PI / 6; // Math.PI / 7;
+        const calfBendAmplitude = Math.PI / 7;
 
         // State for shooting logic
         let characterState = 'walking'; // walking, aiming, shooting
@@ -35,8 +35,6 @@
         const actionInterval = 10; // seconds
         let aimTarget;
         let aimStartTime;
-        const aimTransitionDuration = 0.75; // seconds for the transition
-        let startAimRotations = {}; // To store rotations at the start of aiming
 
         let initialRotations = {};
         let leftArm, rightArm, leftForeArm, rightForeArm, leftLeg, rightLeg, leftCalf, rightCalf;
@@ -400,14 +398,6 @@
                 if (elapsedTime - lastActionTime > actionInterval) {
                     characterState = 'aiming';
                     aimStartTime = elapsedTime;
-
-                    // Store the current rotations to smoothly transition from them
-                    startAimRotations.leftArm = leftArm.rotation.clone();
-                    startAimRotations.rightArm = rightArm.rotation.clone();
-                    startAimRotations.leftForeArm = leftForeArm.rotation.clone();
-                    startAimRotations.rightForeArm = rightForeArm.rotation.clone();
-                    startAimRotations.character = characterGroup.quaternion.clone();
-
                     // Pick a random target on the ground plane
                     const targetX = Math.random() * GROUND_SIZE - GROUND_SIZE / 2;
                     const targetZ = Math.random() * GROUND_SIZE - GROUND_SIZE / 2;
@@ -433,7 +423,7 @@
                     // Limb animation
                     const limbCycleTime = animationTime * limbAnimationSpeedFactor;
                     const mainSwingAngle = Math.sin(limbCycleTime);
-                    const secondaryBendAngle = Math.sin(limbCycleTime - Math.PI /3);  // Math.sin(limbCycleTime - Math.PI / 3);
+                    const secondaryBendAngle = Math.sin(limbCycleTime - Math.PI / 3);
 
                     // Arms
                     leftArm.rotation.x = initialRotations.leftArm.x + mainSwingAngle * armSwingAmplitude;
@@ -442,36 +432,30 @@
                     rightForeArm.rotation.x = initialRotations.rightForeArm.x - secondaryBendAngle * forearmBendAmplitude;
 
                     // Legs
-                    const legSwingCenter = 0.1; // This value controls the center of the leg swing. 0 is symmetrical. >0 moves the swing backward. <0 moves it forward.
-                    leftLeg.rotation.x = legSwingCenter - mainSwingAngle * legSwingAmplitude;
+                    leftLeg.rotation.x = initialRotations.leftLeg.x - mainSwingAngle * legSwingAmplitude;
                     leftCalf.rotation.x = initialRotations.leftCalf.x + secondaryBendAngle * calfBendAmplitude;
-                    rightLeg.rotation.x = legSwingCenter + mainSwingAngle * legSwingAmplitude;
+                    rightLeg.rotation.x = initialRotations.rightLeg.x + mainSwingAngle * legSwingAmplitude;
                     rightCalf.rotation.x = initialRotations.rightCalf.x - secondaryBendAngle * calfBendAmplitude;
                 }
             } else if (characterState === 'aiming') {
                 // --- AIMING LOGIC ---
-                const aimProgress = Math.min((elapsedTime - aimStartTime) / aimTransitionDuration, 1);
+                // Stop movement, turn to target, raise gun
+                characterGroup.lookAt(aimTarget);
 
-                // Slerp character rotation towards the target
-                const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(
-                    new THREE.Matrix4().lookAt(aimTarget, characterGroup.position, characterGroup.up)
-                );
-                THREE.Quaternion.slerp(startAimRotations.character, targetQuaternion, characterGroup.quaternion, aimProgress);
-
-                // LERP arm rotations to aiming pose
-                leftArm.rotation.x = THREE.MathUtils.lerp(startAimRotations.leftArm.x, -Math.PI / 2.2, aimProgress);
-                rightArm.rotation.x = THREE.MathUtils.lerp(startAimRotations.rightArm.x, -Math.PI / 2.2, aimProgress);
-                leftForeArm.rotation.x = THREE.MathUtils.lerp(startAimRotations.leftForeArm.x, 0, aimProgress);
-                rightForeArm.rotation.x = THREE.MathUtils.lerp(startAimRotations.rightForeArm.x, 0, aimProgress);
-
-                // Keep legs in a neutral position (can also be transitioned if desired)
+                // Animate arms to aiming pose (overrides walking animation)
+                leftArm.rotation.x = -Math.PI / 2.2;
+                rightArm.rotation.x = -Math.PI / 2.2;
+                leftForeArm.rotation.x = 0;
+                rightForeArm.rotation.x = 0;
+                // Keep legs in a neutral position
                 leftLeg.rotation.x = initialRotations.leftLeg.x;
                 rightLeg.rotation.x = initialRotations.rightLeg.x;
                 leftCalf.rotation.x = initialRotations.leftCalf.x;
                 rightCalf.rotation.x = initialRotations.rightCalf.x;
 
-                // After the transition is complete, move to shooting
-                if (aimProgress >= 1) {
+
+                // After a delay, transition to shooting
+                if (elapsedTime - aimStartTime > 1.5) { // 1.5 seconds to aim
                     characterState = 'shooting';
                 }
             } else if (characterState === 'shooting') {

@@ -23,11 +23,11 @@
         let animationTime = 0;
         const pathRadius = 5; // Size of the figure eight path
         const walkSpeed = 0.4; // Speed of movement along the path (rad/sec)
-        const limbAnimationSpeedFactor = 6; // Multiplier for limb swing frequency relative to path speed
-        const armSwingAmplitude = Math.PI / 5;
-        const legSwingAmplitude = Math.PI / 4;
+        const limbAnimationSpeedFactor = 8; // Multiplier for limb swing frequency relative to path speed
+        const armSwingAmplitude = Math.PI / 8; // Math.PI / 5;
+        const legSwingAmplitude =  Math.PI / 6; // Math.PI / 4;
         const forearmBendAmplitude = Math.PI / 7;
-        const calfBendAmplitude = Math.PI / 7;
+        const calfBendAmplitude =  Math.PI / 6; // Math.PI / 7;
 
         // State for shooting logic
         let characterState = 'walking'; // walking, aiming, shooting
@@ -433,7 +433,7 @@
                     // Limb animation
                     const limbCycleTime = animationTime * limbAnimationSpeedFactor;
                     const mainSwingAngle = Math.sin(limbCycleTime);
-                    const secondaryBendAngle = Math.sin(limbCycleTime - Math.PI / 3);
+                    const secondaryBendAngle = Math.sin(limbCycleTime - Math.PI /3);  // Math.sin(limbCycleTime - Math.PI / 3);
 
                     // Arms
                     leftArm.rotation.x = initialRotations.leftArm.x + mainSwingAngle * armSwingAmplitude;
@@ -442,9 +442,10 @@
                     rightForeArm.rotation.x = initialRotations.rightForeArm.x - secondaryBendAngle * forearmBendAmplitude;
 
                     // Legs
-                    leftLeg.rotation.x = initialRotations.leftLeg.x - mainSwingAngle * legSwingAmplitude;
+                    const legSwingCenter = 0.1; // This value controls the center of the leg swing. 0 is symmetrical. >0 moves the swing backward. <0 moves it forward.
+                    leftLeg.rotation.x = legSwingCenter - mainSwingAngle * legSwingAmplitude;
                     leftCalf.rotation.x = initialRotations.leftCalf.x + secondaryBendAngle * calfBendAmplitude;
-                    rightLeg.rotation.x = initialRotations.rightLeg.x + mainSwingAngle * legSwingAmplitude;
+                    rightLeg.rotation.x = legSwingCenter + mainSwingAngle * legSwingAmplitude;
                     rightCalf.rotation.x = initialRotations.rightCalf.x - secondaryBendAngle * calfBendAmplitude;
                 }
             } else if (characterState === 'aiming') {

@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marching Cubes Planet Miner</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Import the MarchingCubes.js module -->
+    <script type="module" src="MarchingCubes.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #1a1a2e; color: #e0e0e0; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #message-box {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1.2em;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="message-box">Click or tap the planet to mine blob components!</div>
+    <script type="module">
+        // Import Marching Cubes lookup tables (assuming MarchingCubes.js exports them)
+        // Note: For MarchingCubes.js to be importable as a module, you might need to add 'export'
+        // keywords before EdgeVertexIndices, EdgeMasks, and TriangleTable if they are not already.
+        // For this example, we'll assume they are globally available or properly exported.
+        // If not, you might need to adjust MarchingCubes.js or manually copy the tables here.
+        // For simplicity and to use the provided MarchingCubes.js directly, I will assume it creates
+        // global variables. If it's a module, replace the direct usage with imports like:
+        // import { EdgeVertexIndices, EdgeMasks, TriangleTable } from './MarchingCubes.js';
+        // Given MarchingCubes.js is not a module but a script, we'll access them globally.
+        // If MarchingCubes.js was provided as an actual ES module, the import above would be correct.
+        // As it is, we will define a MarchingCubes utility function within this script.
+
+        // Helper function for Marching Cubes, integrating the lookup tables from MarchingCubes.js
+        // Assuming EdgeVertexIndices, EdgeMasks, TriangleTable are globally available after
+        // MarchingCubes.js is loaded, or we define them here for self-containment.
+        // For the purpose of this solution, I'll redefine them here to make the immersive self-contained.
+
+        // Lookup Tables for Marching Cubes (copied from MarchingCubes.js for self-containment)
+        const EdgeVertexIndices = [
+            [0, 1], [1, 3], [3, 2], [2, 0], [4, 5], [5, 7], [7, 6], [6, 4],
+            [0, 4], [1, 5], [3, 7], [2, 6],
+        ];
+
+        const EdgeMasks = [
+            0x0, 0x109, 0x203, 0x30a, 0x80c, 0x905, 0xa0f, 0xb06,
+            0x406, 0x50f, 0x605, 0x70c, 0xc0a, 0xd03, 0xe09, 0xf00,
+            0x190, 0x99, 0x393, 0x29a, 0x99c, 0x895, 0xb9f, 0xa96,
+            0x596, 0x49f, 0x795, 0x69c, 0xd9a, 0xc93, 0xf99, 0xe90,
+            0x230, 0x339, 0x33, 0x13a, 0xa3c, 0xb35, 0x83f, 0x936,
+            0x636, 0x73f, 0x435, 0x53c, 0xe3a, 0xf33, 0xc39, 0xd30,
+            0x3a0, 0x2a9, 0x1a3, 0xaa, 0xbac, 0xaa5, 0x9af, 0x8a6,
+            0x7a6, 0x6af, 0x5a5, 0x4ac, 0xfaa, 0xea3, 0xda9, 0xca0,
+            0x8c0, 0x9c9, 0xac3, 0xbca, 0xcc, 0x1c5, 0x2cf, 0x3c6,
+            0xcc6, 0xdcf, 0xec5, 0xfcc, 0x4ca, 0x5c3, 0x6c9, 0x7c0,
+            0x950, 0x859, 0xb53, 0xa5a, 0x15c, 0x55, 0x35f, 0x256,
+            0xd56, 0xc5f, 0xf55, 0xe5c, 0x55a, 0x453, 0x759, 0x650,
+            0xaf0, 0xbf9, 0x8f3, 0x9fa, 0x2fc, 0x3f5, 0xff, 0x1f6,
+            0xef6, 0xfff, 0xcf5, 0xdfc, 0x6fa, 0x7f3, 0x4f9, 0x5f0,
+            0xb60, 0xa69, 0x963, 0x86a, 0x36c, 0x265, 0x16f, 0x66,
+            0xf66, 0xe6f, 0xd65, 0xc6c, 0x76a, 0x663, 0x569, 0x460,
+            0x460, 0x569, 0x663, 0x76a, 0xc6c, 0xd65, 0xe6f, 0xf66,
+            0x66, 0x16f, 0x265, 0x36c, 0x86a, 0x963, 0xa69, 0xb60,
+            0x5f0, 0x4f9, 0x7f3, 0x6fa, 0xdfc, 0xcf5, 0xfff, 0xef6,
+            0x1f6, 0xff, 0x3f5, 0x2fc, 0x9fa, 0x8f3, 0xbf9, 0xaf0,
+            0x650, 0x759, 0x453, 0x55a, 0xe5c, 0xf55, 0xc5f, 0xd56,
+            0x256, 0x35f, 0x55, 0x15c, 0xa5a, 0xb53, 0x859, 0x950,
+            0x7c0, 0x6c9, 0x5c3, 0x4ca, 0xfcc, 0xec5, 0xdcf, 0xcc6,
+            0x3c6, 0x2cf, 0x1c5, 0xcc, 0xbca, 0xac3, 0x9c9, 0x8c0,
+            0xca0, 0xda9, 0xea3, 0xfaa, 0x4ac, 0x5a5, 0x6af, 0x7a6,
+            0x8a6, 0x9af, 0xaa5, 0xbac, 0xaa, 0x1a3, 0x2a9, 0x3a0,
+            0xd30, 0xc39, 0xf33, 0xe3a, 0x53c, 0x435, 0x73f, 0x636,
+            0x936, 0x83f, 0xb35, 0xa3c, 0x13a, 0x33, 0x339, 0x230,
+            0xe90, 0xf99, 0xc93, 0xd9a, 0x69c, 0x795, 0x49f, 0x596,
+            0xa96, 0xb9f, 0x895, 0x99c, 0x29a, 0x393, 0x99, 0x190,
+            0xf00, 0xe09, 0xd03, 0xc0a, 0x70c, 0x605, 0x50f, 0x406,
+            0xb06, 0xa0f, 0x905, 0x80c, 0x30a, 0x203, 0x109, 0x0,
+        ];
+
+        const TriangleTable = [
+            [ -1 ],
+            [ 0, 3, 8, -1 ], [ 0, 9, 1, -1 ], [ 3, 8, 1, 1, 8, 9, -1 ],
+            [ 2, 11, 3, -1 ], [ 8, 0, 11, 11, 0, 2, -1 ], [ 3, 2, 11, 1, 0, 9, -1 ],
+            [ 11, 1, 2, 11, 9, 1, 11, 8, 9, -1 ], [ 1, 10, 2, -1 ],
+            [ 0, 3, 8, 2, 1, 10, -1 ], [ 10, 2, 9, 9, 2, 0, -1 ],
+            [ 8, 2, 3, 8, 10, 2, 8, 9, 10, -1 ], [ 11, 3, 10, 10, 3, 1, -1 ],
+            [ 10, 0, 1, 10, 8, 0, 10, 11, 8, -1 ],
+            [ 9, 3, 0, 9, 11, 3, 9, 10, 11, -1 ], [ 8, 9, 11, 11, 9, 10, -1 ],
+            [ 4, 8, 7, -1 ], [ 7, 4, 3, 3, 4, 0, -1 ], [ 4, 8, 7, 0, 9, 1, -1 ],
+            [ 1, 4, 9, 1, 7, 4, 1, 3, 7, -1 ], [ 8, 7, 4, 11, 3, 2, -1 ],
+            [ 4, 11, 7, 4, 2, 11, 4, 0, 2, -1 ],
+            [ 0, 9, 1, 8, 7, 4, 11, 3, 2, -1 ],
+            [ 7, 4, 11, 11, 4, 2, 2, 4, 9, 2, 9, 1, -1 ],
+            [ 4, 8, 7, 2, 1, 10, -1 ],
+            [ 7, 4, 3, 3, 4, 0, 10, 2, 1, -1 ],
+            [ 10, 2, 9, 9, 2, 0, 7, 4, 8, -1 ],
+            [ 10, 2, 3, 10, 3, 4, 3, 7, 4, 9, 10, 4, -1 ],
+            [ 1, 10, 3, 3, 10, 11, 4, 8, 7, -1 ],
+            [ 10, 11, 1, 11, 7, 4, 1, 11, 4, 1, 4, 0, -1 ],
+            [ 7, 4, 8, 9, 3, 0, 9, 11, 3, 9, 10, 11, -1 ],
+            [ 7, 4, 11, 4, 9, 11, 9, 10, 11, -1 ],
+            [ 9, 4, 5, -1 ], [ 9, 4, 5, 8, 0, 3, -1 ], [ 4, 5, 0, 0, 5, 1, -1 ],
+            [ 5, 8, 4, 5, 3, 8, 5, 1, 3, -1 ], [ 9, 4, 5, 11, 3, 2, -1 ],
+            [ 2, 11, 0, 0, 11, 8, 5, 9, 4, -1 ],
+            [ 4, 5, 0, 0, 5, 1, 11, 3, 2, -1 ],
+            [ 5, 1, 4, 1, 2, 11, 4, 1, 11, 4, 11, 8, -1 ],
+            [ 1, 10, 2, 5, 9, 4, -1 ],
+            [ 9, 4, 5, 0, 3, 8, 2, 1, 10, -1 ],
+            [ 2, 5, 10, 2, 4, 5, 2, 0, 4, -1 ],
+            [ 10, 2, 5, 5, 2, 4, 4, 2, 3, 4, 3, 8, -1 ],
+            [ 11, 3, 10, 10, 3, 1, 4, 5, 9, -1 ],
+            [ 4, 5, 9, 10, 0, 1, 10, 8, 0, 10, 11, 8, -1 ],
+            [ 11, 3, 0, 11, 0, 5, 0, 4, 5, 10, 11, 5, -1 ],
+            [ 4, 5, 8, 5, 10, 8, 10, 11, 8, -1 ],
+            [ 8, 7, 9, 9, 7, 5, -1 ],
+            [ 3, 9, 0, 3, 5, 9, 3, 7, 5, -1 ],
+            [ 7, 0, 8, 7, 1, 0, 7, 5, 1, -1 ],
+            [ 7, 5, 3, 3, 5, 1, -1 ],
+            [ 5, 9, 7, 7, 9, 8, 2, 11, 3, -1 ],
+            [ 2, 11, 7, 2, 7, 9, 7, 5, 9, 0, 2, 9, -1 ],
+            [ 2, 11, 3, 7, 0, 8, 7, 1, 0, 7, 5, 1, -1 ],
+            [ 2, 11, 1, 11, 7, 1, 7, 5, 1, -1 ],
+            [ 8, 7, 9, 9, 7, 5, 2, 1, 10, -1 ],
+            [ 10, 2, 1, 3, 9, 0, 3, 5, 9, 3, 7, 5, -1 ],
+            [ 7, 5, 8, 5, 10, 2, 8, 5, 2, 8, 2, 0, -1 ],
+            [ 10, 2, 5, 2, 3, 5, 3, 7, 5, -1 ],
+            [ 8, 7, 5, 8, 5, 9, 11, 3, 10, 3, 1, 10, -1 ],
+            [ 5, 11, 7, 10, 11, 5, 1, 9, 0, -1 ],
+            [ 11, 5, 10, 7, 5, 11, 8, 3, 0, -1 ],
+            [ 5, 11, 7, 10, 11, 5, -1 ],
+            [ 6, 7, 11, -1 ], [ 7, 11, 6, 3, 8, 0, -1 ],
+            [ 6, 7, 11, 0, 9, 1, -1 ],
+            [ 9, 1, 8, 8, 1, 3, 6, 7, 11, -1 ],
+            [ 3, 2, 7, 7, 2, 6, -1 ],
+            [ 0, 7, 8, 0, 6, 7, 0, 2, 6, -1 ],
+            [ 6, 7, 2, 2, 7, 3, 9, 1, 0, -1 ],
+            [ 6, 7, 8, 6, 8, 1, 8, 9, 1, 2, 6, 1, -1 ],
+            [ 11, 6, 7, 10, 2, 1, -1 ],
+            [ 3, 8, 0, 11, 6, 7, 10, 2, 1, -1 ],
+            [ 0, 9, 2, 2, 9, 10, 7, 11, 6, -1 ],
+            [ 6, 7, 11, 8, 2, 3, 8, 10, 2, 8, 9, 10, -1 ],
+            [ 7, 10, 6, 7, 1, 10, 7, 3, 1, -1 ],
+            [ 8, 0, 7, 7, 0, 6, 6, 0, 1, 6, 1, 10, -1 ],
+            [ 7, 3, 6, 3, 0, 9, 6, 3, 9, 6, 9, 10, -1 ],
+            [ 6, 7, 10, 7, 8, 10, 8, 9, 10, -1 ],
+            [ 11, 6, 8, 8, 6, 4, -1 ],
+            [ 6, 3, 11, 6, 0, 3, 6, 4, 0, -1 ],
+            [ 11, 6, 8, 8, 6, 4, 1, 0, 9, -1 ],
+            [ 1, 3, 9, 3, 11, 6, 9, 3, 6, 9, 6, 4, -1 ],
+            [ 2, 8, 3, 2, 4, 8, 2, 6, 4, -1 ], [ 4, 0, 6, 6, 0, 2, -1 ],
+            [ 9, 1, 0, 2, 8, 3, 2, 4, 8, 2, 6, 4, -1 ],
+            [ 9, 1, 4, 1, 2, 4, 2, 6, 4, -1 ],
+            [ 4, 8, 6, 6, 8, 11, 1, 10, 2, -1 ],
+            [ 1, 10, 2, 6, 3, 11, 6, 0, 3, 6, 4, 0, -1 ],
+            [ 11, 6, 4, 11, 4, 8, 10, 2, 9, 2, 0, 9, -1 ],
+            [ 10, 4, 9, 6, 4, 10, 11, 2, 3, -1 ],
+            [ 4, 8, 3, 4, 3, 10, 3, 1, 10, 6, 4, 10, -1 ],
+            [ 1, 10, 0, 10, 6, 0, 6, 4, 0, -1 ],
+            [ 4, 10, 6, 9, 10, 4, 0, 8, 3, -1 ],
+            [ 4, 10, 6, 9, 10, 4, -1 ],
+            [ 6, 7, 11, 4, 5, 9, -1 ],
+            [ 4, 5, 9, 7, 11, 6, 3, 8, 0, -1 ],
+            [ 1, 0, 5, 5, 0, 4, 11, 6, 7, -1 ],
+            [ 11, 6, 7, 5, 8, 4, 5, 3, 8, 5, 1, 3, -1 ],
+            [ 3, 2, 7, 7, 2, 6, 9, 4, 5, -1 ],
+            [ 5, 9, 4, 0, 7, 8, 0, 6, 7, 0, 2, 6, -1 ],
+            [ 3, 2, 6, 3, 6, 7, 1, 0, 5, 0, 4, 5, -1 ],
+            [ 6, 1, 2, 5, 1, 6, 4, 7, 8, -1 ],
+            [ 10, 2, 1, 6, 7, 11, 4, 5, 9, -1 ],
+            [ 0, 3, 8, 4, 5, 9, 11, 6, 7, 10, 2, 1, -1 ],
+            [ 7, 11, 6, 2, 5, 10, 2, 4, 5, 2, 0, 4, -1 ],
+            [ 8, 4, 7, 5, 10, 6, 3, 11, 2, -1 ],
+            [ 9, 4, 5, 7, 10, 6, 7, 1, 10, 7, 3, 1, -1 ],
+            [ 10, 6, 5, 7, 8, 4, 1, 9, 0, -1 ],
+            [ 4, 3, 0, 7, 3, 4, 6, 5, 10, -1 ],
+            [ 10, 6, 5, 8, 4, 7, -1 ],
+            [ 9, 6, 5, 9, 11, 6, 9, 8, 11, -1 ],
+            [ 11, 6, 3, 3, 6, 0, 0, 6, 5, 0, 5, 9, -1 ],
+            [ 11, 6, 5, 11, 5, 0, 5, 1, 0, 8, 11, 0, -1 ],
+            [ 11, 6, 3, 6, 5, 3, 5, 1, 3, -1 ],
+            [ 9, 8, 5, 8, 3, 2, 5, 8, 2, 5, 2, 6, -1 ],
+            [ 5, 9, 6, 9, 0, 6, 0, 2, 6, -1 ],
+            [ 1, 6, 5, 2, 6, 1, 3, 0, 8, -1 ],
+            [ 1, 6, 5, 2, 6, 1, -1 ],
+            [ 2, 1, 10, 9, 6, 5, 9, 11, 6, 9, 8, 11, -1 ],
+            [ 9, 0, 1, 3, 11, 2, 5, 10, 6, -1 ],
+            [ 11, 0, 8, 2, 0, 11, 10, 6, 5, -1 ],
+            [ 3, 11, 2, 5, 10, 6, -1 ],
+            [ 1, 8, 3, 9, 8, 1, 5, 10, 6, -1 ],
+            [ 6, 5, 10, 0, 1, 9, -1 ],
+            [ 8, 3, 0, 5, 10, 6, -1 ],
+            [ 6, 5, 10, -1 ],
+            [ 10, 5, 6, -1 ], [ 0, 3, 8, 6, 10, 5, -1 ],
+            [ 10, 5, 6, 9, 1, 0, -1 ],
+            [ 3, 8, 1, 1, 8, 9, 6, 10, 5, -1 ],
+            [ 2, 11, 3, 6, 10, 5, -1 ],
+            [ 8, 0, 11, 11, 0, 2, 5, 6, 10, -1 ],
+            [ 1, 0, 9, 2, 11, 3, 6, 10, 5, -1 ],
+            [ 5, 6, 10, 11, 1, 2, 11, 9, 1, 11, 8, 9, -1 ],
+            [ 5, 6, 1, 1, 6, 2, -1 ],
+            [ 5, 6, 1, 1, 6, 2, 8, 0, 3, -1 ],
+            [ 6, 9, 5, 6, 0, 9, 6, 2, 0, -1 ],
+            [ 6, 2, 5, 2, 3, 8, 5, 2, 8, 5, 8, 9, -1 ],
+            [ 3, 6, 11, 3, 5, 6, 3, 1, 5, -1 ],
+            [ 8, 0, 1, 8, 1, 6, 1, 5, 6, 11, 8, 6, -1 ],
+            [ 11, 3, 6, 6, 3, 5, 5, 3, 0, 5, 0, 9, -1 ],
+            [ 5, 6, 9, 6, 11, 9, 11, 8, 9, -1 ],
+            [ 5, 6, 10, 7, 4, 8, -1 ],
+            [ 0, 3, 4, 4, 3, 7, 10, 5, 6, -1 ],
+            [ 5, 6, 10, 4, 8, 7, 0, 9, 1, -1 ],
+            [ 6, 10, 5, 1, 4, 9, 1, 7, 4, 1, 3, 7, -1 ],
+            [ 7, 4, 8, 6, 10, 5, 2, 11, 3, -1 ],
+            [ 10, 5, 6, 4, 11, 7, 4, 2, 11, 4, 0, 2, -1 ],
+            [ 4, 8, 7, 6, 10, 5, 3, 2, 11, 1, 0, 9, -1 ],
+            [ 1, 2, 10, 11, 7, 6, 9, 5, 4, -1 ],
+            [ 2, 1, 6, 6, 1, 5, 8, 7, 4, -1 ],
+            [ 0, 3, 7, 0, 7, 4, 2, 1, 6, 1, 5, 6, -1 ],
+            [ 8, 7, 4, 6, 9, 5, 6, 0, 9, 6, 2, 0, -1 ],
+            [ 7, 2, 3, 6, 2, 7, 5, 4, 9, -1 ],
+            [ 4, 8, 7, 3, 6, 11, 3, 5, 6, 3, 1, 5, -1 ],
+            [ 5, 0, 1, 4, 0, 5, 7, 6, 11, -1 ],
+            [ 9, 5, 4, 6, 11, 7, 0, 8, 3, -1 ],
+            [ 11, 7, 6, 9, 5, 4, -1 ],
+            [ 6, 10, 4, 4, 10, 9, -1 ],
+            [ 6, 10, 4, 4, 10, 9, 3, 8, 0, -1 ],
+            [ 0, 10, 1, 0, 6, 10, 0, 4, 6, -1 ],
+            [ 6, 10, 1, 6, 1, 8, 1, 3, 8, 4, 6, 8, -1 ],
+            [ 9, 4, 10, 10, 4, 6, 3, 2, 11, -1 ],
+            [ 2, 11, 8, 2, 8, 0, 6, 10, 4, 10, 9, 4, -1 ],
+            [ 11, 3, 2, 0, 10, 1, 0, 6, 10, 0, 4, 6, -1 ],
+            [ 6, 8, 4, 11, 8, 6, 2, 10, 1, -1 ],
+            [ 4, 1, 9, 4, 2, 1, 4, 6, 2, -1 ],
+            [ 3, 8, 0, 4, 1, 9, 4, 2, 1, 4, 6, 2, -1 ],
+            [ 6, 2, 4, 4, 2, 0, -1 ],
+            [ 3, 8, 2, 8, 4, 2, 4, 6, 2, -1 ],
+            [ 4, 6, 9, 6, 11, 3, 9, 6, 3, 9, 3, 1, -1 ],
+            [ 8, 6, 11, 4, 6, 8, 9, 0, 1, -1 ],
+            [ 11, 3, 6, 3, 0, 6, 0, 4, 6, -1 ],
+            [ 8, 6, 11, 4, 6, 8, -1 ],
+            [ 10, 7, 6, 10, 8, 7, 10, 9, 8, -1 ],
+            [ 3, 7, 0, 7, 6, 10, 0, 7, 10, 0, 10, 9, -1 ],
+            [ 6, 10, 7, 7, 10, 8, 8, 10, 1, 8, 1, 0, -1 ],
+            [ 6, 10, 7, 10, 1, 7, 1, 3, 7, -1 ],
+            [ 3, 2, 11, 10, 7, 6, 10, 8, 7, 10, 9, 8, -1 ],
+            [ 2, 9, 0, 10, 9, 2, 6, 11, 7, -1 ],
+            [ 0, 8, 3, 7, 6, 11, 1, 2, 10, -1 ],
+            [ 7, 6, 11, 1, 2, 10, -1 ],
+            [ 2, 1, 9, 2, 9, 7, 9, 8, 7, 6, 2, 7, -1 ],
+            [ 2, 7, 6, 3, 7, 2, 0, 1, 9, -1 ],
+            [ 8, 7, 0, 7, 6, 0, 6, 2, 0, -1 ],
+            [ 7, 2, 3, 6, 2, 7, -1 ],
+            [ 8, 1, 9, 3, 1, 8, 11, 7, 6, -1 ],
+            [ 11, 7, 6, 1, 9, 0, -1 ],
+            [ 6, 11, 7, 0, 8, 3, -1 ],
+            [ 11, 7, 6, -1 ],
+            [ 7, 11, 5, 5, 11, 10, -1 ],
+            [ 10, 5, 11, 11, 5, 7, 0, 3, 8, -1 ],
+            [ 7, 11, 5, 5, 11, 10, 0, 9, 1, -1 ],
+            [ 7, 11, 10, 7, 10, 5, 3, 8, 1, 8, 9, 1, -1 ],
+            [ 5, 2, 10, 5, 3, 2, 5, 7, 3, -1 ],
+            [ 5, 7, 10, 7, 8, 0, 10, 7, 0, 10, 0, 2, -1 ],
+            [ 0, 9, 1, 5, 2, 10, 5, 3, 2, 5, 7, 3, -1 ],
+            [ 9, 7, 8, 5, 7, 9, 10, 1, 2, -1 ],
+            [ 1, 11, 2, 1, 7, 11, 1, 5, 7, -1 ],
+            [ 8, 0, 3, 1, 11, 2, 1, 7, 11, 1, 5, 7, -1 ],
+            [ 7, 11, 2, 7, 2, 9, 2, 0, 9, 5, 7, 9, -1 ],
+            [ 7, 9, 5, 8, 9, 7, 3, 11, 2, -1 ],
+            [ 3, 1, 7, 7, 1, 5, -1 ],
+            [ 8, 0, 7, 0, 1, 7, 1, 5, 7, -1 ],
+            [ 0, 9, 3, 9, 5, 3, 5, 7, 3, -1 ],
+            [ 9, 7, 8, 5, 7, 9, -1 ],
+            [ 8, 5, 4, 8, 10, 5, 8, 11, 10, -1 ],
+            [ 0, 3, 11, 0, 11, 5, 11, 10, 5, 4, 0, 5, -1 ],
+            [ 1, 0, 9, 8, 5, 4, 8, 10, 5, 8, 11, 10, -1 ],
+            [ 10, 3, 11, 1, 3, 10, 9, 5, 4, -1 ],
+            [ 3, 2, 8, 8, 2, 4, 4, 2, 10, 4, 10, 5, -1 ],
+            [ 10, 5, 2, 5, 4, 2, 4, 0, 2, -1 ],
+            [ 5, 4, 9, 8, 3, 0, 10, 1, 2, -1 ],
+            [ 2, 10, 1, 4, 9, 5, -1 ],
+            [ 8, 11, 4, 11, 2, 1, 4, 11, 1, 4, 1, 5, -1 ],
+            [ 0, 5, 4, 1, 5, 0, 2, 3, 11, -1 ],
+            [ 0, 11, 2, 8, 11, 0, 4, 9, 5, -1 ],
+            [ 5, 4, 9, 2, 3, 11, -1 ],
+            [ 4, 8, 5, 8, 3, 5, 3, 1, 5, -1 ],
+            [ 0, 5, 4, 1, 5, 0, -1 ],
+            [ 5, 4, 9, 3, 0, 8, -1 ],
+            [ 5, 4, 9, -1 ],
+            [ 11, 4, 7, 11, 9, 4, 11, 10, 9, -1 ],
+            [ 0, 3, 8, 11, 4, 7, 11, 9, 4, 11, 10, 9, -1 ],
+            [ 11, 10, 7, 10, 1, 0, 7, 10, 0, 7, 0, 4, -1 ],
+            [ 3, 10, 1, 11, 10, 3, 7, 8, 4, -1 ],
+            [ 3, 2, 10, 3, 10, 4, 10, 9, 4, 7, 3, 4, -1 ],
+            [ 9, 2, 10, 0, 2, 9, 8, 4, 7, -1 ],
+            [ 3, 4, 7, 0, 4, 3, 1, 2, 10, -1 ],
+            [ 7, 8, 4, 10, 1, 2, -1 ],
+            [ 7, 11, 4, 4, 11, 9, 9, 11, 2, 9, 2, 1, -1 ],
+            [ 1, 9, 0, 4, 7, 8, 2, 3, 11, -1 ],
+            [ 7, 11, 4, 11, 2, 4, 2, 0, 4, -1 ],
+            [ 4, 7, 8, 2, 3, 11, -1 ],
+            [ 9, 4, 1, 4, 7, 1, 7, 3, 1, -1 ],
+            [ 7, 8, 4, 1, 9, 0, -1 ],
+            [ 3, 4, 7, 0, 4, 3, -1 ],
+            [ 7, 8, 4, -1 ],
+            [ 11, 10, 8, 8, 10, 9, -1 ],
+            [ 0, 3, 9, 3, 11, 9, 11, 10, 9, -1 ],
+            [ 1, 0, 10, 0, 8, 10, 8, 11, 10, -1 ],
+            [ 10, 3, 11, 1, 3, 10, -1 ],
+            [ 3, 2, 8, 2, 10, 8, 10, 9, 8, -1 ],
+            [ 9, 2, 10, 0, 2, 9, -1 ],
+            [ 8, 3, 0, 10, 1, 2, -1 ],
+            [ 2, 10, 1, -1 ],
+            [ 2, 1, 11, 1, 9, 11, 9, 8, 11, -1 ],
+            [ 11, 2, 3, 9, 0, 1, -1 ],
+            [ 11, 0, 8, 2, 0, 11, -1 ],
+            [ 3, 11, 2, -1 ],
+            [ 1, 8, 3, 9, 8, 1, -1 ],
+            [ 1, 9, 0, -1 ],
+            [ 8, 3, 0, -1 ],
+            [ -1 ],
+        ];
+
+
+        // Marching Cubes utility function
+        function generateMarchingCubesGeometry(grid, threshold, gridSize, blockSize) {
+            const vertices = [];
+            const normals = [];
+            const indices = [];
+            const resolution = gridSize; // Marching Cubes operates on a grid
+
+            // Function to get interpolated vertex position
+            function interpolateVertex(p1, p2, val1, val2, threshold) {
+                const mu = (threshold - val1) / (val2 - val1);
+                return new THREE.Vector3(
+                    p1.x + mu * (p2.x - p1.x),
+                    p1.y + mu * (p2.y - p1.y),
+                    p1.z + mu * (p2.z - p1.z)
+                );
+            }
+
+            // Iterate over each cell in the grid
+            for (let x = 0; x < resolution - 1; x++) {
+                for (let y = 0; y < resolution - 1; y++) {
+                    for (let z = 0; z < resolution - 1; z++) {
+                        // Get the 8 corner values of the current cube
+                        const cubeValues = new Array(8);
+                        const cubeCorners = new Array(8); // Store actual 3D positions of corners
+
+                        for (let i = 0; i < 8; i++) {
+                            const x_offset = (i & 1) >> 0;
+                            const y_offset = (i & 2) >> 1;
+                            const z_offset = (i & 4) >> 2;
+
+                            // Ensure we don't go out of bounds when accessing grid
+                            const gx = x + x_offset;
+                            const gy = y + y_offset;
+                            const gz = z + z_offset;
+
+                            cubeValues[i] = grid[gx][gy][gz];
+                            cubeCorners[i] = new THREE.Vector3(
+                                (gx - gridSize / 2 + 0.5) * blockSize,
+                                (gy - gridSize / 2 + 0.5) * blockSize,
+                                (gz - gridSize / 2 + 0.5) * blockSize
+                            );
+                        }
+
+                        // Determine the cube index from the thresholded values
+                        let cubeIndex = 0;
+                        if (cubeValues[0] < threshold) cubeIndex |= 1;
+                        if (cubeValues[1] < threshold) cubeIndex |= 2;
+                        if (cubeValues[2] < threshold) cubeIndex |= 4;
+                        if (cubeValues[3] < threshold) cubeIndex |= 8;
+                        if (cubeValues[4] < threshold) cubeIndex |= 16;
+                        if (cubeValues[5] < threshold) cubeIndex |= 32;
+                        if (cubeValues[6] < threshold) cubeIndex |= 64;
+                        if (cubeValues[7] < threshold) cubeIndex |= 128;
+
+                        // Get the triangulation case from TriangleTable
+                        const triangles = TriangleTable[cubeIndex];
+
+                        // Generate triangles
+                        for (let i = 0; triangles[i] !== -1; i += 3) {
+                            const edge1Index = triangles[i];
+                            const edge2Index = triangles[i + 1];
+                            const edge3Index = triangles[i + 2];
+
+                            const v1a = EdgeVertexIndices[edge1Index][0];
+                            const v1b = EdgeVertexIndices[edge1Index][1];
+                            const v2a = EdgeVertexIndices[edge2Index][0];
+                            const v2b = EdgeVertexIndices[edge2Index][1];
+                            const v3a = EdgeVertexIndices[edge3Index][0];
+                            const v3b = EdgeVertexIndices[edge3Index][1];
+
+                            const p1 = interpolateVertex(cubeCorners[v1a], cubeCorners[v1b], cubeValues[v1a], cubeValues[v1b], threshold);
+                            const p2 = interpolateVertex(cubeCorners[v2a], cubeCorners[v2b], cubeValues[v2a], cubeValues[v2b], threshold);
+                            const p3 = interpolateVertex(cubeCorners[v3a], cubeCorners[v3b], cubeValues[v3a], cubeValues[v3b], threshold);
+
+                            const currentVertexCount = vertices.length / 3;
+
+                            vertices.push(p1.x, p1.y, p1.z);
+                            vertices.push(p2.x, p2.y, p2.z);
+                            vertices.push(p3.x, p3.y, p3.z);
+
+                            indices.push(currentVertexCount, currentVertexCount + 1, currentVertexCount + 2);
+
+                            // Calculate face normal
+                            const cb = new THREE.Vector3().subVectors(p3, p2);
+                            const ab = new THREE.Vector3().subVectors(p1, p2);
+                            const normal = new THREE.Vector3().crossVectors(cb, ab).normalize();
+
+                            normals.push(normal.x, normal.y, normal.z);
+                            normals.push(normal.x, normal.y, normal.z);
+                            normals.push(normal.x, normal.y, normal.z);
+                        }
+                    }
+                }
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3)); // For lighting calculations
+            geometry.setIndex(indices);
+            geometry.computeVertexNormals(); // Recalculate normals for smoother appearance
+
+            return geometry;
+        }
+
+        // Set up basic Three.js scene components
+        let scene, camera, renderer, raycaster;
+        const pointer = new THREE.Vector2(); // Stores mouse/touch coordinates
+        let marchingCubesMesh; // The single mesh generated by marching cubes
+        let isDragging = false;
+        let previousMouseX = 0;
+        let previousMouseY = 0;
+        let rotationSpeed = 0.005;
+
+        // Voxel grid properties
+        const GRID_SIZE = 20; // Diameter of the planet in blocks (higher for more detail)
+        const BLOCK_SIZE = 1; // Logical size of each individual block for scaling
+        const PLANET_RADIUS_FACTOR = 0.8; // Adjust to make the initial sphere larger/smaller within the grid
+        const ISO_LEVEL = 0.5; // Isosurface threshold for Marching Cubes
+
+        // A 3D array to represent the voxel data (density values)
+        let voxelData = [];
+
+        /**
+         * Initializes the Three.js scene, camera, renderer, and lighting.
+         * Sets up event listeners for user interaction and window resizing.
+         */
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x282c34); // Dark background
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, GRID_SIZE * BLOCK_SIZE * 1.5); // Position camera away from the planet
+            camera.lookAt(0, 0, 0); // Look at the center of the scene
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 2); // Soft white light
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5); // Stronger directional light
+            directionalLight.position.set(5, 5, 5).normalize();
+            scene.add(directionalLight);
+
+            // Raycaster for mining
+            raycaster = new THREE.Raycaster();
+
+            // Generate the initial planet using Marching Cubes
+            generatePlanet();
+
+            // Event Listeners for interaction
+            renderer.domElement.addEventListener('pointerdown', onPointerDown);
+            renderer.domElement.addEventListener('pointermove', onPointerMove);
+            renderer.domElement.addEventListener('pointerup', onPointerUp);
+            renderer.domElement.addEventListener('pointerleave', onPointerUp); // End drag if mouse leaves canvas
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        /**
+         * Generates the initial voxel data for a spherical planet.
+         * Then calls updateMarchingCubesMesh to create the mesh.
+         */
+        function generatePlanet() {
+            // Initialize voxelData with density values
+            for (let x = 0; x < GRID_SIZE; x++) {
+                voxelData[x] = [];
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    voxelData[x][y] = [];
+                    for (let z = 0; z < GRID_SIZE; z++) {
+                        // Calculate distance from the center of the grid (normalized to 0-1 range)
+                        const center = GRID_SIZE / 2;
+                        const dx = (x - center + 0.5); // +0.5 to center the sampling point in the voxel
+                        const dy = (y - center + 0.5);
+                        const dz = (z - center + 0.5);
+
+                        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        const normalizedDist = dist / (GRID_SIZE / 2 * PLANET_RADIUS_FACTOR);
+
+                        // Use a smooth falloff function for density
+                        // Density is 1 (solid) near the center, 0 (empty) outside the radius
+                        voxelData[x][y][z] = Math.max(0, 1 - normalizedDist);
+                    }
+                }
+            }
+            updateMarchingCubesMesh();
+        }
+
+        /**
+         * Updates the Three.js mesh based on the current voxelData using Marching Cubes.
+         */
+        function updateMarchingCubesMesh() {
+            // Remove the old mesh if it exists
+            if (marchingCubesMesh) {
+                scene.remove(marchingCubesMesh);
+                marchingCubesMesh.geometry.dispose();
+                marchingCubesMesh.material.dispose();
+            }
+
+            // Generate new geometry using Marching Cubes
+            const geometry = generateMarchingCubesGeometry(voxelData, ISO_LEVEL, GRID_SIZE, BLOCK_SIZE);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x5a2d0a, // Earthy brown color
+                roughness: 0.7,
+                metalness: 0.2,
+                side: THREE.DoubleSide // Important for enclosed volumes
+            });
+
+            marchingCubesMesh = new THREE.Mesh(geometry, material);
+            scene.add(marchingCubesMesh);
+        }
+
+        /**
+         * Handles pointer down events for both mining and camera rotation.
+         * @param {PointerEvent} event - The pointerdown event.
+         */
+        function onPointerDown(event) {
+            isDragging = true;
+            previousMouseX = event.clientX;
+            previousMouseY = event.clientY;
+
+            // Only attempt to mine on left click or single touch
+            if (event.button === 0 || event.pointerType === 'touch') {
+                // Calculate pointer position in normalized device coordinates (-1 to +1)
+                pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+                pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+                // Update the raycaster with the camera and pointer position
+                raycaster.setFromCamera(pointer, camera);
+
+                // Check for intersections with the marching cubes mesh
+                const intersects = raycaster.intersectObjects([marchingCubesMesh]);
+
+                if (intersects.length > 0) {
+                    const intersectionPoint = intersects[0].point;
+
+                    // Convert world coordinates back to grid coordinates
+                    const halfGrid = GRID_SIZE / 2;
+                    const gridX = Math.floor(intersectionPoint.x / BLOCK_SIZE + halfGrid);
+                    const gridY = Math.floor(intersectionPoint.y / BLOCK_SIZE + halfGrid);
+                    const gridZ = Math.floor(intersectionPoint.z / BLOCK_SIZE + halfGrid);
+
+                    // Ensure coordinates are within bounds
+                    if (gridX >= 0 && gridX < GRID_SIZE &&
+                        gridY >= 0 && gridY < GRID_SIZE &&
+                        gridZ >= 0 && gridZ < GRID_SIZE) {
+                        mineBlock(gridX, gridY, gridZ);
+                    }
+                }
+            }
+        }
+
+        /**
+         * Handles pointer move events for camera rotation.
+         * @param {PointerEvent} event - The pointermove event.
+         */
+        function onPointerMove(event) {
+            if (!isDragging) return;
+
+            const deltaX = event.clientX - previousMouseX;
+            const deltaY = event.clientY - previousMouseY;
+
+            // Rotate the camera around the central point (0,0,0)
+            const axisX = new THREE.Vector3(0, 1, 0); // Y-axis for horizontal rotation
+            const axisY = new THREE.Vector3(1, 0, 0); // X-axis for vertical rotation
+
+            camera.position.applyAxisAngle(axisX, -deltaX * rotationSpeed);
+            camera.position.applyAxisAngle(axisY, -deltaY * rotationSpeed);
+            camera.lookAt(0, 0, 0); // Always look at the center of the planet
+
+            previousMouseX = event.clientX;
+            previousMouseY = event.clientY;
+        }
+
+        /**
+         * Handles pointer up events to stop camera rotation.
+         * @param {PointerEvent} event - The pointerup event.
+         */
+        function onPointerUp(event) {
+            isDragging = false;
+        }
+
+        /**
+         * Mines a specific "block" in the voxel data, setting its density to 0.
+         * Then regenerates the Marching Cubes mesh.
+         * @param {number} gridX - X coordinate in the voxel grid.
+         * @param {number} gridY - Y coordinate in the voxel grid.
+         * @param {number} gridZ - Z coordinate in the voxel grid.
+         */
+        function mineBlock(gridX, gridY, gridZ) {
+            // Set density to 0 (empty)
+            voxelData[gridX][gridY][gridZ] = 0;
+
+            // Regenerate the Marching Cubes mesh
+            updateMarchingCubesMesh();
+
+            // Optional: Add a simple particle effect (for visual feedback)
+            // Convert grid coordinates back to world coordinates for particle effect
+            const halfGrid = GRID_SIZE / 2;
+            const worldPosition = new THREE.Vector3(
+                (gridX - halfGrid + 0.5) * BLOCK_SIZE,
+                (gridY - halfGrid + 0.5) * BLOCK_SIZE,
+                (gridZ - halfGrid + 0.5) * BLOCK_SIZE
+            );
+            createMiningEffect(worldPosition);
+        }
+
+        /**
+         * Creates a small visual effect at the mining location.
+         * @param {THREE.Vector3} position - The world position where mining occurred.
+         */
+        function createMiningEffect(position) {
+            const particleCount = 10;
+            const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+            const particleMaterial = new THREE.MeshBasicMaterial({ color: 0xffa500 }); // Orange/yellow color for dust/sparks
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+                particle.position.copy(position);
+
+                // Give random velocity
+                particle.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.5,
+                    (Math.random() - 0.5) * 0.5,
+                    (Math.random() - 0.5) * 0.5
+                );
+                particle.decay = 0.02; // How fast the particle fades/shrinks
+
+                scene.add(particle);
+
+                // Animate particle removal after a short time
+                let opacity = 1;
+                const interval = setInterval(() => {
+                    if (opacity <= 0) {
+                        scene.remove(particle);
+                        clearInterval(interval);
+                    } else {
+                        particle.position.add(particle.velocity);
+                        particle.material.opacity = opacity;
+                        particle.material.transparent = true;
+                        particle.scale.multiplyScalar(0.95); // Shrink
+                        opacity -= particle.decay;
+                    }
+                }, 50);
+            }
+        }
+
+        /**
+         * Handles window resizing to maintain responsiveness.
+         */
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        /**
+         * The main animation loop for rendering the scene.
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        // Initialize the game when the window loads
+        window.onload = function() {
+            init();
+            animate();
+        };
+    </script>
+</body>
+</html>

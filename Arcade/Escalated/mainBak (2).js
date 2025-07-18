@@ -505,7 +505,7 @@ function createEnemy(x, y, z, floorIndex) {
     const adjustedY = floorY + desiredLift + mobsterFeetOffset;
 
     const initialPosition = new THREE.Vector3(x, adjustedY, z);
-    const mobster = new Mobster(scene, initialPosition, floorIndex, worldObjects);
+    const mobster = new Mobster(scene, initialPosition, floorIndex);
     enemies.push(mobster);
     // Add individual meshes of the mobster to worldObjects for collision detection
     mobster.getObject().traverse(child => {
@@ -586,14 +586,13 @@ function updateProjectiles(deltaTime) {
                 // Simple bounding box collision for now
                 const enemyBox = new THREE.Box3().setFromObject(enemy.getObject());
                 if (enemyBox.containsPoint(projectile.position)) {
-                    enemy.takeDamage(25); // Each hit does 25 damage
+                    const playerDirection = new THREE.Vector3();
+                    camera.getWorldDirection(playerDirection);
+                    enemy.takeDamage(25, playerDirection); // Each hit does 25 damage
                     if (enemy.health <= 0) {
                         // Mobster defeated
                         playerScore += 100; // Increase score
                         updateUI();
-                        const playerDirection = new THREE.Vector3();
-                        camera.getWorldDirection(playerDirection);
-                        enemy.fallAndDisappear(playerDirection); // Trigger fall animation and removal
                         enemies.splice(j, 1); // Remove from active enemies array
                     }
                     hitEnemy = true;

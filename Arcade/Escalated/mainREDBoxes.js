@@ -4,7 +4,6 @@ import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 import { addGarageCar, getLastGarageCar } from './car.js'; // Import the car model function
 import { calculateEscalatorBoost, animateActiveEscalatorSteps, updateEscalatorStepVisuals } from './escalator.js';
-import { Mobster } from './mobster.js'; // Import the Mobster class
 
 // IMPORTANT: Left is +X and Right is -X in this world
 // Up is +Y and Down is -Y in this world
@@ -219,7 +218,6 @@ function downgradeMaterial(mat) {
 function init() {
     clock = new THREE.Clock();
     scene = new THREE.Scene();
-    playerBox = new THREE.Box3(); // Initialize playerBox here
 
     // Set background to a dark blue for a moonlit night
     scene.background = new THREE.Color(0x010309); // Dark blue
@@ -441,6 +439,8 @@ const ENEMY_SETTINGS = {
 };
 
 const projectiles = []; // Array to store active projectiles
+const enemyGeometry = new THREE.BoxGeometry(ENEMY_SETTINGS.width, ENEMY_SETTINGS.height, ENEMY_SETTINGS.depth);
+const enemyMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 }); // Red for enemies
 const projectileGeometry = new THREE.SphereGeometry(ENEMY_SETTINGS.projectileSize, 6, 6);
 const projectileMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffff00, emissiveIntensity: 1 });
 
@@ -490,30 +490,48 @@ function createStandardLamp(x, y, z, floorIndex, lampIdSuffix, sceneRef, lightsA
 
 // --- Enemy Creation ---
 function createEnemy(x, y, z, floorIndex) {
-    const scaleFactor =   1.7 / 4.2; // 1.7 / 4.2; // Mobster's desired height / original model height
-    const mobsterFeetOffset = 3 * scaleFactor; //  3 * scaleFactor; // Distance from mobster's origin to its feet
-    const desiredLift = 0; //1.5; // Additional lift requested by user
-    const mobsterHeight = 1.7; // Mobster's actual height
-    const floorY = y; // The y position of the floor
+    const enemyMesh = new THREE.Mesh(enemyGeometry, enemyMaterial);
+    enemyMesh.position.set(x, y + ENEMY_SETTINGS.height / 2, z); // y is base, position at center
+    enemyMesh.castShadow = true;
+    enemyMesh.userData = {
+        type: 'enemy',
+        floorIndex: floorIndex,
+        lastShotTime: 0,
+        health: 100, // Basic health
+        gun: null, // To store the gun mesh
+        gunLength: 0 // To store gun length for tip calculation
+    };
 
-    // Calculate the correct initial Y position for the mobster's origin
-    // The mobster's origin (0,0,0) is at its waist/center. Its feet are at -3 units in its local Y. 
-    // After scaling, its feet are at -mobsterFeetOffset from its origin.
-    // We want the feet to be at floorY + desiredLift.
-    // So, mobster.position.y - mobsterFeetOffset = floorY + desiredLift
-    // mobster.position.y = floorY + desiredLift + mobsterFeetOffset
-    const adjustedY = floorY + desiredLift + mobsterFeetOffset;
+    // Create a gun for the enemy
+    const gunLength = 0.7; // Length of the gun barrel
+    const gunRadius = 0.05; // Radius of the gun barrel
+    const gunGeometry = new THREE.CylinderGeometry(gunRadius, gunRadius, gunLength, 8);
+    const gunMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 }); // Dark grey for the gun
+    const gunMesh = new THREE.Mesh(gunGeometry, gunMaterial);
 
-    const initialPosition = new THREE.Vector3(x, adjustedY, z);
-    const mobster = new Mobster(scene, initialPosition, floorIndex, worldObjects);
-    enemies.push(mobster);
-    // Add individual meshes of the mobster to worldObjects for collision detection
-    mobster.getObject().traverse(child => {
-        if (child.isMesh) {
-            worldObjects.push(child);
-        }
-    });
-    return mobster;
+    // Orient the gun: Cylinder's length is along its local Y by default.
+    // Rotate it to align with the enemy's forward direction (local -Z).
+    gunMesh.rotation.x = Math.PI / 2;
+
+    // Position the gun relative to the enemy.
+    // The gun's origin is at its center. We position it so the tip protrudes.
+    // Move it to the enemy's local +X (right side).
+    const gunXOffset = -((ENEMY_SETTINGS.width / 2) + gunRadius + 0.1); // Position further to the left (enemy's right)
+    const gunYOffset = ENEMY_SETTINGS.height * 0.2; // Position slightly higher than center
+    const gunZOffset = -(ENEMY_SETTINGS.depth / 2 + gunLength / 2 - 0.1); // Protrude forward, slightly more embed for stability
+    gunMesh.position.set(gunXOffset, gunYOffset, gunZOffset);
+
+    enemyMesh.add(gunMesh); // Add gun as a child of the enemy
+    enemyMesh.userData.gun = gunMesh;
+    enemyMesh.userData.gunLength = gunLength;
+
+    // Diagnostic log:
+    // console.log(`Enemy ID: ${enemyMesh.id}, Gun ID: ${gunMesh.id}, Gun Parent ID: ${gunMesh.parent ? gunMesh.parent.id : 'null'}, Gun Visible: ${gunMesh.visible}`);
+
+    scene.add(enemyMesh);
+    enemies.push(enemyMesh);
+    worldObjects.push(enemyMesh); // For collision with player movement and projectiles
+    return enemyMesh;
 }
 
 // --- Projectile Creation ---
@@ -570,85 +588,6 @@ function createLampshadeProjectile(startPosition, direction, firedByPlayer = fal
     scene.add(lampshadeProjectile);
     projectiles.push(lampshadeProjectile);
     worldObjects.push(lampshadeProjectile);
-}
-
-// --- Update Projectiles ---
-function updateProjectiles(deltaTime) {
-    for (let i = projectiles.length - 1; i >= 0; i--) {
-        const projectile = projectiles[i];
-        projectile.position.addScaledVector(projectile.userData.velocity, deltaTime);
-
-        // Check for collisions with enemies if fired by player
-        if (projectile.userData.firedByPlayer) {
-            let hitEnemy = false;
-            for (let j = enemies.length - 1; j >= 0; j--) {
-                const enemy = enemies[j];
-                // Simple bounding box collision for now
-                const enemyBox = new THREE.Box3().setFromObject(enemy.getObject());
-                if (enemyBox.containsPoint(projectile.position)) {
-                    enemy.takeDamage(25); // Each hit does 25 damage
-                    if (enemy.health <= 0) {
-                        // Mobster defeated
-                        playerScore += 100; // Increase score
-                        updateUI();
-                        const playerDirection = new THREE.Vector3();
-                        camera.getWorldDirection(playerDirection);
-                        enemy.fallAndDisappear(playerDirection); // Trigger fall animation and removal
-                        enemies.splice(j, 1); // Remove from active enemies array
-                    }
-                    hitEnemy = true;
-                    break; // Only hit one enemy per projectile
-                }
-            }
-
-            if (hitEnemy) {
-                scene.remove(projectile);
-                projectiles.splice(i, 1);
-                const worldIndex = worldObjects.indexOf(projectile);
-                if (worldIndex > -1) {
-                    worldObjects.splice(worldIndex, 1);
-                }
-                continue; // Move to next projectile
-            }
-        }
-
-        // Remove projectiles that are too old or out of bounds
-        if (clock.getElapsedTime() - projectile.userData.spawnTime > 5) { // 5 seconds lifespan
-            scene.remove(projectile);
-            projectiles.splice(i, 1);
-            const worldIndex = worldObjects.indexOf(projectile);
-            if (worldIndex > -1) {
-                worldObjects.splice(worldIndex, 1);
-            }
-        }
-    }
-}
-
-function updateUI() {
-    document.getElementById('score').innerText = `Score: ${playerScore}`;
-    document.getElementById('lives').innerText = `Lives: ${playerLives}`;
-    
-    // Calculate and display current floor
-    if ( controls && controls.isLocked) {
-        const playerCameraY = controls.getObject().position.y;
-        // Assuming playerHeight is the height from feet to camera. // This comment is fine.
-        // Floor index is based on the Y position of the player's feet.
-        const playerFeetY = playerCameraY - playerHeight;
-        const currentFloor = Math.round(playerFeetY / SETTINGS.floorHeight);
-        let floorText = `Floor: ${currentFloor}`;
-        if (currentFloor === 0) {
-            floorText = "Floor: G";
-        } else if (currentFloor < 0) {
-            floorText = `Floor: B${Math.abs(currentFloor)}`;
-        }
-        document.getElementById('floorLevel').innerText = floorText;
-    }
-    const lampshadeCountElement = document.getElementById('lampshadeCount');
-    if (lampshadeCountElement) {
-        lampshadeCountElement.innerText = `Lampshades: ${playerInventory.lampshades}`;
-    } else {
-        // console.warn("UI element 'lampshadeCount' not found."); // Optional warning
-    }
 }
 
 
@@ -4473,14 +4412,6 @@ function updatePlayer(deltaTime) {
         playerOnGround = false; // Allow the pop to happen
     }
 
-    // Update playerBox for collision detection
-    playerBox.setFromCenterAndSize(
-        controls.getObject().position,
-        new THREE.Vector3(0.5, playerHeight, 0.5)
-    );
-    playerBox.min.y = controls.getObject().position.y - playerHeight;
-    playerBox.max.y = controls.getObject().position.y;
-
     // Apply gravity
     if (!playerOnGround) {
         // If player is jumping (initiated by escalatorResult or normal jump) OR is completely off escalator steps
@@ -4507,27 +4438,27 @@ function updatePlayer(deltaTime) {
     // Apply player's own XZ movement ONLY IF NOT on an escalator step
     // (because calculateEscalatorBoost now incorporates player XZ intent when on escalator)
     if (!escalatorResult.onEscalator) {
-        const originalPositionXZ = controls.getObject().position.clone();
-        controls.getObject().position.x += playerIntentHorizontalDisplacement.x;
+        const originalPositionXZ = cameraObject.position.clone();
+        cameraObject.position.x += playerIntentHorizontalDisplacement.x;
         if (checkCollision()) {
-            controls.getObject().position.x = originalPositionXZ.x;
+            cameraObject.position.x = originalPositionXZ.x;
         }
-        controls.getObject().position.z += playerIntentHorizontalDisplacement.z;
+        cameraObject.position.z += playerIntentHorizontalDisplacement.z;
         if (checkCollision()) {
-            controls.getObject().position.z = originalPositionXZ.z;
+            cameraObject.position.z = originalPositionXZ.z;
         }
     }
 
     // --- Vertical Movement & Ground Check ---
-    const originalPositionY = controls.getObject().position.y; // Define originalPositionY before Y movement
-    controls.getObject().position.y += playerVelocity.y * deltaTime;
+    const originalPositionY = cameraObject.position.y; // Define originalPositionY before Y movement
+    cameraObject.position.y += playerVelocity.y * deltaTime;
 
     // --- Player Stomp Enemy Check ---
     if (playerVelocity.y < 0) { // Player is moving downwards
         const playerFeetOffset = 0.1; // How far below the camera position to check for feet
         const playerStompBoxSize = new THREE.Vector3(0.4, 0.2, 0.4); // Small box for player's feet
         const playerFeetPosition = new THREE.Vector3(
-            controls.getObject().position.x,
+            cameraObject.position.x,
             cameraObject.position.y - playerHeight + playerFeetOffset, // Positioned at player's feet
             cameraObject.position.z
         );
@@ -4535,22 +4466,11 @@ function updatePlayer(deltaTime) {
 
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
-            const enemyGroup = enemy.getObject(); // Get the Mobster's THREE.Group
-
-            let enemyMeshForCollision = null;
-            enemyGroup.traverse(child => {
-                if (child.isMesh) {
-                    enemyMeshForCollision = child;
-                }
-            });
-
-            if (!enemyMeshForCollision) continue; // Skip if no mesh found in group
-
-            if (!enemyMeshForCollision.geometry.boundingBox) enemyMeshForCollision.geometry.computeBoundingBox();
-            const enemyBox = new THREE.Box3().copy(enemyMeshForCollision.geometry.boundingBox).applyMatrix4(enemyMeshForCollision.matrixWorld);
+            if (!enemy.geometry.boundingBox) enemy.geometry.computeBoundingBox();
+            const enemyBox = new THREE.Box3().copy(enemy.geometry.boundingBox).applyMatrix4(enemy.matrixWorld);
 
             // Define a small "stompable" area on top of the enemy
-            const enemyTopCenter = new THREE.Vector3(enemyGroup.position.x, enemyBox.max.y - 0.1, enemyGroup.position.z); // Slightly below the actual top
+            const enemyTopCenter = new THREE.Vector3(enemy.position.x, enemyBox.max.y - 0.1, enemy.position.z); // Slightly below the actual top
             const enemyStompAreaSize = new THREE.Vector3(ENEMY_SETTINGS.width, 0.2, ENEMY_SETTINGS.depth);
             const enemyStompBox = new THREE.Box3().setFromCenterAndSize(enemyTopCenter, enemyStompAreaSize);
 
@@ -4796,33 +4716,16 @@ function updatePlayer(deltaTime) {
 
 // Helper function to check if player is on a mesh (AABB check)
 function isPlayerOnMesh(playerPos, mesh) {
-    // Helper function to check collision with an individual mesh
-    function checkIndividualMesh(obj) {
-        if (!obj.isMesh) return false;
-
-        if (!obj.geometry.boundingBox) {
-            obj.geometry.computeBoundingBox();
-        }
-        const meshBox = obj.geometry.boundingBox.clone().applyMatrix4(obj.matrixWorld);
-        // Use a small box for the player feet
-        const playerBox = new THREE.Box3().setFromCenterAndSize(
-            new THREE.Vector3(playerPos.x, playerPos.y - playerHeight / 2, playerPos.z),
-            new THREE.Vector3(0.5, 0.2, 0.5)
-        );
-        return meshBox.intersectsBox(playerBox);
+    if (!mesh.geometry.boundingBox) {
+        mesh.geometry.computeBoundingBox();
     }
-
-    if (mesh.isGroup) {
-        let onMesh = false;
-        mesh.traverse(child => {
-            if (checkIndividualMesh(child)) {
-                onMesh = true;
-            }
-        });
-        return onMesh;
-    } else {
-        return checkIndividualMesh(mesh);
-    }
+    const meshBox = mesh.geometry.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
+    // Use a small box for the player feet
+    const playerBox = new THREE.Box3().setFromCenterAndSize(
+        new THREE.Vector3(playerPos.x, playerPos.y - playerHeight / 2, playerPos.z),
+        new THREE.Vector3(0.5, 0.2, 0.5)
+    );
+    return meshBox.intersectsBox(playerBox);
 }
 
 function checkCollision() {
@@ -4834,150 +4737,243 @@ function checkCollision() {
     playerBox.min.y = playerPosition.y - playerHeight;
     playerBox.max.y = playerPosition.y;
 
-    // Helper function to check collision with an individual object
-    function checkObjectCollision(obj) {
-        if (obj.isMesh) {
-            if (obj.geometry.boundingBox) {
-                const objectWorldBox = new THREE.Box3().copy(obj.geometry.boundingBox).applyMatrix4(obj.matrixWorld);
-                if (playerBox.intersectsBox(objectWorldBox)) {
-                    return true;
-                }
-            } else {
-                const tempBox = new THREE.Box3().setFromObject(obj);
-                if (playerBox.intersectsBox(tempBox)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
     for (const object of worldObjects) {
-        if (object.isGroup) {
-            // If it's a group, iterate through its children
-            let collisionFound = false;
-            object.traverse(child => {
-                if (checkObjectCollision(child)) {
-                    collisionFound = true;
-                }
-            });
-            if (collisionFound) return true;
-        } else {
-            // If it's a single mesh, check directly
-            if (checkObjectCollision(object)) {
-                return true;
+        if (object.geometry.boundingBox) { // Check if boundingBox is precomputed
+            const objectWorldBox = new THREE.Box3().copy(object.geometry.boundingBox).applyMatrix4(object.matrixWorld);
+            if (playerBox.intersectsBox(objectWorldBox)) {
+                 //console.log("Collision detected with:", object);
+                return true; // Collision detected
             }
+        } else {
+             // Fallback if no precomputed boundingBox (less efficient)
+             const tempBox = new THREE.Box3().setFromObject(object);
+             if(playerBox.intersectsBox(tempBox)){
+                 //console.log("Collision detected (fallback) with:", object);
+                 return true;
+             }
         }
     }
     return false; // No collision
 }
 
-function updateEnemies(delta) {
-    const playerPosition = new THREE.Vector3();
-    controls.getObject().getWorldPosition(playerPosition);
+function updateUI() {
+    document.getElementById('score').innerText = `Score: ${playerScore}`;
+    document.getElementById('lives').innerText = `Lives: ${playerLives}`;
+    
+    // Calculate and display current floor
+    if ( controls && controls.isLocked) {
+        const playerCameraY = controls.getObject().position.y;
+        // Assuming playerHeight is the height from feet to camera. // This comment is fine.
+        // Floor index is based on the Y position of the player's feet.
+        const playerFeetY = playerCameraY - playerHeight;
+        const currentFloor = Math.round(playerFeetY / SETTINGS.floorHeight);
+        let floorText = `Floor: ${currentFloor}`;
+        if (currentFloor === 0) {
+            floorText = "Floor: G";
+        } else if (currentFloor < 0) {
+            floorText = `Floor: B${Math.abs(currentFloor)}`;
+        }
+        document.getElementById('floorLevel').innerText = floorText;
+    }
+    const lampshadeCountElement = document.getElementById('lampshadeCount');
+    if (lampshadeCountElement) {
+        lampshadeCountElement.innerText = `Lampshades: ${playerInventory.lampshades}`;
+    } else {
+        // console.warn("UI element 'lampshadeCount' not found."); // Optional warning
+    }
+}
+
+
+function updateEnemies(deltaTime) {
+    if (!controls.isLocked || !camera) return; // Ensure camera and controls are ready
+
+    const playerCameraObject = controls.getObject();
+    const playerWorldPosition = new THREE.Vector3();
+    playerCameraObject.getWorldPosition(playerWorldPosition);
+
+    const playerBodyCenter = playerWorldPosition.clone();
+    playerBodyCenter.y -= playerHeight / 2;
 
     enemies.forEach(enemy => {
-        if (enemy.health <= 0) return; // Skip dead enemies
+        if (enemy.userData.health <= 0) return;
 
-        const enemyPosition = new THREE.Vector3();
-        enemy.getObject().getWorldPosition(enemyPosition);
+        const enemyPosition = enemy.position.clone();
+        const distanceToPlayer = enemyPosition.distanceTo(playerBodyCenter);
 
-        const distanceToPlayer = playerPosition.distanceTo(enemyPosition);
-
-        if (distanceToPlayer < ENEMY_SETTINGS.activationRadius) {
-            // Simple line-of-sight check
-            const directionToPlayer = playerPosition.clone().sub(enemyPosition).normalize();
-            const raycaster = new THREE.Raycaster(enemyPosition, directionToPlayer, 0, ENEMY_SETTINGS.losMaxDistance);
-            const intersects = raycaster.intersectObjects(worldObjects, true);
-
-            let isPlayerVisible = false;
-            if (intersects.length > 0) {
-                const firstIntersected = intersects[0].object;
-                // Check if the first intersected object is the player or part of the player
-                if (firstIntersected === playerBox || (firstIntersected.parent && firstIntersected.parent === playerBox)) {
-                    isPlayerVisible = true;
-                }
-            }
-
-            if (isPlayerVisible) {
-                enemy.aimAt(playerPosition);
-                const now = clock.getElapsedTime();
-                if (now - enemy.lastShotTime > ENEMY_SETTINGS.fireRate / 1000) {
-                    enemy.shoot();
-                    enemy.lastShotTime = now;
-
-                    // Create a projectile from the enemy's gun
-                    const projectileStartPosition = new THREE.Vector3();
-                    enemy.gunGroup.getWorldPosition(projectileStartPosition);
-                    createProjectile(projectileStartPosition, directionToPlayer, false, enemy.getObject());
-                }
-            } else {
-                enemy.stand();
-            }
-        } else {
-            enemy.stand();
+        if (distanceToPlayer > ENEMY_SETTINGS.activationRadius) {
+            return;
         }
-        enemy.update(delta);
+
+        const lookAtTarget = playerBodyCenter.clone();
+        lookAtTarget.y = enemyPosition.y;
+        enemy.lookAt(lookAtTarget);
+
+        const rayOrigin = enemyPosition.clone();
+        rayOrigin.y += ENEMY_SETTINGS.height * 0.4; // Enemy "eye" level
+
+        const directionToPlayer = playerBodyCenter.clone().sub(rayOrigin).normalize();
+        const raycaster = new THREE.Raycaster(rayOrigin, directionToPlayer, 0.1, ENEMY_SETTINGS.losMaxDistance);
+
+        const obstacles = worldObjects.filter(obj => obj !== enemy && obj.userData.type !== 'projectile' && obj !== playerCameraObject.parent && obj !== camera);
+        const intersects = raycaster.intersectObjects(obstacles, true);
+
+        let playerInLOS = true;
+        if (intersects.length > 0) {
+            if (intersects[0].distance < distanceToPlayer - 0.5) { // 0.5 tolerance
+                playerInLOS = false;
+            }
+        }
+
+        if (playerInLOS && distanceToPlayer <= ENEMY_SETTINGS.losMaxDistance) {
+            const currentTime = clock.getElapsedTime() * 1000;
+            if (currentTime > enemy.userData.lastShotTime + ENEMY_SETTINGS.fireRate) {
+                enemy.userData.lastShotTime = currentTime;
+
+                let firePosition;
+                const gun = enemy.userData.gun;
+                const storedGunLength = enemy.userData.gunLength;
+
+                if (gun && storedGunLength > 0) {
+                    // Projectile emits from the tip of the gun.
+                    // The gun's local Z+ axis is its "forward" after rotation.
+                    const localTipPosition = new THREE.Vector3(0, 0, storedGunLength / 2);
+                    firePosition = gun.localToWorld(localTipPosition.clone()).addScaledVector(directionToPlayer, 0.1); // Add small offset forward
+                } else {
+                    // Fallback if gun isn't set up (shouldn't happen with the new code)
+                    firePosition = enemy.position.clone();
+                    const forwardVector = new THREE.Vector3(0, 0, -1); // Enemy's local forward
+                    forwardVector.applyQuaternion(enemy.quaternion);
+                    firePosition.addScaledVector(forwardVector, ENEMY_SETTINGS.depth / 2 + 0.1); // Spawn slightly in front
+                }
+
+                createProjectile(firePosition, directionToPlayer, false, enemy);
+            }
+        }
     });
 }
 
-function handleCollisions() {
-    const playerPosition = new THREE.Vector3();
-    controls.getObject().getWorldPosition(playerPosition);
+function updateProjectiles(deltaTime) {
+    const playerCameraPosition = controls.getObject().position;
+    const playerBodyCenter = playerCameraPosition.clone();
+    playerBodyCenter.y -= playerHeight / 2;
+    const sceneRemoveThreshold = 100; // Define the threshold for removing out-of-bounds projectiles
+
+    const playerCollisionBox = new THREE.Box3().setFromCenterAndSize(
+        playerBodyCenter,
+        new THREE.Vector3(0.7, playerHeight, 0.7) // Player's collision box, adjust size as needed
+    );
 
     for (let i = projectiles.length - 1; i >= 0; i--) {
         const projectile = projectiles[i];
-        const projectilePosition = projectile.position;
+        let projectileNeedsRemoval = false;
+        let createHoleAt = null;
+        let holeNormal = null;
 
-        // Simplified collision detection for projectiles
-        const raycaster = new THREE.Raycaster(projectilePosition, projectile.userData.velocity.clone().normalize(), 0, 1);
-        const intersects = raycaster.intersectObjects(worldObjects, true);
+        projectile.position.addScaledVector(projectile.userData.velocity, deltaTime);
+        const projectileBox = new THREE.Box3().setFromObject(projectile); // Calculate once per projectile
 
-        if (intersects.length > 0) {
-            const intersectedObject = intersects[0].object;
+        if (clock.getElapsedTime() - projectile.userData.spawnTime > 5) { // 5 seconds lifetime
+            projectileNeedsRemoval = true;
+        }
 
-            // Avoid projectile hitting its firer immediately
-            if (intersectedObject === projectile.userData.firer) {
-                continue;
-            }
+        if (projectile.position.x > sceneRemoveThreshold || projectile.position.x < -sceneRemoveThreshold
+            || projectile.position.y > sceneRemoveThreshold || projectile.position.y < -sceneRemoveThreshold
+            || projectile.position.z > sceneRemoveThreshold || projectile.position.z < -sceneRemoveThreshold) {
+            projectileNeedsRemoval = true;
+        }
 
-            // Projectile hits something
-            scene.remove(projectile);
-            projectiles.splice(i, 1);
-            const worldIndexProjectile = worldObjects.indexOf(projectile);
-            if (worldIndexProjectile > -1) {
-                worldObjects.splice(worldIndexProjectile, 1);
-            }
+        // Reason 3: Collision (if not already flagged for removal)
+        if (!projectileNeedsRemoval) {
+            // Check collision with player if fired by enemy
+            if (!projectile.userData.firedByPlayer && projectileBox.intersectsBox(playerCollisionBox)) {
+                applyDamageToPlayer(10); // Example damage
+                projectileNeedsRemoval = true;
+                createHoleAt = null; // No bullet hole on player
+            } else {
+                // Check collision with world objects (including enemies)
+                for (let j = worldObjects.length - 1; j >= 0; j--) {
+                    const wo = worldObjects[j];
 
-            if (projectile.userData.firedByPlayer) {
-                const enemy = enemies.find(e => e.getObject().children.includes(intersectedObject) || e.getObject() === intersectedObject);
-                if (enemy) {
-                    enemy.takeDamage(25); // Example damage
-                    if (enemy.health <= 0) {
-                        const enemyIndex = enemies.indexOf(enemy);
-                        if (enemyIndex > -1) {
-                            enemies.splice(enemyIndex, 1);
+                    if (wo === projectile || wo.userData.type === 'projectile' || !wo.geometry || !wo.geometry.boundingBox) {
+                        continue;
+                    }
+
+                    // Explicitly skip collision check if the world object is the firer's gun
+                    const projFirer = projectile.userData.firer;
+                    if (projFirer && projFirer.userData.gun && wo === projFirer.userData.gun) {
+                         continue; // Skip collision with the firer's own gun
+                    }
+                     // Prevent projectile from colliding with the entity that fired it immediately
+                    if (projectile.userData.firedByPlayer && wo === camera.parent) continue; // Player projectile vs player
+                    // Add similar check if enemies can fire (wo === enemyThatFired)
+
+                    const objectWorldBox = new THREE.Box3().copy(wo.geometry.boundingBox).applyMatrix4(wo.matrixWorld);
+                    if (projectileBox.intersectsBox(objectWorldBox)) {
+                        projectileNeedsRemoval = true;
+                        // Default to creating a hole, can be overridden for self-hits or player hits
+                        createHoleAt = projectile.position.clone(); 
+
+                        if (wo.userData.type === 'enemy') {
+                            const enemyHit = wo;
+                            const projFirer = projectile.userData.firer;
+                            const projByPlayer = projectile.userData.firedByPlayer;
+                            
+                            console.log(`ENEMY PROJECTILE COLLISION DETAILS: Proj ID: ${projectile.id}, Firer: ${projFirer ? projFirer.name + ' (ID: ' + projFirer.id + ')' : 'None/Player'}, Hit Enemy: ${enemyHit.name} (ID: ${enemyHit.id}), ProjByPlayer: ${projByPlayer}`);
+                            holeNormal = projectile.userData.velocity.clone().normalize().negate(); // Only calculate normal if creating a hole
+                            if (projByPlayer) {
+                                // Player's projectile hits an enemy
+                                console.log("Player projectile hit enemy:", wo.name);
+                                playerScore += 100;
+                                updateUI();
+                                // wo.userData.health -= projectileDamage; // Implement health/damage
+                                // Remove enemy hit by player
+                                scene.remove(enemyHit);
+                                worldObjects.splice(j, 1); // wo is worldObjects[j]
+                                const woIndexInEnemies = enemies.indexOf(enemyHit);
+                                if (woIndexInEnemies > -1) {
+                                    enemies.splice(woIndexInEnemies, 1);
+                                }
+                            } else {
+                                // Enemy's projectile hits an enemy
+                                if (projFirer && enemyHit === projFirer) {
+                                    // Enemy shot itself
+                                    console.log(`   CONFIRMED SELF-HIT: ${projFirer.name} (ID: ${projFirer.id}) shot self. Projectile removed, enemy unharmed. No hole.`);
+                                    createHoleAt = null; // No bullet hole on self
+                                    // Firer (enemyHit) is NOT removed. Projectile will be removed.
+                                } else {
+                                    // Enemy projectile hits a DIFFERENT enemy (or firer is unknown)
+                                    // This is ACCIDENTAL FRIENDLY FIRE - the other enemy is hit.
+                                    console.log(`   FRIENDLY FIRE / UNKNOWN FIRER: Projectile from ${projFirer ? projFirer.name + ' (ID: ' + projFirer.id + ')' : 'Unknown/Player'} hit ${enemyHit.name} (ID: ${enemyHit.id}). ENEMY REMOVED!`);
+                                    scene.remove(enemyHit);
+                                    worldObjects.splice(j, 1); // wo is worldObjects[j]
+                                    const woIndexInEnemies = enemies.indexOf(enemyHit);
+                                    if (woIndexInEnemies > -1) {
+                                        enemies.splice(woIndexInEnemies, 1);
+                                    }
+                                }
+                            }
+                        } else { // Projectile hit a non-enemy world object
+                             holeNormal = projectile.userData.velocity.clone().normalize().negate(); // Calculate normal for non-enemy hits
+                             // console.log("Projectile hit non-enemy:", wo.name);
                         }
-                        const worldIndex = worldObjects.indexOf(enemy.getObject());
-                        if (worldIndex > -1) {
-                            worldObjects.splice(worldIndex, 1);
-                        }
-                        scene.remove(enemy.getObject());
+                        break; // Projectile is consumed
 
-                        playerScore += 100;
-                        updateUI();
                     }
                 }
-            } else if (intersectedObject === playerBox) {
-                // Player is hit by an enemy projectile
-                playerLives--;
-                updateUI();
-                if (playerLives <= 0) {
-                    gameOver();
-                } else {
-                    // Respawn player
-                    respawnPlayer();
-                }
+            }
+        }
+        // If projectile needs removal for any reason
+        if (projectileNeedsRemoval) {
+            scene.remove(projectile);
+            projectiles.splice(i, 1); // Remove from projectiles array (safe due to backward i loop)
+
+            // Consistently remove projectile from worldObjects
+            const projectileIndexInWorldObjects = worldObjects.indexOf(projectile);
+            if (projectileIndexInWorldObjects > -1) {
+                worldObjects.splice(projectileIndexInWorldObjects, 1);
+            }
+            if (createHoleAt && holeNormal) {
+                // createBulletHole(createHoleAt, holeNormal); // Re-enable if you want bullet holes on everything
             }
         }
     }
