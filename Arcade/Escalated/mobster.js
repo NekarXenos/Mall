@@ -397,11 +397,14 @@ export class Mobster {
     fallAndDisappear() {
         // Simple fall animation: rotate the character group
         const rotationSpeed = 0.1; // Adjust as needed
-        const targetRotation = new THREE.Euler(0, 0, Math.PI / 2); // Rotate 90 degrees around Z-axis
+        const fallSpeed = 0.2; // Adjust as needed
+        
+        const targetRotation = new THREE.Euler(-Math.PI / 2, 0, 0); // THREE.Euler(0, 0, Math.PI / 2); // Rotate 90 degrees around Z-axis
 
         const animateFall = () => {
-            if (this.characterGroup.rotation.z < targetRotation.z) {
-                this.characterGroup.rotation.z += rotationSpeed;
+            if (this.characterGroup.rotation.x > targetRotation.x) {
+                this.characterGroup.rotation.x -= rotationSpeed;
+                this.characterGroup.position.y -= fallSpeed; // Move downwards
                 requestAnimationFrame(animateFall);
             } else {
                 // After falling, remove from scene
