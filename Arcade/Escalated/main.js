@@ -255,8 +255,11 @@ function init() {
         <p>Sprint: Shift</p>
         <p>Crouch: Ctrl</p>
         <p>Prone: Ctrl, Ctrl</p>
+        <p>U: Call Elevator Up</p>
+        <p>J: Call Elevator Down</p>
         <p>Interact: E</p>
-        <p>Shoot: Left Mouse Button</p>
+        <p>Shoot: Left Mouse Button</p
+        <p>Throwable: Right Mouse Button</p>>
     `; // Updated instructions to include crouch toggle
 
     controls.addEventListener('lock', () => {
