@@ -627,7 +627,7 @@
 
         // Player settings, combining values from both files
         const playerSettings = {
-            height: 2,
+            height: 1.75,
             speed: 5.0, // Units per second
             gravityStrength: 0.1, // 0.005, // Kept from PlanetMiner2 (per-frame acceleration)
             jumpStrength: 5, // 0.32, // Kept from PlanetMiner2 (per-jump impulse)
@@ -1364,22 +1364,13 @@
                 const waterRadius = waterMesh.geometry.parameters.radius;
                 const distToWaterCenter = player.position.distanceTo(planetCenter);
                 const isInWater = distToWaterCenter < waterRadius;
-                const maxWaterSpeed = playerSettings.speed * 0.5; // Half of the normal speed
 
                 // 1. Apply gravity
                 if (!player.onGround && !isInWater) { // Add !isInWater condition
                     player.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength * gravityFactor));
                 } else if (isInWater) {
                     // If in water, stop all non-input-driven velocity
-                    // player.velocity.set(0, 0, 0); // Reset velocity to only be influenced by input
-                        const currentSpeed = player.velocity.length();
-
-                    // If the current speed exceeds the maximum water speed, scale it down
-                    if (currentSpeed > maxWaterSpeed) {
-                        // Normalize the velocity vector (make its length 1)
-                        // Then multiply by the desired maximum speed
-                        player.velocity.normalize().multiplyScalar(maxWaterSpeed);
-                    }
+                    player.velocity.set(0, 0, 0); // Reset velocity to only be influenced by input
                 }
 
                 // 2. Get movement input and project onto tangent plane
@@ -1413,7 +1404,7 @@
                 player.position.add(player.velocity.clone().multiplyScalar(delta));
 
                 // 4. Collision detection and response (only if not in water)
-                //if (!isInWater) {
+                if (!isInWater) {
                     const groundObjects = [marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes);
                     const rayOrigin = player.position.clone().add(playerUp.clone().multiplyScalar(-playerSettings.height * 0.5));
                     raycaster.set(rayOrigin, gravityDirection);
@@ -1448,7 +1439,7 @@
                             if (verticalVel < 0) player.velocity.sub(playerUp.clone().multiplyScalar(verticalVel));
                         }
                     }
-                //}
+                }
 
                 // 5. Orient player to stand upright on the dominant body
                 const playerCurrentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);

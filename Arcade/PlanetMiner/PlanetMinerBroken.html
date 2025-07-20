@@ -209,6 +209,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+        import { createGorilla, animateGorilla } from './gorilla.js';
 
         // Lookup Tables for Marching Cubes (copied from MarchingCubes.js for self-containment)
         const EdgeVertexIndices = [
@@ -627,7 +628,7 @@
 
         // Player settings, combining values from both files
         const playerSettings = {
-            height: 2,
+            height: 2.0, // Adjusted for gorilla height
             speed: 5.0, // Units per second
             gravityStrength: 0.1, // 0.005, // Kept from PlanetMiner2 (per-frame acceleration)
             jumpStrength: 5, // 0.32, // Kept from PlanetMiner2 (per-jump impulse)
@@ -636,7 +637,8 @@
 
         const planetCenter = new THREE.Vector3(0, 0, 0);
         let dominantBodyPosition = planetCenter;
-        const keys = { w: false, a: false, s: false, d: false, space: false };
+        const keys = { w: false, a: false, s: false, d: false, space: false, z: false };
+        let mouseDelta = new THREE.Vector2();
 
         let isLocked = false;
         let mobileLookTouchId = -1;
@@ -807,26 +809,22 @@
             player.velocity = new THREE.Vector3();
             player.onGround = false;
 
-            const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
-            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x5588ff });
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            body.castShadow = true;
-            body.position.y = -0.3;
-            player.add(body);
-            player.body = body; // For toggling visibility
-
-            const headGeometry = new THREE.DodecahedronGeometry(0.5, 0);
-            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffccaa });
-            const head = new THREE.Mesh(headGeometry, headMaterial);
-            head.castShadow = true;
-            head.position.y = 0.8;
-            player.add(head);
-            player.head = head; // For easy access for camera logic
+            const gorilla = createGorilla();
+            //gorilla.rotation.y = Math.PI; // Rotate the gorilla model to face forward
+            player.add(gorilla);
+            player.gorilla = gorilla;
+            player.head = gorilla.head; // Used for camera and looking
+            
+            //player.head.rotation.x = Math.PI / 2; // Rotate the head to face forward
+            
+            if (!isFirstPersonView) {
+                player.rotation.y = Math.PI; // Rotate the gorilla model to face forward
+            }
 
             // Initial position on the planet's surface
             const planetRadius = GRID_SIZE / 2 * BLOCK_SIZE * PLANET_RADIUS_FACTOR;
             player.position.set(0, planetRadius + playerSettings.height, 0);
-            
+
             // Orient player to be upright at the start
             const initialUp = player.position.clone().normalize();
             player.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), initialUp);
@@ -900,12 +898,12 @@
                 case 'KeyA': keys.a = true; break;
                 case 'KeyS': keys.s = true; break;
                 case 'KeyD': keys.d = true; break;
+                case 'KeyZ': keys.z = true; break;
                 case 'Space':
-                    // Allow jump if on ground OR in water
-                    if (player && (player.onGround || isInWater)) {
+                    if (player && player.onGround) {
                         const upDirection = player.position.clone().sub(dominantBodyPosition).normalize();
                         player.velocity.add(upDirection.multiplyScalar(playerSettings.jumpStrength));
-                        player.onGround = false; // Player is no longer considered 'on ground' after jumping
+                        player.onGround = false;
                     }
                     break;
             }
@@ -917,6 +915,7 @@
                 case 'KeyA': keys.a = false; break;
                 case 'KeyS': keys.s = false; break;
                 case 'KeyD': keys.d = false; break;
+                case 'KeyZ': keys.z = false; break;
                 case 'Space': keys.space = false; break;
                 case 'KeyV': 
                     isFirstPersonView = !isFirstPersonView;
@@ -953,13 +952,21 @@
             const movementX = event.movementX || 0;
             const movementY = event.movementY || 0;
 
-            const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
-            const yawDelta = -movementX * playerSettings.sensitivity;
-            const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(playerUp, yawDelta);
-            player.quaternion.premultiply(yawQuaternion);
+            if (keys.z) {
+                // Accumulate mouse movement for orbit controls
+                mouseDelta.x += movementX;
+                mouseDelta.y += movementY;
+            } else {
+                // Y-axis rotation (Yaw) for the whole player
+                const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
+                const yawDelta = -movementX * playerSettings.sensitivity;
+                const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(playerUp, yawDelta);
+                player.quaternion.premultiply(yawQuaternion);
 
-            const pitchDelta = -movementY * playerSettings.sensitivity;
-            player.head.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.head.rotation.x + pitchDelta));
+                // X-axis rotation (Pitch) for the head
+                const pitchDelta = -movementY * playerSettings.sensitivity;
+                player.head.rotation.x = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, player.head.rotation.x + pitchDelta));
+            }
         }
 
         function onPointerLockChange() {
@@ -1308,30 +1315,65 @@
             const headPosition = new THREE.Vector3();
             player.head.getWorldPosition(headPosition);
 
-            if (isFirstPersonView) {
-                player.body.visible = false;
-                player.head.visible = false;
+            if (keys.z) {
+                const cameraOffset = camera.position.clone().sub(player.position);
+                const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
+
+                // Horizontal orbit
+                const yawDelta = -mouseDelta.x * playerSettings.sensitivity;
+                const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(playerUp, yawDelta);
+                cameraOffset.applyQuaternion(yawQuaternion);
+
+                // Vertical orbit
+                const pitchDelta = -mouseDelta.y * playerSettings.sensitivity;
+                const cameraRight = new THREE.Vector3().crossVectors(playerUp, cameraOffset).normalize();
+                const pitchQuaternion = new THREE.Quaternion().setFromAxisAngle(cameraRight, pitchDelta);
+                cameraOffset.applyQuaternion(pitchQuaternion);
+
+                camera.position.copy(player.position).add(cameraOffset);
+                camera.lookAt(player.position);
+            } else if (isFirstPersonView) {
+                if(player.gorilla) player.gorilla.visible = false;
                 const headQuaternion = new THREE.Quaternion();
                 player.head.getWorldQuaternion(headQuaternion);
                 camera.position.copy(headPosition);
                 camera.quaternion.copy(headQuaternion);
             } else {
-                player.body.visible = true;
-                player.head.visible = true;
+                if(player.gorilla) player.gorilla.visible = true;
+                
                 const headQuaternion = new THREE.Quaternion();
                 player.head.getWorldQuaternion(headQuaternion);
-                const offsetFromHead = thirdPersonCameraOffset.clone();
-                offsetFromHead.y -= player.head.position.y;
-                const cameraOffsetRotated = offsetFromHead.clone().applyQuaternion(headQuaternion);
-                const desiredCameraPosition = headPosition.clone().add(cameraOffsetRotated);
+
+                // Get forward vector from the HEAD's orientation
+                const forwardDirection = new THREE.Vector3(0, 0, 1).applyQuaternion(headQuaternion);
+                // Get up vector from the PLAYER's orientation (not the head's)
+                const upDirection = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);
+
+                // Define camera distance and height
+                const distance = 8;
+                const height = 3;
+
+                // Calculate the offset: move backwards along the head's forward axis, and up along the player's up axis
+                const offset = forwardDirection.clone().multiplyScalar(-distance).add(upDirection.multiplyScalar(height));
+
+                const desiredCameraPosition = headPosition.clone().add(offset);
+
+                // Smoothly move the camera to the desired position and orientation
                 camera.position.lerp(desiredCameraPosition, 0.15);
-                camera.lookAt(headPosition);
+
+                // Use a robust lookAt calculation to avoid gimbal lock / flipping at steep angles
+                const lookAtMatrix = new THREE.Matrix4().lookAt(desiredCameraPosition, headPosition, upDirection);
+                const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(lookAtMatrix);
+                camera.quaternion.slerp(targetQuaternion, 0.15);
             }
+            // Reset mouse delta after applying it
+            mouseDelta.set(0, 0);
         }
 
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
 
             if (isLocked && player) {
                 // --- Player Update Logic ---
@@ -1361,35 +1403,36 @@
                     gravityFactor = 1.0 - Math.pow(distFromSurface / l1_distance, 2);
                 }
 
-                const waterRadius = waterMesh.geometry.parameters.radius;
-                const distToWaterCenter = player.position.distanceTo(planetCenter);
-                const isInWater = distToWaterCenter < waterRadius;
-                const maxWaterSpeed = playerSettings.speed * 0.5; // Half of the normal speed
-
                 // 1. Apply gravity
-                if (!player.onGround && !isInWater) { // Add !isInWater condition
+                if (!player.onGround) {
                     player.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength * gravityFactor));
-                } else if (isInWater) {
-                    // If in water, stop all non-input-driven velocity
-                    // player.velocity.set(0, 0, 0); // Reset velocity to only be influenced by input
-                        const currentSpeed = player.velocity.length();
-
-                    // If the current speed exceeds the maximum water speed, scale it down
-                    if (currentSpeed > maxWaterSpeed) {
-                        // Normalize the velocity vector (make its length 1)
-                        // Then multiply by the desired maximum speed
-                        player.velocity.normalize().multiplyScalar(maxWaterSpeed);
-                    }
                 }
 
                 // 2. Get movement input and project onto tangent plane
-                const moveDirection = new THREE.Vector3();
-                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+                // const moveDirection = new THREE.Vector3();
+
+                
+                    const moveDirection = new THREE.Vector3();
+                    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
                 const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
+                /* if (!isFirstPersonView) {
+                    const moveDirection = new THREE.Vector3();
+                    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
+                const right = new THREE.Vector3(-1, 0, 0).applyQuaternion(player.quaternion);
+
                 if (keys.w) moveDirection.add(forward);
                 if (keys.s) moveDirection.sub(forward);
                 if (keys.a) moveDirection.add(right.clone().multiplyScalar(-1));
                 if (keys.d) moveDirection.add(right);
+
+                } */
+
+                if (keys.w) moveDirection.add(forward);
+                if (keys.s) moveDirection.sub(forward);
+                if (keys.a) moveDirection.add(right.clone().multiplyScalar(-1));
+                if (keys.d) moveDirection.add(right);
+
+                animateGorilla(player.gorilla, moveDirection.lengthSq() > 0, time);
 
                 const verticalComponent = player.velocity.clone().projectOnVector(playerUp);
                 const horizontalComponent = player.velocity.clone().sub(verticalComponent);
@@ -1397,58 +1440,50 @@
                 if (moveDirection.lengthSq() > 0) {
                     const projectedMove = moveDirection.projectOnPlane(playerUp).normalize();
                     const targetVelocity = projectedMove.multiplyScalar(playerSettings.speed);
-                    if (isInWater) {
-                        player.velocity.add(targetVelocity.multiplyScalar(delta)); // Direct application in water
-                    } else {
-                        horizontalComponent.lerp(targetVelocity, 0.2);
-                    }
-                } else if (!isInWater) {
+                    horizontalComponent.lerp(targetVelocity, 0.2);
+                } else {
                     horizontalComponent.lerp(new THREE.Vector3(), 0.1);
                 }
-                if (!isInWater) {
-                    player.velocity.copy(horizontalComponent).add(verticalComponent);
-                }
+                player.velocity.copy(horizontalComponent).add(verticalComponent);
 
                 // 3. Update position based on velocity
                 player.position.add(player.velocity.clone().multiplyScalar(delta));
 
-                // 4. Collision detection and response (only if not in water)
-                //if (!isInWater) {
-                    const groundObjects = [marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes);
-                    const rayOrigin = player.position.clone().add(playerUp.clone().multiplyScalar(-playerSettings.height * 0.5));
-                    raycaster.set(rayOrigin, gravityDirection);
-                    const intersects = raycaster.intersectObjects(groundObjects);
+                // 4. Collision detection and response
+                const groundObjects = [marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes);
+                const rayOrigin = player.position.clone().add(playerUp.clone().multiplyScalar(-playerSettings.height * 0.5));
+                raycaster.set(rayOrigin, gravityDirection);
+                const intersects = raycaster.intersectObjects(groundObjects);
 
-                    player.onGround = false;
-                    if (intersects.length > 0) {
-                        const hitPoint = intersects[0].point;
-                        const distanceToHitPoint = rayOrigin.distanceTo(hitPoint);
-                        const groundDetectionTolerance = 0.1;
-                        const verticalSpeed = player.velocity.dot(playerUp);
+                player.onGround = false;
+                if (intersects.length > 0) {
+                    const hitPoint = intersects[0].point;
+                    const distanceToHitPoint = rayOrigin.distanceTo(hitPoint);
+                    const groundDetectionTolerance = 0.1;
+                    const verticalSpeed = player.velocity.dot(playerUp);
 
-                        if (distanceToHitPoint < groundDetectionTolerance && verticalSpeed < 0.05) {
-                            player.onGround = true;
-                            const snapOffset = 0.01;
-                            player.position.copy(hitPoint.clone().add(playerUp.clone().multiplyScalar(playerSettings.height * 0.5 + snapOffset)));
-                            const verticalVelocityComponent = playerUp.clone().multiplyScalar(player.velocity.dot(playerUp));
-                            player.velocity.sub(verticalVelocityComponent);
-                        }
+                    if (distanceToHitPoint < groundDetectionTolerance && verticalSpeed < 0.05) {
+                        player.onGround = true;
+                        const snapOffset = 0.01;
+                        player.position.copy(hitPoint.clone().add(playerUp.clone().multiplyScalar(playerSettings.height * 0.5 + snapOffset)));
+                        const verticalVelocityComponent = playerUp.clone().multiplyScalar(player.velocity.dot(playerUp));
+                        player.velocity.sub(verticalVelocityComponent);
                     }
-                    
-                    // Upward collision correction
-                    if (!player.onGround && groundObjects.length > 0) {
-                        const rayOriginUpward = player.position.clone();
-                        raycaster.set(rayOriginUpward, playerUp);
-                        const intersectsUpward = raycaster.intersectObjects(groundObjects);
-                        if (intersectsUpward.length > 0 && intersectsUpward[0].distance < playerSettings.height * 0.5) {
-                            const hitPointUpward = intersectsUpward[0].point;
-                            player.position.copy(hitPointUpward.clone().add(playerUp.clone().multiplyScalar(playerSettings.height * 0.5 + 0.01)));
-                            player.onGround = true;
-                            const verticalVel = player.velocity.dot(playerUp);
-                            if (verticalVel < 0) player.velocity.sub(playerUp.clone().multiplyScalar(verticalVel));
-                        }
+                }
+                
+                // Upward collision correction
+                if (!player.onGround && groundObjects.length > 0) {
+                    const rayOriginUpward = player.position.clone();
+                    raycaster.set(rayOriginUpward, playerUp);
+                    const intersectsUpward = raycaster.intersectObjects(groundObjects);
+                    if (intersectsUpward.length > 0 && intersectsUpward[0].distance < playerSettings.height * 0.5) {
+                        const hitPointUpward = intersectsUpward[0].point;
+                        player.position.copy(hitPointUpward.clone().add(playerUp.clone().multiplyScalar(playerSettings.height * 0.5 + 0.01)));
+                        player.onGround = true;
+                        const verticalVel = player.velocity.dot(playerUp);
+                        if (verticalVel < 0) player.velocity.sub(playerUp.clone().multiplyScalar(verticalVel));
                     }
-                //}
+                }
 
                 // 5. Orient player to stand upright on the dominant body
                 const playerCurrentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);
@@ -1466,6 +1501,9 @@
             init();
             animate();
         };
+    </script>
+</body>
+</html>
     </script>
 </body>
 </html>

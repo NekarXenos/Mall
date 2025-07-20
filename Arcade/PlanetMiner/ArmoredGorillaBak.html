@@ -38,12 +38,6 @@
         let clock, velocity, speed;
         const worldBoundary = 24; // Half the size of the 50x50 plane, with a small buffer
 
-        // State variables for behavior
-        let gorillaState = 'walking'; // 'walking' or 'mining'
-        let actionTimer = 0;
-        const walkDuration = 5; // seconds
-        const mineDuration = 2; // seconds
-
         // Ensure the script runs only after the entire window content is loaded
         window.onload = function() {
             init(); // Initialize the Three.js scene
@@ -112,80 +106,40 @@
             gorillaGroup.castShadow = true;
             gorillaGroup.receiveShadow = true;
             
-            // Initialize velocity with a random direction
-            velocity = new THREE.Vector3(Math.random() * 2 - 1, 0, Math.random() * 2 - 1).normalize();
+            velocity = new THREE.Vector3(0, 0, -1);
             speed = 0.08;
 
             // 8. Body
-            const bodyGeometry = new THREE.DodecahedronGeometry(1); // THREE.BoxGeometry(4, 5, 3); 
+            const bodyGeometry = new THREE.BoxGeometry(4, 5, 3); 
             const body = new THREE.Mesh(bodyGeometry, blueFurMaterial);
-            body.scale.set(2.5, 3.5, 2); // 
-            // Adjusted body position to overlap with thighs more
             body.rotation.x = 0.3;
-            body.position.set(0, 2.25, -0.5); // Original y was 4
+            body.position.set(0, 4, -0.5);
             gorillaGroup.add(body);
 
             // --- NEW: Chest Armor ---
-/*             const chestPlateGeo = new THREE.BoxGeometry(4.5, 4, 2);
+            const chestPlateGeo = new THREE.BoxGeometry(4.5, 4, 2);
             const chestPlate = new THREE.Mesh(chestPlateGeo, armorMaterial);
-            // Adjusted chest plate position relative to new body position
-            chestPlate.position.set(0, 2.75, 0.5); // Original y was 4.5
+            chestPlate.position.set(0, 4.5, 0.5);
             chestPlate.rotation.x = 0.3;
-            gorillaGroup.add(chestPlate); */
+            gorillaGroup.add(chestPlate);
 
             // 9. Head
             const headGeometry = new THREE.DodecahedronGeometry(2);
             const head = new THREE.Mesh(headGeometry, gorillaMaterial);
-            // Adjusted head position relative to new body position
             head.rotation.x = 0.1;
-            head.position.set(0, 5.75, 0.5); // Original y was 7.5
+            head.position.set(0, 7.5, 0.5);
             gorillaGroup.add(head);
-
-            // 11. Lips (Squashed Donut / TorusGeometry)
-            const lipsGeometry = new THREE.TorusGeometry(0.7, 0.9, 6, 6);
-            const lips = new THREE.Mesh(lipsGeometry, gorillaMaterial);
-            lips.rotation.z = Math.PI / 2; // Rotate to be horizontal
-            lips.scale.set(0.5, 1, 1.2); // Scale Y-axis to squash, Z-axis for slight protrusion
-            lips.position.set(head.position.x, head.position.y -0.6, head.position.z +1.2); 
-            // .position.set(0, 7, 1.7); // Position on the front of the head // head.position.set(0, 5.75, 0.5); 
-            lips.rotation.x = Math.PI / 6; // Rotate to be horizontal
-            gorillaGroup.add(lips);
-
-            // 12. Nose (Dodecahedron)
-            const noseGeometry = new THREE.DodecahedronGeometry(0.5);
-            const nose = new THREE.Mesh(noseGeometry, gorillaMaterial);
-            nose.scale.set(1, 0.5, 1); 
-            nose.position.set(head.position.x, head.position.y , head.position.z +1.7); 
-            // .position.set(0, 7.75, 2.3); // Position on the front of the head //  head.position.set(0, 5.75, 0.5); 
-            gorillaGroup.add(nose);
-
-            // 13. Eyes (Icosahedrons)
-            const eyeGeometry = new THREE.IcosahedronGeometry(0.2, 1); // Using Icosahedron for better roundness
-            const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x001122, roughness: 0.1, metalness: 0.1 }); // Black color for eyes
-            const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-            leftEye.position.set(head.position.x-0.4, head.position.y + 0.25, head.position.z +1.7); 
-            // .position.set(-0.5, 8, 2.2); // Position on the head //  head.position.set(0, 5.75, 0.5); 
-            gorillaGroup.add(leftEye);
-
-            const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-            rightEye.position.set(head.position.x+0.4, head.position.y + 0.25, head.position.z +1.7); 
-            // .position.set(0.5, 8, 2.2); // Position on the head //  head.position.set(0, 5.75, 0.5); 
-            gorillaGroup.add(rightEye);
             
-            // --- NEW: Mining Helmet ---
-            const helmetGeo = new THREE.DodecahedronGeometry(2, 0);
+            // --- NEW: Gladiator Helmet ---
+            const helmetGeo = new THREE.IcosahedronGeometry(2.2, 0);
             const helmet = new THREE.Mesh(helmetGeo, armorMaterial);
-            //helmet.rotation.x = Math.PI / 6; // Rotate to point forward
-            //helmet.position.copy(head.position); // This will automatically update
-            helmet.position.set(head.position.x, head.position.y + 0.75, head.position.z -0.1);
+            helmet.position.copy(head.position);
             gorillaGroup.add(helmet);
             
-            const helmetTorchGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 6); // BoxGeometry(0.5, 3, 0.5);
-            const helmetTorch = new THREE.Mesh(helmetTorchGeo, hydraulicMaterial);
-            helmetTorch.rotation.x = Math.PI / 2; // Rotate to point forward
-            // Adjusted helmet Torch position relative to new head position
-            helmetTorch.position.set(0, head.position.y + 2, head.position.z + 1);
-            gorillaGroup.add(helmetTorch);
+            const helmetCrestGeo = new THREE.BoxGeometry(1, 1, 1);
+            const helmetCrest = new THREE.Mesh(helmetCrestGeo, armorMaterial);
+            helmetCrest.position.set(0, head.position.y + 1.5, head.position.z);
+            gorillaGroup.add(helmetCrest);
 
 
             // --- Helper function to create a jointed limb ---
@@ -217,8 +171,8 @@
             // --- Helper function for Hydraulic Cylinders ---
             function createHydraulic(length) {
                 const group = new THREE.Group();
-                const outerGeo = new THREE.CylinderGeometry(0.3, 0.3, length, 6);
-                const outerCylinder = new THREE.Mesh(outerGeo, armorMaterial);
+                const outerGeo = new THREE.CylinderGeometry(0.3, 0.3, length, 8);
+                const outerCylinder = new THREE.Mesh(outerGeo, hydraulicMaterial);
                 outerCylinder.position.y = -length / 2;
                 group.add(outerCylinder);
 
@@ -239,14 +193,12 @@
             const elbowOffset = -2;
 
             // --- NEW: Shoulder Pauldrons ---
-            const pauldronGeo = new THREE.CylinderGeometry(1.1, 2.1, 3, 6); // SphereGeometry(2, 4, 4);
+            const pauldronGeo = new THREE.SphereGeometry(2, 8, 4);
             const leftPauldron = new THREE.Mesh(pauldronGeo, armorMaterial);
-            leftPauldron.rotation.z = Math.PI * 0.4; // Rotate to point sideways
-            leftPauldron.position.set(-2, 4, 0);
+            leftPauldron.position.set(-2.8, 5.5, 0);
             gorillaGroup.add(leftPauldron);
 
             const rightPauldron = leftPauldron.clone();
-            rightPauldron.rotation.y = Math.PI ; // mirror the left pauldron
             rightPauldron.position.x = -leftPauldron.position.x;
             gorillaGroup.add(rightPauldron);
 
@@ -256,14 +208,6 @@
             leftForearmGroup = leftArmData.lowerPartGroup;
             leftArmGroup.position.set(-2.5, 5.5, 0);
             gorillaGroup.add(leftArmGroup);
-            
-            // Left Hand (Dodecahedron)
-            const handGeometry = new THREE.DodecahedronGeometry(1.3);
-            const leftHand = new THREE.Mesh(handGeometry, gorillaMaterial);
-            leftHand.position.y = -(armLength * 0.9) - 0.4; // Position at the end of the forearm
-            leftHand.position.z = -0.3; // Position at the end of the forearm
-            leftForearmGroup.add(leftHand); // Add hand to the forearm group
-
 
             // Right Arm
             const rightArmData = createJointedLimb(armLength, armRadius, elbowOffset, true);
@@ -271,17 +215,9 @@
             rightForearmGroup = rightArmData.lowerPartGroup;
             rightArmGroup.position.set(2.5, 5.5, 0);
             gorillaGroup.add(rightArmGroup);
-
-            
-            // Right Hand (Dodecahedron)
-            const rightHand = new THREE.Mesh(handGeometry, gorillaMaterial);
-            rightHand.position.y = -(armLength * 0.9) - 0.4; // Position at the end of the forearm
-            rightHand.position.z = -0.3; // Position at the end of the forearm
-            rightForearmGroup.add(rightHand); // Add hand to the forearm group
-
             
             // --- NEW: Arm Hydraulics & Gauntlets ---
-            const gauntletGeo = new THREE.CylinderGeometry(1.2, 1, 3, 5);
+            const gauntletGeo = new THREE.CylinderGeometry(1.2, 1, 3, 4);
             const leftGauntlet = new THREE.Mesh(gauntletGeo, armorMaterial);
             leftGauntlet.position.y = -2;
             leftForearmGroup.add(leftGauntlet);
@@ -289,14 +225,14 @@
             rightForearmGroup.add(rightGauntlet);
 
             const leftArmHydraulic = createHydraulic(2.5);
-            leftArmHydraulic.outer.position.set(-1, -0.2, 0);
-            leftArmHydraulic.piston.position.set(-1, 0.2, 0);
+            leftArmHydraulic.outer.position.set(0, -2, -1);
+            leftArmHydraulic.piston.position.set(0, 0, 0);
             leftArmGroup.add(leftArmHydraulic.outer);
             leftForearmGroup.add(leftArmHydraulic.piston);
             
             const rightArmHydraulic = createHydraulic(2.5);
-            rightArmHydraulic.outer.position.set(1, -0.2, 0);
-            rightArmHydraulic.piston.position.set(1, 0.2, 0);
+            rightArmHydraulic.outer.position.set(0, -2, -1);
+            rightArmHydraulic.piston.position.set(0, 0, 0);
             rightArmGroup.add(rightArmHydraulic.outer);
             rightForearmGroup.add(rightArmHydraulic.piston);
 
@@ -312,15 +248,6 @@
             leftLowerLegGroup = leftLegData.lowerPartGroup;
             leftLegGroup.position.set(-1.2, 1.5, -1.5);
             gorillaGroup.add(leftLegGroup);
-            
-            // Left Foot (Dodecahedron)
-            const footGeometry = new THREE.DodecahedronGeometry(1);
-            footGeometry.scale(1.2, 0.5, 2); // Scale to make it flatter and wider
-            const leftFoot = new THREE.Mesh(footGeometry, gorillaMaterial);
-            leftFoot.position.y = -(legLength * 0.9) - 0.5; // Position at the end of the lower leg
-            leftFoot.rotation.x =0.4; // Rotate to be flat on the ground
-            leftLowerLegGroup.add(leftFoot); // Add foot to the lower leg group
-
 
             // Right Leg
             const rightLegData = createJointedLimb(legLength, legRadius, kneeOffset, false);
@@ -329,14 +256,8 @@
             rightLegGroup.position.set(1.2, 1.5, -1.5);
             gorillaGroup.add(rightLegGroup);
 
-            // Right Foot (Dodecahedron)
-            const rightFoot = new THREE.Mesh(footGeometry, gorillaMaterial);
-            rightFoot.position.y = -(legLength * 0.9) - 0.5; // Position at the end of the lower leg
-            rightFoot.rotation.x = 0.4; // Rotate to be flat on the ground
-            rightLowerLegGroup.add(rightFoot); // Add foot to the lower leg group
-
             // --- NEW: Leg Hydraulics & Greaves ---
-            const greaveGeo = new THREE.CylinderGeometry(1.2, 1, 3, 5);
+            const greaveGeo = new THREE.CylinderGeometry(1.2, 1, 3, 4);
             const leftGreave = new THREE.Mesh(greaveGeo, armorMaterial);
             leftGreave.position.y = -2;
             leftLowerLegGroup.add(leftGreave);
@@ -344,22 +265,21 @@
             rightLowerLegGroup.add(rightGreave);
             
             const leftLegHydraulic = createHydraulic(2);
-            leftLegHydraulic.outer.position.set(0, -0.5, -1);
-            leftLegHydraulic.piston.position.set(0, 0, -1);
+            leftLegHydraulic.outer.position.set(0, -1.5, -1);
+            leftLegHydraulic.piston.position.set(0, 0, 0);
             leftLegGroup.add(leftLegHydraulic.outer);
             leftLowerLegGroup.add(leftLegHydraulic.piston);
 
             const rightLegHydraulic = createHydraulic(2);
-            rightLegHydraulic.outer.position.set(0, -0.5, -1);
-            rightLegHydraulic.piston.position.set(0, 0, -1);
+            rightLegHydraulic.outer.position.set(0, -1.5, -1);
+            rightLegHydraulic.piston.position.set(0, 0, 0);
             rightLegGroup.add(rightLegHydraulic.outer);
             rightLowerLegGroup.add(rightLegHydraulic.piston);
 
 
             // Add the entire gorilla group to the scene
             scene.add(gorillaGroup);
-            // Adjusted gorillaGroup's overall Y position to keep feet near ground
-            gorillaGroup.position.y = -0.05; // Original y was 0.4
+            gorillaGroup.position.y = 0.4; 
 
             // 18. Ground Plane
             const planeGeometry = new THREE.PlaneGeometry(50, 50);
@@ -382,91 +302,42 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            const deltaTime = clock.getDelta(); // Get time elapsed since last frame
-            actionTimer += deltaTime; // Update action timer
-
-            const time = clock.getElapsedTime() * 5; // For walking animation
+            const time = clock.getElapsedTime() * 5;
 
             // --- Walking Animation ---
             const walkAmplitude = 0.5;
             const kneeBendAmplitude = 0.8;
 
-            // Only animate walking if in 'walking' state
-            if (gorillaState === 'walking') {
-                leftLegGroup.rotation.x = Math.sin(time) * walkAmplitude;
-                rightLegGroup.rotation.x = Math.sin(time + Math.PI) * walkAmplitude;
-                leftArmGroup.rotation.x = Math.sin(time + Math.PI) * walkAmplitude * 1.2;
-                rightArmGroup.rotation.x = Math.sin(time) * walkAmplitude * 1.2;
+            leftLegGroup.rotation.x = Math.sin(time) * walkAmplitude;
+            rightLegGroup.rotation.x = Math.sin(time + Math.PI) * walkAmplitude;
+            leftArmGroup.rotation.x = Math.sin(time + Math.PI) * walkAmplitude * 1.2;
+            rightArmGroup.rotation.x = Math.sin(time) * walkAmplitude * 1.2;
 
-                leftLowerLegGroup.rotation.x = Math.max(0, Math.sin(time + Math.PI / 4)) * kneeBendAmplitude;
-                rightLowerLegGroup.rotation.x = Math.max(0, Math.sin(time + Math.PI + Math.PI / 4)) * kneeBendAmplitude;
-                leftForearmGroup.rotation.x = -Math.max(0, Math.sin(time + Math.PI + Math.PI / 4)) * kneeBendAmplitude * 0.8;
-                rightForearmGroup.rotation.x = -Math.max(0, Math.sin(time + Math.PI / 4)) * kneeBendAmplitude * 0.8;
-            } else {
-                // Reset limb rotations when not walking to a neutral pose
-                leftLegGroup.rotation.x = 0;
-                rightLegGroup.rotation.x = 0;
-                leftArmGroup.rotation.x = 0;
-                rightArmGroup.rotation.x = 0;
-                leftLowerLegGroup.rotation.x = 0;
-                rightLowerLegGroup.rotation.x = 0;
-                leftForearmGroup.rotation.x = 0;
-                rightForearmGroup.rotation.x = 0;
+            leftLowerLegGroup.rotation.x = Math.max(0, Math.sin(time + Math.PI / 4)) * kneeBendAmplitude;
+            rightLowerLegGroup.rotation.x = Math.max(0, Math.sin(time + Math.PI + Math.PI / 4)) * kneeBendAmplitude;
+            leftForearmGroup.rotation.x = -Math.max(0, Math.sin(time + Math.PI + Math.PI / 4)) * kneeBendAmplitude * 0.8;
+            rightForearmGroup.rotation.x = -Math.max(0, Math.sin(time + Math.PI / 4)) * kneeBendAmplitude * 0.8;
+
+            // --- Movement and Boundary Collision ---
+            gorillaGroup.position.add(velocity.clone().multiplyScalar(speed));
+
+            let reflected = false;
+            const normal = new THREE.Vector3();
+
+            if (gorillaGroup.position.x > worldBoundary || gorillaGroup.position.x < -worldBoundary) {
+                normal.set(gorillaGroup.position.x > 0 ? -1 : 1, 0, 0);
+                reflected = true;
+            }
+            if (gorillaGroup.position.z > worldBoundary || gorillaGroup.position.z < -worldBoundary) {
+                normal.set(0, 0, gorillaGroup.position.z > 0 ? -1 : 1);
+                reflected = true;
             }
 
-
-            // --- State Machine Logic ---
-            switch (gorillaState) {
-                case 'walking':
-                    // Movement
-                    gorillaGroup.position.add(velocity.clone().multiplyScalar(speed));
-
-                    // Boundary Collision
-                    let reflected = false;
-                    const normal = new THREE.Vector3();
-
-                    if (gorillaGroup.position.x > worldBoundary || gorillaGroup.position.x < -worldBoundary) {
-                        normal.set(gorillaGroup.position.x > 0 ? -1 : 1, 0, 0);
-                        reflected = true;
-                    }
-                    if (gorillaGroup.position.z > worldBoundary || gorillaGroup.position.z < -worldBoundary) {
-                        normal.set(0, 0, gorillaGroup.position.z > 0 ? -1 : 1);
-                        reflected = true;
-                    }
-
-                    if (reflected) {
-                        // Reflect the velocity
-                        velocity.reflect(normal);
-                        // Vary the angle slightly
-                        const angleVariation = (Math.random() - 0.5) * Math.PI / 8; // +/- 22.5 degrees
-                        velocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), angleVariation);
-                        velocity.normalize(); // Ensure velocity remains a unit vector
-                    }
-                    
-                    // Make the gorilla look in the direction of its movement
-                    gorillaGroup.lookAt(gorillaGroup.position.clone().add(velocity));
-
-                    // Check if walking duration is over
-                    if (actionTimer >= walkDuration) {
-                        gorillaState = 'mining';
-                        actionTimer = 0;
-                        velocity.set(0, 0, 0); // Stop movement
-                    }
-                    break;
-
-                case 'mining':
-                    // Gorilla is stationary during mining
-                    // No movement or lookAt updates needed here
-
-                    // Check if mining duration is over
-                    if (actionTimer >= mineDuration) {
-                        gorillaState = 'walking';
-                        actionTimer = 0;
-                        // Choose a new random direction for walking
-                        velocity.set(Math.random() * 2 - 1, 0, Math.random() * 2 - 1).normalize();
-                    }
-                    break;
+            if (reflected) {
+                velocity.reflect(normal);
             }
+            
+            gorillaGroup.lookAt(gorillaGroup.position.clone().add(velocity));
 
             controls.update();
             renderer.render(scene, camera);
