@@ -627,7 +627,7 @@
 
         // Player settings, combining values from both files
         const playerSettings = {
-            height: 2,
+            height: 1.75,
             speed: 5.0, // Units per second
             gravityStrength: 0.1, // 0.005, // Kept from PlanetMiner2 (per-frame acceleration)
             jumpStrength: 5, // 0.32, // Kept from PlanetMiner2 (per-jump impulse)
@@ -636,7 +636,7 @@
 
         const planetCenter = new THREE.Vector3(0, 0, 0);
         let dominantBodyPosition = planetCenter;
-        const keys = { w: false, a: false, s: false, d: false, space: false, c: false, ctrl: false };
+        const keys = { w: false, a: false, s: false, d: false, space: false };
 
         let isLocked = false;
         let mobileLookTouchId = -1;
@@ -901,18 +901,13 @@
                 case 'KeyS': keys.s = true; break;
                 case 'KeyD': keys.d = true; break;
                 case 'Space':
-                    keys.space = true; // Always track spacebar state
-                    // Jump impulse should only happen when on the ground.
-                    if (player && player.onGround) {
+                    // Allow jump if on ground OR in water
+                    if (player && (player.onGround || isInWater)) {
                         const upDirection = player.position.clone().sub(dominantBodyPosition).normalize();
                         player.velocity.add(upDirection.multiplyScalar(playerSettings.jumpStrength));
-                        player.onGround = false; // Player is no longer on ground after jumping
+                        player.onGround = false; // Player is no longer considered 'on ground' after jumping
                     }
                     break;
-                case 'KeyC': keys.c = true; break;
-                case 'ControlLeft':
-                case 'ControlRight':
-                    keys.ctrl = true; break;
             }
         }
 
@@ -923,10 +918,6 @@
                 case 'KeyS': keys.s = false; break;
                 case 'KeyD': keys.d = false; break;
                 case 'Space': keys.space = false; break;
-                case 'KeyC': keys.c = false; break;
-                case 'ControlLeft':
-                case 'ControlRight':
-                    keys.ctrl = false; break;
                 case 'KeyV': 
                     isFirstPersonView = !isFirstPersonView;
                     break;
@@ -1373,30 +1364,13 @@
                 const waterRadius = waterMesh.geometry.parameters.radius;
                 const distToWaterCenter = player.position.distanceTo(planetCenter);
                 const isInWater = distToWaterCenter < waterRadius;
-                const maxWaterSpeed = playerSettings.speed * 0.5; // Half of the normal speed
 
                 // 1. Apply gravity
                 if (!player.onGround && !isInWater) { // Add !isInWater condition
                     player.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength * gravityFactor));
                 } else if (isInWater) {
-                    // If in water, apply damping and handle vertical controls
-                    player.velocity.multiplyScalar(0.98); // Water resistance
-
-                    if (!player.onGround) {
-                        const waterVerticalSpeed = playerSettings.speed * 0.5;
-                        if (keys.space) {
-                            player.velocity.add(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
-                        }
-                        if (keys.c || keys.ctrl) {
-                            player.velocity.sub(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
-                        }
-                    }
-                    
-                    const currentSpeed = player.velocity.length();
-                    // If the current speed exceeds the maximum water speed, scale it down
-                    if (currentSpeed > maxWaterSpeed) {
-                        player.velocity.normalize().multiplyScalar(maxWaterSpeed);
-                    }
+                    // If in water, stop all non-input-driven velocity
+                    player.velocity.set(0, 0, 0); // Reset velocity to only be influenced by input
                 }
 
                 // 2. Get movement input and project onto tangent plane
@@ -1430,7 +1404,7 @@
                 player.position.add(player.velocity.clone().multiplyScalar(delta));
 
                 // 4. Collision detection and response (only if not in water)
-                //if (!isInWater) {
+                if (!isInWater) {
                     const groundObjects = [marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes);
                     const rayOrigin = player.position.clone().add(playerUp.clone().multiplyScalar(-playerSettings.height * 0.5));
                     raycaster.set(rayOrigin, gravityDirection);
@@ -1465,7 +1439,7 @@
                             if (verticalVel < 0) player.velocity.sub(playerUp.clone().multiplyScalar(verticalVel));
                         }
                     }
-                //}
+                }
 
                 // 5. Orient player to stand upright on the dominant body
                 const playerCurrentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);

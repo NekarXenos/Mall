@@ -622,12 +622,12 @@
         // --- Player, Camera, and Controls ---
         let player; // A THREE.Group representing the player
         const clock = new THREE.Clock();
-        const thirdPersonCameraOffset = new THREE.Vector3(0, 3, 8); // Third-person camera offset
+        const thirdPersonCameraOffset = new THREE.Vector3(0, 2, 5); // Third-person camera offset
         let isFirstPersonView = true;
 
         // Player settings, combining values from both files
         const playerSettings = {
-            height: 2,
+            height: 2.0,
             speed: 5.0, // Units per second
             gravityStrength: 0.1, // 0.005, // Kept from PlanetMiner2 (per-frame acceleration)
             jumpStrength: 5, // 0.32, // Kept from PlanetMiner2 (per-jump impulse)
@@ -636,13 +636,14 @@
 
         const planetCenter = new THREE.Vector3(0, 0, 0);
         let dominantBodyPosition = planetCenter;
-        const keys = { w: false, a: false, s: false, d: false, space: false, c: false, ctrl: false };
+        const keys = { w: false, a: false, s: false, d: false, space: false };
 
         let isLocked = false;
         let mobileLookTouchId = -1;
         let mobileJoystickTouchId = -1;
         let joystickCenter = new THREE.Vector2();
         const joystickRadius = 50;
+        let isInWater = false;
 
         // Voxel grid properties
         const GRID_SIZE = 100;
@@ -754,7 +755,7 @@
             scene.add(cubeParent);
             cubeMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.2, metalness: 0.8 });
 
-            createPlayer(); // New function to create the player model
+            createGorillaPlayer(); // New function to create the player model
 
             document.addEventListener('keydown', onKeyDown);
             document.addEventListener('keyup', onKeyUp);
@@ -801,27 +802,275 @@
             scene.add(waterMesh);
         }
 
-        function createPlayer() {
+        let gorillaGroup, leftArmGroup, rightArmGroup, leftLegGroup, rightLegGroup, leftForearmGroup, rightForearmGroup, leftLowerLegGroup, rightLowerLegGroup;
+
+        function createGorillaPlayer() {
             player = new THREE.Group();
             // Attach state properties directly to the player group
             player.velocity = new THREE.Vector3();
             player.onGround = false;
 
-            const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
-            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x5588ff });
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            body.castShadow = true;
-            body.position.y = -0.3;
-            player.add(body);
-            player.body = body; // For toggling visibility
+            // 6. Materials
+            const gorillaMaterial = new THREE.MeshStandardMaterial({ color: 0x36454F });
+            const blueFurMaterial = new THREE.MeshStandardMaterial({ color: 0x113366 });
+            // --- NEW: Armor Material ---
+            const armorMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xFFD700, // Bright yellow/gold
+                metalness: 0.7, 
+                roughness: 0.3 
+            });
+            const hydraulicMaterial = new THREE.MeshStandardMaterial({
+                color: 0xaaaaaa,
+                metalness: 0.9,
+                roughness: 0.2
+            });
 
-            const headGeometry = new THREE.DodecahedronGeometry(0.5, 0);
-            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffccaa });
-            const head = new THREE.Mesh(headGeometry, headMaterial);
-            head.castShadow = true;
-            head.position.y = 0.8;
-            player.add(head);
-            player.head = head; // For easy access for camera logic
+
+            // 7. Create Gorilla Group
+            gorillaGroup = new THREE.Group();
+            gorillaGroup.castShadow = true;
+            gorillaGroup.receiveShadow = true;
+            
+            // 8. Body
+            const bodyGeometry = new THREE.DodecahedronGeometry(1); // THREE.BoxGeometry(4, 5, 3); 
+            const body = new THREE.Mesh(bodyGeometry, blueFurMaterial);
+            body.scale.set(2.5, 3.5, 2); // 
+            // Adjusted body position to overlap with thighs more
+            body.rotation.x = -0.3;
+            body.position.set(0, 2.25, -0.5); // Original y was 4
+            gorillaGroup.add(body);
+
+            // 9. Head
+            const headGeometry = new THREE.DodecahedronGeometry(2);
+            const head = new THREE.Mesh(headGeometry, gorillaMaterial);
+            // Adjusted head position relative to new body position
+            head.rotation.x = 0.1;
+            head.position.set(0, 5.75, -0.5); // Original y was 7.5
+            gorillaGroup.add(head);
+            player.head = head;
+
+            // 11. Lips (Squashed Donut / TorusGeometry)
+            const lipsGeometry = new THREE.TorusGeometry(0.7, 0.9, 6, 6);
+            const lips = new THREE.Mesh(lipsGeometry, gorillaMaterial);
+            lips.rotation.z = Math.PI / 2; // Rotate to be horizontal
+            lips.scale.set(0.5, 1, 1.2); // Scale Y-axis to squash, Z-axis for slight protrusion
+            lips.position.set(head.position.x, head.position.y -0.6, head.position.z -1.2); 
+            // .position.set(0, 7, 1.7); // Position on the front of the head // head.position.set(0, 5.75, 0.5); 
+            lips.rotation.x = -Math.PI / 6; // Rotate to be horizontal
+            gorillaGroup.add(lips);
+
+            // 12. Nose (Dodecahedron)
+            const noseGeometry = new THREE.DodecahedronGeometry(0.5);
+            const nose = new THREE.Mesh(noseGeometry, gorillaMaterial);
+            nose.scale.set(1, 0.5, 1); 
+            nose.position.set(head.position.x, head.position.y , head.position.z -1.7); 
+            // .position.set(0, 7.75, 2.3); // Position on the front of the head //  head.position.set(0, 5.75, 0.5); 
+            gorillaGroup.add(nose);
+
+            // 13. Eyes (Icosahedrons)
+            const eyeGeometry = new THREE.IcosahedronGeometry(0.2, 1); // Using Icosahedron for better roundness
+            const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x001122, roughness: 0.1, metalness: 0.1 }); // Black color for eyes
+            const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            leftEye.position.set(head.position.x-0.4, head.position.y + 0.25, head.position.z -1.7); 
+            // .position.set(-0.5, 8, 2.2); // Position on the head //  head.position.set(0, 5.75, 0.5); 
+            gorillaGroup.add(leftEye);
+
+            const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            rightEye.position.set(head.position.x+0.4, head.position.y + 0.25, head.position.z -1.7); 
+            // .position.set(0.5, 8, 2.2); // Position on the head //  head.position.set(0, 5.75, 0.5); 
+            gorillaGroup.add(rightEye);
+            
+            // --- NEW: Mining Helmet ---
+            const helmetGeo = new THREE.DodecahedronGeometry(2, 0);
+            const helmet = new THREE.Mesh(helmetGeo, armorMaterial);
+            //helmet.rotation.x = Math.PI / 6; // Rotate to point forward
+            //helmet.position.copy(head.position); // This will automatically update
+            helmet.position.set(head.position.x, head.position.y + 0.75, head.position.z + 0.1);
+            gorillaGroup.add(helmet);
+            
+            const helmetTorchGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 6); // BoxGeometry(0.5, 3, 0.5);
+            const helmetTorch = new THREE.Mesh(helmetTorchGeo, hydraulicMaterial);
+            helmetTorch.rotation.x = -Math.PI / 2; // Rotate to point forward
+            // Adjusted helmet Torch position relative to new head position
+            helmetTorch.position.set(0, head.position.y + 2, head.position.z - 1);
+            gorillaGroup.add(helmetTorch);
+
+
+            // --- Helper function to create a jointed limb ---
+            function createJointedLimb(limbLength, limbRadius, rotationPointOffset, isArm) {
+                const limbGroup = new THREE.Group();
+                const baseDodecahedronRadius = 1;
+
+                const upperPartGeometry = new THREE.DodecahedronGeometry(baseDodecahedronRadius, 0); 
+                const upperPart = new THREE.Mesh(upperPartGeometry, blueFurMaterial);
+                upperPart.scale.set(limbRadius / baseDodecahedronRadius, limbLength / (baseDodecahedronRadius * 2), limbRadius / baseDodecahedronRadius);
+                upperPart.position.y = -limbLength / 2;
+                limbGroup.add(upperPart);
+
+                const lowerPartGroup = new THREE.Group();
+                lowerPartGroup.position.y = -limbLength - rotationPointOffset;
+                limbGroup.add(lowerPartGroup);
+
+                const lowerLimbRadius = isArm ? limbRadius * 1.2 : limbRadius;
+                const lowerLimbLength = isArm ? limbLength * 1.2 : limbLength;
+                const lowerPartGeometry = new THREE.DodecahedronGeometry(baseDodecahedronRadius, 0); 
+                const lowerPart = new THREE.Mesh(lowerPartGeometry, blueFurMaterial);
+                lowerPart.scale.set(lowerLimbRadius / baseDodecahedronRadius, lowerLimbLength / (baseDodecahedronRadius * 2), lowerLimbRadius / baseDodecahedronRadius);
+                lowerPart.position.y = -lowerLimbLength / 2;
+                lowerPartGroup.add(lowerPart);
+
+                return { limbGroup, lowerPartGroup };
+            }
+            
+            // --- Helper function for Hydraulic Cylinders ---
+            function createHydraulic(length) {
+                const group = new THREE.Group();
+                const outerGeo = new THREE.CylinderGeometry(0.3, 0.3, length, 6);
+                const outerCylinder = new THREE.Mesh(outerGeo, armorMaterial);
+                outerCylinder.position.y = -length / 2;
+                group.add(outerCylinder);
+
+                const pistonGeo = new THREE.CylinderGeometry(0.15, 0.15, length, 8);
+                const piston = new THREE.Mesh(pistonGeo, hydraulicMaterial);
+                piston.position.y = -length / 2;
+                
+                const pistonGroup = new THREE.Group();
+                pistonGroup.add(piston);
+                
+                return { outer: group, piston: pistonGroup };
+            }
+
+
+            // 16. Arms & Armor
+            const armLength = 4.5;
+            const armRadius = 0.9;
+            const elbowOffset = -2;
+
+            // --- NEW: Shoulder Pauldrons ---
+            const pauldronGeo = new THREE.CylinderGeometry(1.1, 2.1, 3, 6); // SphereGeometry(2, 4, 4);
+            const leftPauldron = new THREE.Mesh(pauldronGeo, armorMaterial);
+            leftPauldron.rotation.z = Math.PI * 0.4; // Rotate to point sideways
+            leftPauldron.position.set(-2, 4, 0);
+            gorillaGroup.add(leftPauldron);
+
+            const rightPauldron = leftPauldron.clone();
+            rightPauldron.rotation.y = Math.PI ; // mirror the left pauldron
+            rightPauldron.position.x = -leftPauldron.position.x;
+            gorillaGroup.add(rightPauldron);
+
+            // Left Arm
+            const leftArmData = createJointedLimb(armLength, armRadius, elbowOffset, true);
+            leftArmGroup = leftArmData.limbGroup;
+            leftForearmGroup = leftArmData.lowerPartGroup;
+            leftArmGroup.position.set(-2.5, 5.5, 0);
+            gorillaGroup.add(leftArmGroup);
+            
+            // Left Hand (Dodecahedron)
+            const handGeometry = new THREE.DodecahedronGeometry(1.3);
+            const leftHand = new THREE.Mesh(handGeometry, gorillaMaterial);
+            leftHand.position.y = -(armLength * 0.9) - 0.4; // Position at the end of the forearm
+            leftHand.position.z = 0.3; // Position at the end of the forearm
+            leftForearmGroup.add(leftHand); // Add hand to the forearm group
+
+
+            // Right Arm
+            const rightArmData = createJointedLimb(armLength, armRadius, elbowOffset, true);
+            rightArmGroup = rightArmData.limbGroup;
+            rightForearmGroup = rightArmData.lowerPartGroup;
+            rightArmGroup.position.set(2.5, 5.5, 0);
+            gorillaGroup.add(rightArmGroup);
+
+            
+            // Right Hand (Dodecahedron)
+            const rightHand = new THREE.Mesh(handGeometry, gorillaMaterial);
+            rightHand.position.y = -(armLength * 0.9) - 0.4; // Position at the end of the forearm
+            rightHand.position.z = 0.3; // Position at the end of the forearm
+            rightForearmGroup.add(rightHand); // Add hand to the forearm group
+
+            
+            // --- NEW: Arm Hydraulics & Gauntlets ---
+            const gauntletGeo = new THREE.CylinderGeometry(1.2, 1, 3, 5);
+            const leftGauntlet = new THREE.Mesh(gauntletGeo, armorMaterial);
+            leftGauntlet.position.y = -2;
+            leftForearmGroup.add(leftGauntlet);
+            const rightGauntlet = leftGauntlet.clone();
+            rightForearmGroup.add(rightGauntlet);
+
+            const leftArmHydraulic = createHydraulic(2.5);
+            leftArmHydraulic.outer.position.set(-1, -0.2, 0);
+            leftArmHydraulic.piston.position.set(-1, 0.2, 0);
+            leftArmGroup.add(leftArmHydraulic.outer);
+            leftForearmGroup.add(leftArmHydraulic.piston);
+            
+            const rightArmHydraulic = createHydraulic(2.5);
+            rightArmHydraulic.outer.position.set(1, -0.2, 0);
+            rightArmHydraulic.piston.position.set(1, 0.2, 0);
+            rightArmGroup.add(rightArmHydraulic.outer);
+            rightForearmGroup.add(rightArmHydraulic.piston);
+
+
+            // 17. Legs & Armor
+            const legLength = 3.5;
+            const legRadius = 1;
+            const kneeOffset = -1;
+
+            // Left Leg
+            const leftLegData = createJointedLimb(legLength, legRadius, kneeOffset, false);
+            leftLegGroup = leftLegData.limbGroup;
+            leftLowerLegGroup = leftLegData.lowerPartGroup;
+            leftLegGroup.position.set(-1.2, 1.5, 1.5);
+            gorillaGroup.add(leftLegGroup);
+            
+            // Left Foot (Dodecahedron)
+            const footGeometry = new THREE.DodecahedronGeometry(1);
+            footGeometry.scale(1.2, 0.5, 2); // Scale to make it flatter and wider
+            const leftFoot = new THREE.Mesh(footGeometry, gorillaMaterial);
+            leftFoot.position.y = -(legLength * 0.9) - 0.5; // Position at the end of the lower leg
+            leftFoot.rotation.x =-0.4; // Rotate to be flat on the ground
+            leftLowerLegGroup.add(leftFoot); // Add foot to the lower leg group
+
+
+            // Right Leg
+            const rightLegData = createJointedLimb(legLength, legRadius, kneeOffset, false);
+            rightLegGroup = rightLegData.limbGroup;
+            rightLowerLegGroup = rightLegData.lowerPartGroup;
+            rightLegGroup.position.set(1.2, 1.5, 1.5);
+            gorillaGroup.add(rightLegGroup);
+
+            // Right Foot (Dodecahedron)
+            const rightFoot = new THREE.Mesh(footGeometry, gorillaMaterial);
+            rightFoot.position.y = -(legLength * 0.9) - 0.5; // Position at the end of the lower leg
+            rightFoot.rotation.x = -0.4; // Rotate to be flat on the ground
+            rightLowerLegGroup.add(rightFoot); // Add foot to the lower leg group
+
+            // --- NEW: Leg Hydraulics & Greaves ---
+            const greaveGeo = new THREE.CylinderGeometry(1.2, 1, 3, 5);
+            const leftGreave = new THREE.Mesh(greaveGeo, armorMaterial);
+            leftGreave.position.y = -2;
+            leftLowerLegGroup.add(leftGreave);
+            const rightGreave = leftGreave.clone();
+            rightLowerLegGroup.add(rightGreave);
+            
+            const leftLegHydraulic = createHydraulic(2);
+            leftLegHydraulic.outer.position.set(0, -0.5, 1);
+            leftLegHydraulic.piston.position.set(0, 0, 1);
+            leftLegGroup.add(leftLegHydraulic.outer);
+            leftLowerLegGroup.add(leftLegHydraulic.piston);
+
+            const rightLegHydraulic = createHydraulic(2);
+            rightLegHydraulic.outer.position.set(0, -0.5, 1);
+            rightLegHydraulic.piston.position.set(0, 0, 1);
+            rightLegGroup.add(rightLegHydraulic.outer);
+            rightLowerLegGroup.add(rightLegHydraulic.piston);
+
+
+            // Add the entire gorilla group to the scene
+            player.add(gorillaGroup);
+            player.body = gorillaGroup;
+
+            // Scale gorilla to 2 units tall and place on ground.
+            gorillaGroup.scale.set(0.147, 0.147, 0.147);
+            gorillaGroup.position.y = 0;
 
             // Initial position on the planet's surface
             const planetRadius = GRID_SIZE / 2 * BLOCK_SIZE * PLANET_RADIUS_FACTOR;
@@ -901,18 +1150,17 @@
                 case 'KeyS': keys.s = true; break;
                 case 'KeyD': keys.d = true; break;
                 case 'Space':
-                    keys.space = true; // Always track spacebar state
-                    // Jump impulse should only happen when on the ground.
-                    if (player && player.onGround) {
+                    // Allow jump if on ground OR in water
+                    if (player && (player.onGround || isInWater)) {
                         const upDirection = player.position.clone().sub(dominantBodyPosition).normalize();
-                        player.velocity.add(upDirection.multiplyScalar(playerSettings.jumpStrength));
-                        player.onGround = false; // Player is no longer on ground after jumping
+                        if (isInWater && !player.onGround) { // Swimming jump
+                            player.velocity.add(upDirection.multiplyScalar(playerSettings.speed * 0.5));
+                        } else { // Normal jump
+                            player.velocity.add(upDirection.multiplyScalar(playerSettings.jumpStrength));
+                        }
+                        player.onGround = false; // Player is no longer considered 'on ground' after jumping
                     }
                     break;
-                case 'KeyC': keys.c = true; break;
-                case 'ControlLeft':
-                case 'ControlRight':
-                    keys.ctrl = true; break;
             }
         }
 
@@ -923,10 +1171,6 @@
                 case 'KeyS': keys.s = false; break;
                 case 'KeyD': keys.d = false; break;
                 case 'Space': keys.space = false; break;
-                case 'KeyC': keys.c = false; break;
-                case 'ControlLeft':
-                case 'ControlRight':
-                    keys.ctrl = false; break;
                 case 'KeyV': 
                     isFirstPersonView = !isFirstPersonView;
                     break;
@@ -968,7 +1212,10 @@
             player.quaternion.premultiply(yawQuaternion);
 
             const pitchDelta = -movementY * playerSettings.sensitivity;
-            player.head.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.head.rotation.x + pitchDelta));
+            const newPitch = player.head.rotation.x + pitchDelta;
+            if (newPitch > -Math.PI / 2 && newPitch < Math.PI / 2) {
+                player.head.rotation.x = newPitch;
+            }
         }
 
         function onPointerLockChange() {
@@ -1318,21 +1565,17 @@
             player.head.getWorldPosition(headPosition);
 
             if (isFirstPersonView) {
-                player.body.visible = false;
-                player.head.visible = false;
-                const headQuaternion = new THREE.Quaternion();
-                player.head.getWorldQuaternion(headQuaternion);
+                gorillaGroup.visible = false;
                 camera.position.copy(headPosition);
-                camera.quaternion.copy(headQuaternion);
+                camera.quaternion.copy(player.quaternion);
+                camera.rotateX(player.head.rotation.x);
             } else {
-                player.body.visible = true;
-                player.head.visible = true;
+                gorillaGroup.visible = true;
                 const headQuaternion = new THREE.Quaternion();
                 player.head.getWorldQuaternion(headQuaternion);
                 const offsetFromHead = thirdPersonCameraOffset.clone();
-                offsetFromHead.y -= player.head.position.y;
-                const cameraOffsetRotated = offsetFromHead.clone().applyQuaternion(headQuaternion);
-                const desiredCameraPosition = headPosition.clone().add(cameraOffsetRotated);
+                const cameraOffsetRotated = offsetFromHead.clone().applyQuaternion(player.quaternion);
+                const desiredCameraPosition = player.position.clone().add(cameraOffsetRotated);
                 camera.position.lerp(desiredCameraPosition, 0.15);
                 camera.lookAt(headPosition);
             }
@@ -1372,32 +1615,39 @@
 
                 const waterRadius = waterMesh.geometry.parameters.radius;
                 const distToWaterCenter = player.position.distanceTo(planetCenter);
-                const isInWater = distToWaterCenter < waterRadius;
+                isInWater = distToWaterCenter < waterRadius;
                 const maxWaterSpeed = playerSettings.speed * 0.5; // Half of the normal speed
+                let isSwimming = false;
+
+                if (isInWater && !player.onGround) {
+                    isSwimming = true;
+                    // Rotate gorilla forward 90 degrees
+                    const swimRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), -Math.PI / 2);
+                    gorillaGroup.quaternion.slerp(swimRotation, 0.1);
+
+                    // Rotate head up to face forward
+                    player.head.rotation.x = Math.PI / 2;
+                } else {
+                    // Not swimming, stand up straight
+                    gorillaGroup.quaternion.slerp(new THREE.Quaternion(), 0.1);
+                    player.head.rotation.x = 0;
+                }
 
                 // 1. Apply gravity
                 if (!player.onGround && !isInWater) { // Add !isInWater condition
                     player.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength * gravityFactor));
                 } else if (isInWater) {
-                    // If in water, apply damping and handle vertical controls
-                    player.velocity.multiplyScalar(0.98); // Water resistance
+                    // If in water, stop all non-input-driven velocity
+                    // player.velocity.set(0, 0, 0); // Reset velocity to only be influenced by input
+                        const currentSpeed = player.velocity.length();
 
-                    if (!player.onGround) {
-                        const waterVerticalSpeed = playerSettings.speed * 0.5;
-                        if (keys.space) {
-                            player.velocity.add(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
-                        }
-                        if (keys.c || keys.ctrl) {
-                            player.velocity.sub(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
-                        }
-                    }
-                    
-                    const currentSpeed = player.velocity.length();
                     // If the current speed exceeds the maximum water speed, scale it down
                     if (currentSpeed > maxWaterSpeed) {
+                        // Normalize the velocity vector (make its length 1)
+                        // Then multiply by the desired maximum speed
                         player.velocity.normalize().multiplyScalar(maxWaterSpeed);
                     }
-                }
+                }""
 
                 // 2. Get movement input and project onto tangent plane
                 const moveDirection = new THREE.Vector3();
@@ -1429,8 +1679,7 @@
                 // 3. Update position based on velocity
                 player.position.add(player.velocity.clone().multiplyScalar(delta));
 
-                // 4. Collision detection and response (only if not in water)
-                //if (!isInWater) {
+                // 4. Collision detection and response
                     const groundObjects = [marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes);
                     const rayOrigin = player.position.clone().add(playerUp.clone().multiplyScalar(-playerSettings.height * 0.5));
                     raycaster.set(rayOrigin, gravityDirection);
@@ -1449,6 +1698,14 @@
                             player.position.copy(hitPoint.clone().add(playerUp.clone().multiplyScalar(playerSettings.height * 0.5 + snapOffset)));
                             const verticalVelocityComponent = playerUp.clone().multiplyScalar(player.velocity.dot(playerUp));
                             player.velocity.sub(verticalVelocityComponent);
+
+                            // Stand up if swimming in shallow water
+                            if (isSwimming) {
+                                const waterDepth = player.position.distanceTo(waterMesh.position) - waterMesh.geometry.parameters.radius;
+                                if (waterDepth < 2) {
+                                    isSwimming = false;
+                                }
+                            }
                         }
                     }
                     
