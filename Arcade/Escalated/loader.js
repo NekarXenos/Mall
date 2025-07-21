@@ -329,7 +329,7 @@ class Stream {
                 ctx.font = `bold ${matrixFontSize + 4}px 'Oi'`;
                 ctx.shadowColor = '#00ffff';
                 ctx.shadowBlur = 5;
-                ctx.fillStyle = '#7799BB';
+                ctx.fillStyle = '#77FFFF';
                 ctx.fillText(charInfo.value, charX, 0);
             } else {
                 ctx.font = `${matrixFontSize}px monospace`;
