@@ -15,7 +15,7 @@ const loader = {
     escalatorFont: "'Ultra', sans-serif",
     animationFrameId: null,
     escalatorAnimationDone: false,
-    mayhemAlpha: 0,
+    mayhemAlpha: 0.1,
     continueMessage: null,
     readyToContinue: false,
 
@@ -59,7 +59,7 @@ const loader = {
         this.continueMessage.style.fontWeight = 'bold';
         this.continueMessage.style.color = 'cyan';
         this.continueMessage.style.fontSize = '26px';
-        this.continueMessage.style.textShadow = '1px 1px 2px #000000';
+        this.continueMessage.style.textShadow = '1px 1px 2px #002244';
         this.continueMessage.style.display = 'block'; // Initially visible
         this.continueMessage.style.zIndex = '1002'; // Ensure it's on top of the canvas
         this.continueMessage.innerHTML = 'Loading... <span class="blinking-cursor">_</span>';
@@ -211,7 +211,8 @@ const loader = {
                     this.ctx.shadowColor = 'cyan';
                     this.ctx.shadowBlur = 15;
                 } else {
-                    this.ctx.shadowBlur = 0;
+                    this.ctx.shadowColor = '#00445F', //'black';
+                    this.ctx.shadowBlur = 15;
                 }
                 this.ctx.fillText(char, x, y);
             }
@@ -246,7 +247,7 @@ const loader = {
         const y = this.canvas.height * (2 / 3);
 
         this.ctx.save();
-        this.ctx.shadowColor = 'red';
+        this.ctx.shadowColor = '#FF2200'; // Orange
         this.ctx.shadowBlur = 20;
         this.ctx.fillText("Mayhem", x, y);
         this.ctx.restore();
@@ -328,11 +329,12 @@ class Stream {
                 ctx.font = `bold ${matrixFontSize + 4}px 'Oi'`;
                 ctx.shadowColor = '#00ffff';
                 ctx.shadowBlur = 5;
-                ctx.fillStyle = '#77FFFF';
+                ctx.fillStyle = '#7799BB';
                 ctx.fillText(charInfo.value, charX, 0);
             } else {
                 ctx.font = `${matrixFontSize}px monospace`;
-                ctx.shadowBlur = 0;
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = '#00AAAA';
                 ctx.fillStyle = '#00AAAA';
                 const randomChar = matrixChars.charAt(Math.floor(Math.random() * matrixChars.length));
                 ctx.fillText(randomChar, charX, 0);
