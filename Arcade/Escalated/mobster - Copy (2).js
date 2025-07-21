@@ -36,7 +36,6 @@ export class Mobster {
 
         // --- THREE.js objects ---
         this.characterGroup = null;
-        this.headGroup = null;
         this.gunGroup = null;
         this.leftArm = null;
         this.rightArm = null;
@@ -76,19 +75,16 @@ export class Mobster {
         this.characterGroup.add(body);
 
         // Head
-        this.headGroup = new THREE.Group();
-        this.characterGroup.add(this.headGroup);
-
         const headGeometry = new THREE.DodecahedronGeometry(1.2, 0);
         const head = new THREE.Mesh(headGeometry, skinMaterial);
         head.rotation.x = -0.2;
         head.position.y = 1.2;
-        this.headGroup.add(head);
+        this.characterGroup.add(head);
 
         const hairGeometry = new THREE.BoxGeometry(1.8, 1.5, 1.5);
         const hair = new THREE.Mesh(hairGeometry, coatMaterial);
         hair.position.set(0, 1.2, -0.5);
-        this.headGroup.add(hair);
+        this.characterGroup.add(hair);
 
         // Sunglasses
         const shadesGeometry = new THREE.CylinderGeometry(1, 1, 1, 6);
@@ -97,34 +93,34 @@ export class Mobster {
         shades.rotation.x = Math.PI / 2;
         shades.rotation.y = Math.PI / 2;
         shades.position.set(0, 1.5, 0.5);
-        this.headGroup.add(shades);
+        this.characterGroup.add(shades);
 
         // Fedora
         const fedoraTop1Geometry = new THREE.SphereGeometry(1, 6, 4);
         fedoraTop1Geometry.scale(0.7, 1, 1);
         const fedoraTop1 = new THREE.Mesh(fedoraTop1Geometry, fedoraMaterial);
         fedoraTop1.position.set(0.3, 2.1, 0);
-        this.headGroup.add(fedoraTop1);
+        this.characterGroup.add(fedoraTop1);
 
         const fedoraTop2Geometry = new THREE.SphereGeometry(1, 6, 4);
         fedoraTop2Geometry.scale(0.7, 1, 1);
         const fedoraTop2 = new THREE.Mesh(fedoraTop2Geometry, fedoraMaterial);
         fedoraTop2.position.set(-0.3, 2.1, 0);
-        this.headGroup.add(fedoraTop2);
+        this.characterGroup.add(fedoraTop2);
 
         const fedoraBrimGeometry = new THREE.TorusGeometry(1.3, 0.5, 3, 6);
         fedoraBrimGeometry.scale(1, 1, 0.5);
         const fedoraBrim = new THREE.Mesh(fedoraBrimGeometry, fedoraMaterial);
         fedoraBrim.rotation.set(Math.PI / 2 + 0.1, 0, Math.PI / 2);
         fedoraBrim.position.y = 1.8;
-        this.headGroup.add(fedoraBrim);
+        this.characterGroup.add(fedoraBrim);
 
         const fedoraBandGeometry = new THREE.TorusGeometry(1, 0.2, 4, 6);
         fedoraBandGeometry.scale(1, 1, 1.5);
         const fedoraBand = new THREE.Mesh(fedoraBandGeometry, fedBandMaterial);
         fedoraBand.rotation.x = Math.PI / 2 + 0.1;
         fedoraBand.position.y = 2;
-        this.headGroup.add(fedoraBand);
+        this.characterGroup.add(fedoraBand);
 
         // Limbs
         const upperArmGeometry = new THREE.CylinderGeometry(0.5, 0.45, 1.5, 6);
@@ -389,20 +385,6 @@ export class Mobster {
      */
         getObject() {
         return this.characterGroup;
-    }
-
-    getHeadGroup() {
-        return this.headGroup;
-    }
-
-    getHeadMeshes() {
-        const headMeshes = [];
-        this.headGroup.traverse(child => {
-            if (child.isMesh) {
-                headMeshes.push(child);
-            }
-        });
-        return headMeshes;
     }
 
     takeDamage(amount) {

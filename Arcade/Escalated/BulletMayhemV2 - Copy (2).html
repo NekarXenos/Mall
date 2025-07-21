@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escalated Mayhem</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oi&family=Ultra&family=Yellowtail&display=swap" rel="stylesheet">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="mainCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // --- General & Matrix Background Variables ---
+        const matrixFontSize = 16;
+        const matrixChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=-.:#@アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン';
+        
+        const streams = [];
+        // Angle for diagonal flow. -Math.PI / 4 (or -45 degrees) means movement from bottom-left to top-right.
+        const angle = -Math.PI / 4; 
+
+        // --- General Setup ---
+        function setupCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // Update escalator font size on resize
+            escalatorFontSize = Math.min(canvas.width, canvas.height) * 0.09;
+            initializeStreams(); // Re-initialize streams on resize
+        }
+
+        // --- Matrix Background Animation ---
+        class Stream {
+            constructor() {
+                this.speed = (Math.random() * 4) + 1;
+                this.length = Math.floor(Math.random() * 20) + 15;
+                this.characters = [];
+                // Assign a direction: 1 for parallel to Escalated text, -1 for opposite
+                this.direction = Math.random() < 0.5 ? 1 : -1; 
+                this.generateCharacters();
+                this.resetPosition();
+            }
+
+            // Set a new starting position off-screen based on the stream's direction
+            resetPosition() {
+                if (this.direction === 1) { // Moves parallel (bottom-left to top-right)
+                    // Start randomly along the bottom or right edge
+                    if (Math.random() > 0.5) {
+                        this.x = Math.random() * canvas.width;
+                        this.y = canvas.height + this.length * matrixFontSize;
+                    } else {
+                        this.x = canvas.width + this.length * matrixFontSize;
+                        this.y = Math.random() * canvas.height;
+                    }
+                } else { // Moves opposite (top-left to bottom-right)
+                     // Start randomly along the top or left edge
+                    if (Math.random() > 0.5) {
+                        this.x = Math.random() * canvas.width;
+                        this.y = -this.length * matrixFontSize;
+                    } else {
+                        this.x = -this.length * matrixFontSize;
+                        this.y = Math.random() * canvas.height;
+                    }
+                }
+            }
+
+            generateCharacters() {
+                this.characters = [];
+                for (let i = 1; i < this.length; i++) {
+                    // The value is no longer needed here as it will be randomized in the draw() method.
+                    this.characters.push({ value: '', isLeader: false });
+                }
+                this.characters.push({ value: 'D', isLeader: true }); // Leader character
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                // Rotate to make streams parallel to the Escalated text movement.
+                // If direction is -1, add PI to flip the stream's visual orientation.
+                const rotation = this.direction === 1 ? angle : angle + Math.PI;
+                ctx.rotate(rotation);
+
+                for (let i = 0; i < this.characters.length; i++) {
+                    const charInfo = this.characters[i];
+                    // Draw characters along the now-horizontal (rotated) axis
+                    const charX = i * (matrixFontSize - 4); 
+                    
+                    if (charInfo.isLeader) {
+                        ctx.font = `bold ${matrixFontSize + 4}px 'Oi'`;
+                        ctx.shadowColor = 'orangered';
+                        ctx.shadowBlur = 5;
+                        ctx.fillStyle = '#CCCCCC';
+                        ctx.fillText(charInfo.value, charX, 0);
+                    } else {
+                        ctx.font = `${matrixFontSize}px monospace`;
+                        ctx.shadowBlur = 0;
+                        ctx.fillStyle = '#00FFFF';
+                        // Generate a random character on each frame for a flickering effect
+                        const randomChar = matrixChars.charAt(Math.floor(Math.random() * matrixChars.length));
+                        ctx.fillText(randomChar, charX, 0);
+                    }
+                }
+                ctx.restore(); // Restore context to its original state
+                ctx.shadowBlur = 0;
+            }
+
+            update() {
+                // Move the stream diagonally based on the fixed angle and its direction
+                this.x += this.speed * Math.cos(angle) * this.direction;
+                this.y += this.speed * Math.sin(angle) * this.direction;
+
+                // Check if the stream is off-screen based on its direction
+                const offScreen = (this.direction === 1 && (this.y < -50 || this.x < -50)) || // Moving top-left
+                                  (this.direction === -1 && (this.y > canvas.height + 50 || this.x > canvas.width + 50)); // Moving bottom-right
+
+                if (offScreen) {
+                    // If main animation is done, don't reset the stream. Let it die.
+                    if (escalatorAnimationDone) return;
+                    this.resetPosition();
+                }
+            }
+        }
+
+        function initializeStreams() {
+            streams.length = 0; // Clear existing streams
+            const streamCount = Math.floor((canvas.width + canvas.height) / 30);
+            for (let i = 0; i < streamCount; i++) {
+                streams.push(new Stream());
+            }
+        }
+
+        // --- Escalator Text Animation ---
+        const word = "ESCALATED";
+        const escalatorChars = [...word.split(''), '•'];
+        const numSteps = escalatorChars.length;
+        const escalatorFont = "'Ultra', sans-serif";
+        // Initial calculation for escalator font size
+        let escalatorFontSize = Math.min(canvas.width, canvas.height) * 0.09;
+
+        let animationProgress = 0;
+        const animationSpeed = 0.015;
+        const totalCycles = 3;
+        const stopProgress = numSteps * totalCycles;
+        let escalatorAnimationDone = false;
+
+        function drawEscalatorText() {
+            ctx.font = `bold ${escalatorFontSize}px ${escalatorFont}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Path for Escalated text (bottom-left to top-right diagonal)
+            const pathLength = Math.min(canvas.width, canvas.height) * 0.8;
+            const startX = (canvas.width - pathLength) / 2; 
+            const startY = (canvas.height + pathLength) / 2; 
+            const stepX = pathLength / (numSteps - 1);
+            const stepY = pathLength / (numSteps - 1);
+
+            for (let i = 0; i < numSteps; i++) {
+                const char = escalatorChars[i];
+                
+                // When animation is done, hide the bullet point
+                if (escalatorAnimationDone && char === '•') {
+                    continue; // Skip drawing this character
+                }
+
+                const rawPosition = i + animationProgress;
+                const wrappedPosition = ((rawPosition % numSteps) + numSteps) % numSteps;
+
+                // Calculate position along the diagonal path
+                const x = startX + wrappedPosition * stepX;
+                const y = startY - wrappedPosition * stepY;
+
+                let alpha = 1.0;
+                const fadeZone = 1.5;
+                if (wrappedPosition > numSteps - fadeZone) {
+                    alpha = (numSteps - wrappedPosition) / fadeZone;
+                } else if (wrappedPosition < fadeZone - 1) {
+                    alpha = (wrappedPosition + 1) / fadeZone;
+                }
+                alpha = Math.max(0, Math.min(1, alpha));
+
+                ctx.save();
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+                ctx.fillText(char, x, y);
+                ctx.restore();
+            }
+
+            if (!escalatorAnimationDone) {
+                 animationProgress += animationSpeed;
+                 if(animationProgress >= stopProgress) {
+                    escalatorAnimationDone = true;
+                 }
+            }
+        }
+        
+        // --- Mayhem Text Animation ---
+        let mayhemAlpha = 0;
+        function drawMayhem() {
+            if (!escalatorAnimationDone) return;
+
+            if (mayhemAlpha < 1) {
+                mayhemAlpha += 0.01;
+            }
+
+            // Mayhem font size can remain relative to width or be adjusted similarly
+            ctx.font = `italic bold ${canvas.width / 12}px 'Yellowtail'`;
+            ctx.fillStyle = `rgba(255, 100, 0, ${mayhemAlpha})`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            const x = canvas.width * (2 / 3);
+            const y = canvas.height * (2 / 3);
+
+            ctx.save();
+            ctx.shadowColor = 'red';
+            ctx.shadowBlur = 20;
+            ctx.fillText("Mayhem", x, y);
+            ctx.restore();
+        }
+
+        // --- Main Animation Loop ---
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            streams.forEach(stream => {
+                stream.draw();
+                stream.update();
+            });
+
+            drawEscalatorText();
+            drawMayhem();
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- Event Listeners ---
+        window.addEventListener('resize', () => {
+            setupCanvas();
+            // Re-calculate escalator font size on resize
+            escalatorFontSize = Math.min(canvas.width, canvas.height) * 0.09;
+        });
+
+        // --- Initial Start ---
+        setupCanvas();
+        animate();
+    </script>
+</body>
+</html>

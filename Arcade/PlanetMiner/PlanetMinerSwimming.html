@@ -806,6 +806,7 @@
             // Attach state properties directly to the player group
             player.velocity = new THREE.Vector3();
             player.onGround = false;
+            player.bodyTargetRotation = new THREE.Quaternion(); // For swimming rotation
 
             const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
             const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x5588ff });
@@ -1376,19 +1377,12 @@
                 const maxWaterSpeed = playerSettings.speed * 0.5; // Half of the normal speed
 
                 // Swimming Animation
-                const targetRotation = new THREE.Quaternion();
-                const targetPosition = new THREE.Vector3();
-
                 if (isInWater && !player.onGround) {
-                    // Rotate body back and move it up and behind the head
-                    targetRotation.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
-                    targetPosition.set(0, 0.8, 0.6);
+                    player.bodyTargetRotation.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
                 } else {
-                    targetRotation.identity();
-                    targetPosition.set(0, -0.3, 0); // Original position
+                    player.bodyTargetRotation.identity();
                 }
-                player.body.quaternion.slerp(targetRotation, 0.1);
-                player.body.position.lerp(targetPosition, 0.1);
+                player.body.quaternion.slerp(player.bodyTargetRotation, 0.1);
 
                 // 1. Apply gravity
                 if (!player.onGround && !isInWater) { // Add !isInWater condition

@@ -649,6 +649,16 @@ function createLampshadeProjectile(startPosition, direction, firedByPlayer = fal
 }
 
 // --- Update Projectiles ---
+function getRoomFromPosition(position) {
+    for (const roomData of allRoomsData) {
+        const roomBox = new THREE.Box3().setFromObject(roomData.contentsGroup);
+        if (roomBox.containsPoint(position)) {
+            return roomData;
+        }
+    }
+    return null;
+}
+
 function updateProjectiles(deltaTime) {
     for (let i = projectiles.length - 1; i >= 0; i--) {
         const projectile = projectiles[i];
@@ -659,32 +669,56 @@ function updateProjectiles(deltaTime) {
             let hitEnemy = false;
             for (let j = enemies.length - 1; j >= 0; j--) {
                 const enemy = enemies[j];
-                // Simple bounding box collision for now
                 const enemyBox = new THREE.Box3().setFromObject(enemy.getObject());
+
+                // Check for general body hit first
                 if (enemyBox.containsPoint(projectile.position)) {
-                    enemy.takeDamage(25); // Each hit does 25 damage
+                    if (enemyBox.containsPoint(projectile.position)) {
+                    const wasAlive = enemy.health > 0;
+                    const headshotThresholdY = enemy.getObject().position.y + (enemyBox.max.y - enemy.getObject().position.y) * 0.7;
+
+                    if (projectile.userData.type === 'lampshadeProjectile') {
+                        enemy.health = 0; // Instant kill
+                    } else if (projectile.position.y > headshotThresholdY) {
+                        enemy.health = 0; // Instant kill for headshot
+                        console.log("Headshot!");
+                    } else {
+                        enemy.takeDamage(25); // Body shot
+                    }
+
+                    if (wasAlive && enemy.health <= 0) { // Check if the enemy was just killed
+                        if (projectile.userData.type === 'lampshadeProjectile') {
+                            playerScore += 300;
+                            console.log("Lampshade kill!");
+                        } else {
+                            const room = getRoomFromPosition(enemy.getObject().position);
+                            if (room && room.lamp && room.lamp.userData.pointLight.intensity === 0) {
+                                playerScore += 150; // Kill in the dark
+                            } else {
+                                playerScore += 100; // Normal kill
+                            }
+                        }
+                    }
+                    hitEnemy = true;
+                    break; // Exit inner loop after hitting one enemy
+                }
+
+                if (hitEnemy) {
                     if (enemy.health <= 0) {
-                        // Mobster defeated
-                        playerScore += 100; // Increase score
                         updateUI();
                         const playerDirection = new THREE.Vector3();
                         camera.getWorldDirection(playerDirection);
                         enemy.fallAndDisappear(playerDirection); // Trigger fall animation and removal
                         enemies.splice(j, 1); // Remove from active enemies array
                     }
-                    hitEnemy = true;
-                    break; // Only hit one enemy per projectile
+                    scene.remove(projectile);
+                    projectiles.splice(i, 1);
+                    const worldIndex = worldObjects.indexOf(projectile);
+                    if (worldIndex > -1) {
+                        worldObjects.splice(worldIndex, 1);
+                    }
+                    break; // Exit inner loop after hitting one enemy
                 }
-            }
-
-            if (hitEnemy) {
-                scene.remove(projectile);
-                projectiles.splice(i, 1);
-                const worldIndex = worldObjects.indexOf(projectile);
-                if (worldIndex > -1) {
-                    worldObjects.splice(worldIndex, 1);
-                }
-                continue; // Move to next projectile
             }
         }
 
@@ -698,6 +732,7 @@ function updateProjectiles(deltaTime) {
             }
         }
     }
+}
 }
 
 function updateUI() {
@@ -1694,21 +1729,19 @@ function generateWorld() {
         } else { // --- Office Floor Generation (i >= 0) ---
 
             // Floor Plane (Corridor only for office floors)
-            const floorGeo = new THREE.PlaneGeometry(SETTINGS.corridorWidth + (2*SETTINGS.roomSize), totalCorridorLength);
+            const floorGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (2 * SETTINGS.roomSize), floorDepth, totalCorridorLength);
             const floor = new THREE.Mesh(floorGeo, floorMaterial);
             floor.name = `Floor ${i}`;
-            floor.rotation.x = -Math.PI / 2;
-            floor.position.set(SETTINGS.corridorWidth / 2, floorY, totalCorridorLength / 2);
+            floor.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, totalCorridorLength / 2);
             floor.receiveShadow = true;
             scene.add(floor);
             worldObjects.push(floor);
 
             // Floor Plane -Z (Corridor only for office floors)
-            //const floorGeo = new THREE.PlaneGeometry(SETTINGS.corridorWidth, totalCorridorLength);
-            const floorB = new THREE.Mesh(floorGeo, floorMaterial);
+            const floorBGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (2 * SETTINGS.roomSize), floorDepth, totalCorridorLength);
+            const floorB = new THREE.Mesh(floorBGeo, floorMaterial);
             floorB.name = `Floor B ${i}`;
-            floorB.rotation.x = -Math.PI / 2;
-            floorB.position.set(SETTINGS.corridorWidth / 2, floorY, -16- totalCorridorLength / 2);
+            floorB.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, -16 - totalCorridorLength / 2);
             floorB.receiveShadow = true;
             scene.add(floorB);
             worldObjects.push(floorB);
@@ -1859,11 +1892,11 @@ function generateWorld() {
                 scene.add(rightRoomContents);
 
 
-                /* allRoomsData.push({
+                allRoomsData.push({
                     id: rightRoomId,
                     door: null, windowGlass: null, opaqueMaterial: null, transparentMaterial: null, contentsGroup: rightRoomContents,
-                    visibleByDoor: false, visibleByWindow: false, lamp: roomLampR }
-                );  */
+                    visibleByDoor: false, visibleByWindow: false, lamp: roomLampR
+                });
 
                 // --- Right Side B Room ---
                 const segmentBCenterZ = ((j + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
@@ -1929,7 +1962,7 @@ function generateWorld() {
                 scene.add(rightRoomContents);
 
                 allRoomsData.push({
-                    id: rightRoomId,
+                    id: rightRoomBId,
                     door: null, windowGlass: null, opaqueMaterial: null, transparentMaterial: null, contentsGroup: rightRoomContents,
                     visibleByDoor: false, visibleByWindow: false, lamp: roomLampBR
                 });
@@ -1984,7 +2017,13 @@ function generateWorld() {
                     dialL.userData.isSafeDial = true; dialL.name = `Dial_Safe_L_F${i}_D${j}`; safeL.add(dialL);
                 }
                 const roomLampL = createRoomLamp(roomLXCenter, floorY + SETTINGS.wallHeight - 0.5, segmentCenterZ, i, leftRoomId, lightBulbMaterial);
-                leftRoomContents.add(roomLampL);
+                leftRoomContents.add(roomLampL); // Add lamp's visual group
+
+                allRoomsData.push({
+                    id: leftRoomId,
+                    door: null, windowGlass: null, opaqueMaterial: null, transparentMaterial: null, contentsGroup: leftRoomContents,
+                    visibleByDoor: false, visibleByWindow: false, lamp: roomLampL
+                });
 
                 // Call modified function for pillars and window (A-Wing Left)
                 createOuterWall_SegmentFeatures(SETTINGS.corridorWidth + SETTINGS.roomSize - wallDepth / 2, segmentCenterZ, SETTINGS.corridorSegmentLength, floorY, SETTINGS.wallHeight, wallDepth, wallMaterialA, opaqueGlassMaterial, glassMaterial, leftRoomId);
@@ -2041,8 +2080,11 @@ function generateWorld() {
                                     dialBL.position.set(-safeDepth / 2, 0, 0); dialBL.rotation.z = Math.PI / 2;
                                     dialBL.userData.isSafeDial = true; dialBL.name = `Dial_Safe_B_L_F${i}_D${j}`; safeBL.add(dialBL);
                                 }
-                                const roomLampBL = createRoomLamp(roomBLXCenter, floorY + SETTINGS.wallHeight - 0.5, segmentBCenterZ, i, leftRoomBId, lightBulbMaterial);
-                                leftRoomContents.add(roomLampBL);
+                                allRoomsData.push({
+                    id: leftRoomBId,
+                    door: null, windowGlass: null, opaqueMaterial: null, transparentMaterial: null, contentsGroup: leftRoomContents,
+                    visibleByDoor: false, visibleByWindow: false, lamp: roomLampBL
+                });
                 
                                 // Call modified function for pillars and window (B-Wing Left)
                                 createOuterWall_SegmentFeatures(SETTINGS.corridorWidth + SETTINGS.roomSize - wallDepth / 2, segmentBCenterZ, SETTINGS.corridorSegmentLength, floorY, SETTINGS.wallHeight, wallDepth, wallMaterialB, opaqueGlassMaterial, glassMaterial, leftRoomBId);
@@ -5639,4 +5681,4 @@ init();
 //    playerOnEscVisualState.floor = escalatorActualStatus.floor;
 //    playerOnEscVisualState.wing = escalatorActualStatus.wing;
 //    // Optionally, trigger material change here too if not covered by updateEscalatorStepVisuals
-// }
+//

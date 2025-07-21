@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gorilla - 3rd Person Control</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+        import { init, animate } from './gorilla.js';
+
+        // Scene, camera, renderer
+        let scene, camera, renderer;
+        let clock;
+
+        // Camera control variables
+        const CAMERA_DISTANCE = 20; // Adjust this value to change camera distance
+        const CAMERA_HEIGHT = 5;    // Adjust this value to change camera height
+
+        // Mouse look variables
+        const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+        const pitchSpeed = 1;
+        const yawSpeed = 1;
+
+        const controls = {};
+
+        const GROUND_Y = 0;
+        const PLAYER_START_Y = 0.76; // Calculated to place feet on GROUND_Y
+
+        function generatePerlinNoise(width, height) {
+            const data = new Uint8Array(width * height * 3); // RGB
+            const perm = new Array(512);
+            const p = new Array(256);
+            for (let i = 0; i < 256; i++) {
+                p[i] = Math.floor(Math.random() * 256);
+            }
+            for (let i = 0; i < 512; i++) {
+                perm[i] = p[i & 255];
+            }
+
+            function fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+
+            function lerp(a, b, t) {
+                return a + t * (b - a);
+            }
+
+            function grad(hash, x, y) {
+                const h = hash & 15;
+                const u = h < 8 ? x : y;
+                const v = h < 4 ? y : h == 12 || h == 14 ? x : 0;
+                return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+            }
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const x0 = x / width;
+                    const y0 = y / height;
+
+                    const X = Math.floor(x0) & 255;
+                    const Y = Math.floor(y0) & 255;
+
+                    const xf = x0 - Math.floor(x0);
+                    const yf = y0 - Math.floor(y0);
+
+                    const u = fade(xf);
+                    const v = fade(yf);
+
+                    const A = perm[X] + Y;
+                    const AA = perm[A];
+                    const AB = perm[A + 1];
+                    const B = perm[X + 1] + Y;
+                    const BA = perm[B];
+                    const BB = perm[B + 1];
+
+                    const val = lerp(lerp(grad(perm[AA], xf, yf), grad(perm[BA], xf - 1, yf), u),
+                                     lerp(grad(perm[AB], xf, yf - 1), grad(perm[BB], xf - 1, yf - 1), u), v);
+
+                    const scaledVal = (val + 1) / 2; // Scale from [-1, 1] to [0, 1]
+                    const color = Math.floor(scaledVal * 255);
+
+                    const i = (y * width + x) * 3;
+                    data[i] = color;
+                    data[i + 1] = color;
+                    data[i + 2] = color;
+                }
+            }
+            return data;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onMouseMove(event) {
+            euler.y -= event.movementX * 0.002 * yawSpeed;
+            euler.x -= event.movementY * 0.002 * pitchSpeed;
+            euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x)); // Clamp pitch
+        }
+
+        // 1. Scene Setup
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x333333);
+        clock = new THREE.Clock();
+
+        // 2. Camera Setup
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+        // 3. Renderer Setup
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // 4. Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        directionalLight.position.set(5, 10, 7);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+        const pointLight = new THREE.PointLight(0xffd700, 1.5, 100);
+        pointLight.position.set(0, 10, 10);
+        scene.add(pointLight);
+
+        // 5. Ground Plane
+        const planeGeometry = new THREE.PlaneGeometry(20, 20);
+        const textureWidth = 1024;
+        const textureHeight = 1024;
+        const perlinData = generatePerlinNoise(textureWidth, textureHeight);
+        const perlinTexture = new THREE.DataTexture(perlinData, textureWidth, textureHeight, THREE.RGBFormat);
+        perlinTexture.needsUpdate = true;
+
+        const planeMaterial = new THREE.MeshStandardMaterial({ map: perlinTexture, metalness: 0.2, roughness: 0.8 });
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        plane.rotation.x = -Math.PI / 2;
+        plane.receiveShadow = true;
+        plane.position.y = GROUND_Y;
+        scene.add(plane);
+
+        // 6. Event Listeners
+        window.addEventListener('resize', onWindowResize, false);
+        document.addEventListener('keydown', (event) => (controls[event.key.toLowerCase()] = true));
+        document.addEventListener('keyup', (event) => (controls[event.key.toLowerCase()] = false));
+        renderer.domElement.addEventListener('click', () => document.body.requestPointerLock());
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === document.body) {
+                document.addEventListener('mousemove', onMouseMove, false);
+            } else {
+                document.removeEventListener('mousemove', onMouseMove, false);
+            }
+        });
+
+        const { gorillaGroup, camera: gorillaCamera } = init(scene, camera, renderer, clock);
+        scene.add(gorillaGroup);
+
+        animate(scene, camera, renderer, clock);
+    </script>
+</body>
+</html>

@@ -388,7 +388,7 @@ function createElevator(config) {
     elevatorObj.roof.add(elevatorLight);
 
     // 3. Vertical Poles inside elevator (children of the platform)
-    const poleDimension = 0.2;
+    const poleDimension = 0.1;
     const poleHeight = SETTINGS.wallHeight; // From platform to internal roof bottom
     const poleGeo = new THREE.BoxGeometry(poleDimension, poleHeight, poleDimension);
     const platformInnerWidth = config.shaftWidth - 0.2;
@@ -412,8 +412,8 @@ function createElevator(config) {
 
         // Add Up and Down buttons to each pole
         const buttonSize = 0.2;
-        const buttonDepth = 0.25;
-        const buttonOffset = -0.225; // 0.1; // Offset from the pole surface
+        const buttonDepth = 0.05;
+        const buttonOffset = 0.1; // Offset from the pole surface
 
         // Up button (triangle pointing up)
         const upButtonShape = new THREE.Shape();
@@ -3721,23 +3721,6 @@ function interact() {
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2(0, 0); // Center of the screen
     raycaster.setFromCamera(pointer, camera);
-
-    // Check for elevator button interaction first
-    const elevatorButtonIntersects = raycaster.intersectObjects(elevators.flatMap(elev => [elev.upButton, elev.downButton].filter(Boolean)), true);
-    if (elevatorButtonIntersects.length > 0) {
-        const intersectedButton = elevatorButtonIntersects[0].object;
-        if (intersectedButton.userData.elevatorId && (intersectedButton.userData.direction === 'up' || intersectedButton.userData.direction === 'down')) {
-            const elevatorId = intersectedButton.userData.elevatorId;
-            const direction = intersectedButton.userData.direction;
-            const targetElevator = elevators.find(elev => elev.id === elevatorId);
-
-            if (targetElevator) {
-                activeElevator = targetElevator; // Set the clicked elevator as active
-                callElevator(direction === 'up' ? 1 : -1);
-                return; // Exit after handling button click
-            }
-        }
-    }
 
     // Check interactable objects (doors and world objects which might include safe dials)
     // Safes are in worldObjects, their dials are children. Room lights are in the 'lights' array.
