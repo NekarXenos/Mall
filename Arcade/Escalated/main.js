@@ -470,6 +470,31 @@ function createElevator(config) {
     elevatorObj.platform.add(downButton);
     elevatorObj.downButton = downButton; // Store reference to the down button
 
+    // Elevator control Buttons set B
+    const controlsXb =  -platformInnerWidth / 2 + poleDimension / 2;
+    const controlsZb =  platformInnerDepth / 2 - poleDimension / 2 ;
+    const upButtonB = new THREE.Mesh(upButtonGeo, upButtonMaterial);
+    upButtonB.position.set(controlsXb , 0.1 + poleHeight / 2 + 0.5, controlsZb - buttonOffset - poleDimension / 2);
+    //upButton.rotation.y = Math.PI / 2; // Rotate to face outwards
+    upButtonB.name = `ElevatorUpButtonB_${config.id}`; //  `ElevatorUpButton_${config.id}_${index}`;
+    upButtonB.userData.elevatorId = config.id;
+    upButtonB.userData.direction = 'up';
+    upButtonB.userData.originalEmissiveIntensity = upButtonMaterial.emissiveIntensity;
+    elevatorObj.platform.add(upButtonB);
+    elevatorObj.upButtonB = upButtonB; // Store reference to the up button
+
+    // Down buttonB (triangle pointing down)
+    const downButtonB = new THREE.Mesh(downButtonGeo, downButtonMaterial);
+    downButtonB.position.set(controlsXb, 0.1 + poleHeight / 2 - 0.5, controlsZb - buttonOffset - poleDimension / 2);
+    //downButton.rotation.y = Math.PI / 2; // Rotate to face outwards
+    downButtonB.name = `ElevatorDownButtonB_${config.id}`; //  `ElevatorDownButton_${config.id}_${index}`;
+    downButtonB.userData.elevatorId = config.id;
+    downButtonB.userData.direction = 'down';
+    downButtonB.userData.originalEmissiveIntensity = downButtonMaterial.emissiveIntensity;
+    elevatorObj.platform.add(downButtonB);
+    elevatorObj.downButtonB = downButtonB; // Store reference to the down button
+
+
 
     // 4. Elevator Shaft Ceiling (Topmost structure of the shaft)
     const shaftCeilingY = (config.maxFloorIndex + 1) * SETTINGS.floorHeight; // One floor height above max floor served
@@ -3623,13 +3648,13 @@ function updateElevators(deltaTime) {
 
         if (elev.direction > 0) { // Moving up or called to go up
             upButtonMaterial.emissiveIntensity = 2.0; // Glow
-            downButtonMaterial.emissiveIntensity = downButtonMaterial.originalEmissiveIntensity; // Dim
+            downButtonMaterial.emissiveIntensity = 0.2; // Dim
         } else if (elev.direction < 0) { // Moving down or called to go down
-            upButtonMaterial.emissiveIntensity = upButtonMaterial.originalEmissiveIntensity; // Dim
+            upButtonMaterial.emissiveIntensity = 0.2; // Dim
             downButtonMaterial.emissiveIntensity = 2.0; // Glow
         } else { // Not moving, no active direction
-            upButtonMaterial.emissiveIntensity = upButtonMaterial.originalEmissiveIntensity; // Dim
-            downButtonMaterial.emissiveIntensity = downButtonMaterial.originalEmissiveIntensity; // Dim
+            upButtonMaterial.emissiveIntensity = 0.2; // Dim
+            downButtonMaterial.emissiveIntensity = 0.2; // Dim
         }
         console.log(`Elevator ${elev.id} arrived at floor ${elev.currentFloorIndexVal}`);
 
@@ -3735,7 +3760,7 @@ function interact() {
     raycaster.setFromCamera(pointer, camera);
 
     // Check for elevator button interaction first
-    const elevatorButtonIntersects = raycaster.intersectObjects(elevators.flatMap(elev => [elev.upButton, elev.downButton].filter(Boolean)), true);
+    const elevatorButtonIntersects = raycaster.intersectObjects(elevators.flatMap(elev => [elev.upButton, elev.downButton, elev.upButtonB, elev.downButtonB].filter(Boolean)), true);
     if (elevatorButtonIntersects.length > 0) {
         const intersectedButton = elevatorButtonIntersects[0].object;
         if (intersectedButton.userData.elevatorId && (intersectedButton.userData.direction === 'up' || intersectedButton.userData.direction === 'down')) {
