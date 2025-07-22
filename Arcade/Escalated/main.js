@@ -11,7 +11,7 @@ import { Mobster } from './mobster.js'; // Import the Mobster class
 // +Z is forward and -Z is backward in this world
 
 let isGamePaused = false; let animationFrameIdGame; // Or whatever you call your game's animation frame ID
-        
+
 
 // --- Game Settings ---
 const SETTINGS = {
@@ -98,15 +98,21 @@ const escalatorStartsB = {
     up: {},   // { floorIndex: startEscUpMesh }
     down: {}  // { floorIndex: startEscDownMesh }
 };
-const escalatorEnds = { 
+const escalatorEnds = {
     up: {},   // For up steps if needed in future
     down: {}  // For down-step ending points
 };
-const escalatorEndsB = { 
+const escalatorEndsB = {
     up: {},   // For up steps if needed in future
     down: {}  // For down-step ending points
 };
 let playerOnEscalator = { type: null, floor: null, wing: null }; // Track which escalator area player is on
+
+// --- Escalator Control System ---
+// This object will hold the state and button references for each escalator system.
+// Each key will be a unique escalator ID (e.g., 'escalator_A_0_up').
+// The value will be an object containing the current direction and an array of all its buttons.
+const escalatorSystems = {};
 
 // --- LOD System ---
 const allRoomsData = []; // Stores data for each room for LOD management
@@ -280,7 +286,7 @@ function init() {
     generateWorld();
 
     // --- Event Listeners ---
-    document.addEventListener('mousedown', function(event) {
+    document.addEventListener('mousedown', function (event) {
         // Left mouse button (0): normal shoot
         // Right mouse button (2): lampshade shoot
         if (event.button === 0) {
@@ -314,7 +320,7 @@ function init() {
         }
     });
     // Prevent context menu on right click
-    window.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+    window.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
     window.addEventListener('resize', onWindowResize);
@@ -322,14 +328,14 @@ function init() {
     // Make the player jump slightly at the start
     playerVelocity.y = 2.0;
 
-        document.addEventListener('keydown', function(event) {
-            if (!controls.isLocked) return; // Only allow menu if game is active
-            if (event.key === 'm' || event.key === 'M' || event.key === 'Escape') {
-                event.preventDefault();
-                const currentGameUrl = window.location.pathname.replace(/^\//, '') + window.location.search + window.location.hash;
-                window.location.href = '../../Menu.html?returnTo=' + encodeURIComponent(currentGameUrl);
-            }
-        });
+    document.addEventListener('keydown', function (event) {
+        if (!controls.isLocked) return; // Only allow menu if game is active
+        if (event.key === 'm' || event.key === 'M' || event.key === 'Escape') {
+            event.preventDefault();
+            const currentGameUrl = window.location.pathname.replace(/^\//, '') + window.location.search + window.location.hash;
+            window.location.href = '../../Menu.html?returnTo=' + encodeURIComponent(currentGameUrl);
+        }
+    });
 
     // Start the animation loop
     animate();
@@ -396,9 +402,9 @@ function createElevator(config) {
 
     const polePositions = [
         { x: -platformInnerWidth / 2 + poleDimension / 2, z: -platformInnerDepth / 2 + poleDimension / 2 },
-        { x:  platformInnerWidth / 2 - poleDimension / 2, z: -platformInnerDepth / 2 + poleDimension / 2 },
-        { x: -platformInnerWidth / 2 + poleDimension / 2, z:  platformInnerDepth / 2 - poleDimension / 2 },
-        { x:  platformInnerWidth / 2 - poleDimension / 2, z:  platformInnerDepth / 2 - poleDimension / 2 }
+        { x: platformInnerWidth / 2 - poleDimension / 2, z: -platformInnerDepth / 2 + poleDimension / 2 },
+        { x: -platformInnerWidth / 2 + poleDimension / 2, z: platformInnerDepth / 2 - poleDimension / 2 },
+        { x: platformInnerWidth / 2 - poleDimension / 2, z: platformInnerDepth / 2 - poleDimension / 2 }
     ];
     polePositions.forEach((pos, index) => {
         const pole = new THREE.Mesh(poleGeo, config.platformMaterial);
@@ -410,59 +416,64 @@ function createElevator(config) {
         elevatorObj.platform.add(pole);
         elevatorObj.poles.push(pole);
 
-        // Add Up and Down buttons to each pole
-        const buttonSize = 0.2;
-        const buttonDepth = 0.25;
-        const buttonOffset = -0.225; // 0.1; // Offset from the pole surface
-
-        // Up button (triangle pointing up)
-        const upButtonShape = new THREE.Shape();
-        upButtonShape.moveTo(0, buttonSize / 2);
-        upButtonShape.lineTo(-buttonSize / 2, -buttonSize / 2);
-        upButtonShape.lineTo(buttonSize / 2, -buttonSize / 2);
-        upButtonShape.lineTo(0, buttonSize / 2);
-        const upButtonGeo = new THREE.ExtrudeGeometry(upButtonShape, {
-            steps: 1,
-            depth: buttonDepth,
-            bevelEnabled: false
-        });
-        const upButtonMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.1 });
-        const upButton = new THREE.Mesh(upButtonGeo, upButtonMaterial);
-        upButton.position.set(pos.x + poleDimension / 2 + buttonOffset, 0.1 + poleHeight / 2 + 0.5, pos.z);
-        upButton.rotation.y = Math.PI / 2; // Rotate to face outwards
-        upButton.name = `ElevatorUpButton_${config.id}_${index}`;
-        upButton.userData.elevatorId = config.id;
-        upButton.userData.direction = 'up';
-        upButton.userData.originalEmissiveIntensity = upButtonMaterial.emissiveIntensity;
-        elevatorObj.platform.add(upButton);
-        elevatorObj.upButton = upButton; // Store reference to the up button
-
-        // Down button (triangle pointing down)
-        const downButtonShape = new THREE.Shape();
-        downButtonShape.moveTo(0, -buttonSize / 2);
-        downButtonShape.lineTo(-buttonSize / 2, buttonSize / 2);
-        downButtonShape.lineTo(buttonSize / 2, buttonSize / 2);
-        downButtonShape.lineTo(0, -buttonSize / 2);
-        const downButtonGeo = new THREE.ExtrudeGeometry(downButtonShape, {
-            steps: 1,
-            depth: buttonDepth,
-            bevelEnabled: false
-        });
-        const downButtonMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.1 });
-        const downButton = new THREE.Mesh(downButtonGeo, downButtonMaterial);
-        downButton.position.set(pos.x + poleDimension / 2 + buttonOffset, 0.1 + poleHeight / 2 - 0.5, pos.z);
-        downButton.rotation.y = Math.PI / 2; // Rotate to face outwards
-        downButton.name = `ElevatorDownButton_${config.id}_${index}`;
-        downButton.userData.elevatorId = config.id;
-        downButton.userData.direction = 'down';
-        downButton.userData.originalEmissiveIntensity = downButtonMaterial.emissiveIntensity;
-        elevatorObj.platform.add(downButton);
-        elevatorObj.downButton = downButton; // Store reference to the down button
     });
+
+    // Add Up and Down buttons
+    const buttonSize = 0.2;
+    const buttonDepth = 0.25;
+    const buttonOffset = 0.025; // 0.1; // Offset from the pole surface
+
+    // Up button (triangle pointing up)
+    const upButtonShape = new THREE.Shape();
+    upButtonShape.moveTo(0, buttonSize / 2);
+    upButtonShape.lineTo(-buttonSize / 2, -buttonSize / 2);
+    upButtonShape.lineTo(buttonSize / 2, -buttonSize / 2);
+    upButtonShape.lineTo(0, buttonSize / 2);
+    const upButtonGeo = new THREE.ExtrudeGeometry(upButtonShape, {
+        steps: 1,
+        depth: buttonDepth,
+        bevelEnabled: false
+    });
+    const controlsPos = elevatorObj.platform.position; // Use platform's position for button placement
+    const controlsX =  platformInnerWidth / 2 - poleDimension / 2;
+    const controlsZ =  -platformInnerDepth / 2 + poleDimension / 2 ;
+    const upButtonMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 0.1 });
+    const upButton = new THREE.Mesh(upButtonGeo, upButtonMaterial);
+    upButton.position.set(controlsX , 0.1 + poleHeight / 2 + 0.5, controlsZ - buttonOffset - poleDimension / 2);
+    //upButton.rotation.y = Math.PI / 2; // Rotate to face outwards
+    upButton.name = `ElevatorUpButton_${config.id}`; //  `ElevatorUpButton_${config.id}_${index}`;
+    upButton.userData.elevatorId = config.id;
+    upButton.userData.direction = 'up';
+    upButton.userData.originalEmissiveIntensity = upButtonMaterial.emissiveIntensity;
+    elevatorObj.platform.add(upButton);
+    elevatorObj.upButton = upButton; // Store reference to the up button
+
+    // Down button (triangle pointing down)
+    const downButtonShape = new THREE.Shape();
+    downButtonShape.moveTo(0, -buttonSize / 2);
+    downButtonShape.lineTo(-buttonSize / 2, buttonSize / 2);
+    downButtonShape.lineTo(buttonSize / 2, buttonSize / 2);
+    downButtonShape.lineTo(0, -buttonSize / 2);
+    const downButtonGeo = new THREE.ExtrudeGeometry(downButtonShape, {
+        steps: 1,
+        depth: buttonDepth,
+        bevelEnabled: false
+    });
+    const downButtonMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 0.1 });
+    const downButton = new THREE.Mesh(downButtonGeo, downButtonMaterial);
+    downButton.position.set(controlsX, 0.1 + poleHeight / 2 - 0.5, controlsZ - buttonOffset - poleDimension / 2);
+    //downButton.rotation.y = Math.PI / 2; // Rotate to face outwards
+    downButton.name = `ElevatorDownButton_${config.id}`; //  `ElevatorDownButton_${config.id}_${index}`;
+    downButton.userData.elevatorId = config.id;
+    downButton.userData.direction = 'down';
+    downButton.userData.originalEmissiveIntensity = downButtonMaterial.emissiveIntensity;
+    elevatorObj.platform.add(downButton);
+    elevatorObj.downButton = downButton; // Store reference to the down button
+
 
     // 4. Elevator Shaft Ceiling (Topmost structure of the shaft)
     const shaftCeilingY = (config.maxFloorIndex + 1) * SETTINGS.floorHeight; // One floor height above max floor served
-    const shaftCeilingGeo = new THREE.BoxGeometry(config.shaftWidth, floorDepth-0.02, config.shaftDepth);
+    const shaftCeilingGeo = new THREE.BoxGeometry(config.shaftWidth, floorDepth - 0.02, config.shaftDepth);
     elevatorObj.shaftCeiling = new THREE.Mesh(shaftCeilingGeo, config.shaftMaterial); // e.g., concrete or floorMaterial
     elevatorObj.shaftCeiling.name = `ElevatorShaftCeiling_${config.id}`;
     elevatorObj.shaftCeiling.position.set(config.x, shaftCeilingY - floorDepth / 2, config.z);
@@ -566,7 +577,7 @@ function createStandardLamp(x, y, z, floorIndex, lampIdSuffix, sceneRef, lightsA
 
 // --- Enemy Creation ---
 function createEnemy(x, y, z, floorIndex) {
-    const scaleFactor =   1.7 / 4.2; // 1.7 / 4.2; // Mobster's desired height / original model height
+    const scaleFactor = 1.7 / 4.2; // 1.7 / 4.2; // Mobster's desired height / original model height
     const mobsterFeetOffset = 3 * scaleFactor; //  3 * scaleFactor; // Distance from mobster's origin to its feet
     const desiredLift = 0; //1.5; // Additional lift requested by user
     const mobsterHeight = 1.7; // Mobster's actual height
@@ -703,9 +714,9 @@ function updateProjectiles(deltaTime) {
 function updateUI() {
     document.getElementById('score').innerText = `Score: ${playerScore}`;
     document.getElementById('lives').innerText = `Lives: ${playerLives}`;
-    
+
     // Calculate and display current floor
-    if ( controls && controls.isLocked) {
+    if (controls && controls.isLocked) {
         const playerCameraY = controls.getObject().position.y;
         // Assuming playerHeight is the height from feet to camera. // This comment is fine.
         // Floor index is based on the Y position of the player's feet.
@@ -733,7 +744,7 @@ function updateUI() {
 function generateWorld() {
     const totalCorridorLength = SETTINGS.doorsPerSide * SETTINGS.corridorSegmentLength;
 
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa,  side: THREE.DoubleSide });
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, side: THREE.DoubleSide });
     const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xbbbbbb }); // Slightly different for testing
     const wallMaterialA = new THREE.MeshStandardMaterial({ color: 0xb0c4c4 }); // Teal tint for A-wing (+Z)
     const wallMaterialB = new THREE.MeshStandardMaterial({ color: 0xc4b8b0 }); // Red-orange tint for B-wing (-Z)
@@ -741,8 +752,8 @@ function generateWorld() {
     const ceilingMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc });
     // Make blackDoorMaterial accessible globally or pass it around if needed for interact()
     const textMaterial = new THREE.MeshStandardMaterial({ color: 0xcc9911, metalness: 0.8, roughness: 0.5 });
-    
-    
+
+
 
     const blackDoorMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
     const redDoorMaterial = new THREE.MeshStandardMaterial({ color: 0x121111, roughness: 0.3, emissive: 0x010000, emissiveIntensity: 0.01 }); // Added emissive property
@@ -750,25 +761,25 @@ function generateWorld() {
     const blueElevatorMaterial = new THREE.MeshStandardMaterial({ color: 0x1111aa, metalness: 0.8, roughness: 0.5 });
     const orangyYellowElevatorMaterial = new THREE.MeshStandardMaterial({ color: 0xFFA500, metalness: 0.7, roughness: 0.4 }); // Orangy Yellow
     const navyDoorMaterial = new THREE.MeshStandardMaterial({ color: 0x002030, roughness: 0.3 });
-    const elevatorMaterial = new THREE.MeshStandardMaterial({ color: 0xaa1111,   metalness: 0.8, roughness: 0.5  });
+    const elevatorMaterial = new THREE.MeshStandardMaterial({ color: 0xaa1111, metalness: 0.8, roughness: 0.5 });
     const lightBulbMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFEE, emissive: 0xFFFFDD, emissiveIntensity: 1 }); // Glowing bulb
     // --- Furniture Materials ---
     const deskMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.3 }); // Brown for wood
-    const cabinetMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.3  }); // DarkGray for metal
-    const safeMaterial = new THREE.MeshStandardMaterial({ color: 0xee1111,}); // Red, metallic safe
+    const cabinetMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.3 }); // DarkGray for metal
+    const safeMaterial = new THREE.MeshStandardMaterial({ color: 0xee1111, }); // Red, metallic safe
     const dialMaterial = new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 0.9, roughness: 0.2 }); // Dark metallic dial // Dark metallic dial
     const lawnMaterial = new THREE.MeshStandardMaterial({ color: 0x558B2F, roughness: 0.8 }); // A nice lawn green
     const perimeterWallMaterial = new THREE.MeshStandardMaterial({ color: 0x795548, roughness: 0.7 }); // Brick/stone color
     const gateMaterial = new THREE.MeshStandardMaterial({ color: 0x424242, metalness: 0.6, roughness: 0.4 }); // Dark metal for gate
-    
-    const EscalatorMaterial = new THREE.MeshStandardMaterial({ color: 0x222222,  metalness: 0.8, roughness: 0.5  });
+
+    const EscalatorMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.5 });
     // --- Basement Materials ---
     const concreteMaterial = new THREE.MeshStandardMaterial({ color: 0x707070, roughness: 0.8, metalness: 0.1 });
     const pillarMaterial = new THREE.MeshStandardMaterial({ color: 0x606060, roughness: 0.7 });
     const basementWallMaterial = new THREE.MeshStandardMaterial({ color: 0x656565, roughness: 0.8 });
-    const EscalatorEmbarkMaterial = new THREE.MeshStandardMaterial({ color: 0x332222,  metalness: 0.8, roughness: 0.5, emissive: 0x110000, emissiveIntensity: 0.1 }); // Added emissive property
+    const EscalatorEmbarkMaterial = new THREE.MeshStandardMaterial({ color: 0x332222, metalness: 0.8, roughness: 0.5, emissive: 0x110000, emissiveIntensity: 0.1 }); // Added emissive property
     const garageDoorMaterial = new THREE.MeshStandardMaterial({ color: 0x909090, metalness: 0.6, roughness: 0.5 });
-    const EscalatorEmbarkMaterialB = new THREE.MeshStandardMaterial({ color: 0xDD8822,  metalness: 0.8, roughness: 0.5, emissive: 0x442200, emissiveIntensity: 0.1 }); // Dark Orange for B-Wing
+    const EscalatorEmbarkMaterialB = new THREE.MeshStandardMaterial({ color: 0xDD8822, metalness: 0.8, roughness: 0.5, emissive: 0x442200, emissiveIntensity: 0.1 }); // Dark Orange for B-Wing
 
     // Store references globally for use in updatePlayer
     window.EscalatorMaterial = EscalatorMaterial;
@@ -783,7 +794,7 @@ function generateWorld() {
         transparent: true,
         side: THREE.DoubleSide,
         depthWrite: false, // Important for transparency with transmission
-        envMapIntensity: 0.5, 
+        envMapIntensity: 0.5,
         premultipliedAlpha: true
     });
     window.blackDoorMaterial = blackDoorMaterial;
@@ -797,7 +808,7 @@ function generateWorld() {
         transparent: true,
         side: THREE.DoubleSide,
         depthWrite: false, // Important for transparency with transmission
-        envMapIntensity: 0.5, 
+        envMapIntensity: 0.5,
         premultipliedAlpha: true
     });
 
@@ -808,2409 +819,2410 @@ function generateWorld() {
     const fontLoader = new FontLoader();
     fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function (loadedFont) {
 
-    const escalatorLength = SETTINGS.escalatorLength; // Use the defined escalator length
+        const escalatorLength = SETTINGS.escalatorLength; // Use the defined escalator length
 
 
-    // --- Elevator Configuration (for the single elevator in this setup) ---
-    currentElevatorConfig = {
-        id: "mainElevator",
-        x: SETTINGS.corridorWidth / 2, // Center X of the shaft
-        z: -SETTINGS.elevatorSize / 2 - 4, // Center Z of the shaft
-        shaftWidth: SETTINGS.corridorWidth,     // Width of the shaft opening
-        shaftDepth: SETTINGS.elevatorSize,      // Depth of the shaft
-        minFloorIndex: 0, // -SETTINGS.numBasementFloors,
-        maxFloorIndex: SETTINGS.numFloors, // Roof access is effectively maxFloorIndex + 1
-        startFloorIndex: SETTINGS.numFloors, // Start on the roof level
-        platformMaterial: elevatorMaterial,
-        shaftMaterial: concreteMaterial, // Material for shaft ceiling and pit
-        scene: scene,
-        worldObjectsRef: worldObjects
-    };
-    createElevator(currentElevatorConfig); // Create the first elevator instance
-
-    
-
-    // --- Create a second elevator ---
-    const secondElevatorConfig = {
-        id: "secondElevator",
-        x: currentElevatorConfig.x - 4, // Shifted 4 units in negative X
-        z: currentElevatorConfig.z,     // Same Z
-        shaftWidth: currentElevatorConfig.shaftWidth, // Same dimensions for now
-        shaftDepth: currentElevatorConfig.shaftDepth,
-        minFloorIndex: 0, // -SETTINGS.numBasementFloors, //currentElevatorConfig.minFloorIndex,
-        maxFloorIndex: SETTINGS.numFloors-1, // //currentElevatorConfig.maxFloorIndex,
-        startFloorIndex: 0, // Start at ground floor
-        platformMaterial: elevatorMaterial, // new THREE.MeshStandardMaterial({ color: 0x11aa11, metalness: 0.8, roughness: 0.5  }), // Different color
-        shaftMaterial: concreteMaterial,
-        scene: scene,
-        worldObjectsRef: worldObjects
-    };
-    createElevator(secondElevatorConfig); // Create the second elevator instance
-
-    // --- Create a third elevator ---
-    const thirdElevatorConfig = {
-        id: "thirdElevator",
-        x: currentElevatorConfig.x + 4, // Shifted 4 units in positive X from the first
-        z: currentElevatorConfig.z,     // Same Z
-        shaftWidth: currentElevatorConfig.shaftWidth, // Same dimensions for now
-        shaftDepth: currentElevatorConfig.shaftDepth,
-        minFloorIndex:  -SETTINGS.numBasementFloors, //currentElevatorConfig.minFloorIndex,
-        maxFloorIndex: 0, // SETTINGS.numFloors-1, // //currentElevatorConfig.maxFloorIndex,
-        startFloorIndex: 0, // Start at ground floor
-        platformMaterial: orangyYellowElevatorMaterial, 
-        shaftMaterial: concreteMaterial,
-        scene: scene,
-        worldObjectsRef: worldObjects
-    };
-    createElevator(thirdElevatorConfig); // Create the third elevator instance
-
-    // --- Create a fourth elevator ---
-    const fourthElevatorConfig = {
-        id: "fouthElevator",
-        x: currentElevatorConfig.x , // Center X of the shaft
-        z: currentElevatorConfig.z -4,     // Shifted 4 units in positive X from the first
-        shaftWidth: currentElevatorConfig.shaftWidth, // Same dimensions for now
-        shaftDepth: currentElevatorConfig.shaftDepth,
-        minFloorIndex:  0, // -SETTINGS.numBasementFloors, //currentElevatorConfig.minFloorIndex,
-        maxFloorIndex:  SETTINGS.numFloors-1, // //currentElevatorConfig.maxFloorIndex,
-        startFloorIndex: 2, // Start at ground floor
-        platformMaterial:  blueElevatorMaterial,
-        shaftMaterial: concreteMaterial,
-        scene: scene,
-        worldObjectsRef: worldObjects
-    };
-    createElevator(fourthElevatorConfig); // Create the fourth elevator instance
-
-    // --- Create a fifth elevator ---
-    const fifthElevatorConfig = {
-        id: "fifthElevator",
-        x: currentElevatorConfig.x - 4, // Shifted 4 units in negative X
-        z: currentElevatorConfig.z -4,     // Shifted 4 units in positive X from the first
-        shaftWidth: currentElevatorConfig.shaftWidth, // Same dimensions for now
-        shaftDepth: currentElevatorConfig.shaftDepth,
-        minFloorIndex:  0, // -SETTINGS.numBasementFloors, //currentElevatorConfig.minFloorIndex,
-        maxFloorIndex: 2, //  SETTINGS.numFloors-1, // //currentElevatorConfig.maxFloorIndex,
-        startFloorIndex: 0, // Start at ground floor
-        platformMaterial: blueElevatorMaterial,
-        shaftMaterial: concreteMaterial,
-        scene: scene,
-        worldObjectsRef: worldObjects
-    };
-    createElevator(fifthElevatorConfig); // Create the fourth elevator instance
-
-
-    // --- Create a sixth elevator ---
-    const sixthElevatorConfig = {
-        id: "sixthElevator",
-        x: currentElevatorConfig.x + 4, // Shifted 4 units in positive X from the first
-        z: currentElevatorConfig.z -4,     // Shifted 4 units in positive X from the first
-        shaftWidth: currentElevatorConfig.shaftWidth, // Same dimensions for now
-        shaftDepth: currentElevatorConfig.shaftDepth,
-        minFloorIndex: 0, // -SETTINGS.numBasementFloors, //currentElevatorConfig.minFloorIndex,
-        maxFloorIndex:  2, //  SETTINGS.numFloors-1, // //currentElevatorConfig.maxFloorIndex,
-        startFloorIndex: 0, // Start at ground floor
-        platformMaterial: blueElevatorMaterial,
-        shaftMaterial: concreteMaterial,
-        scene: scene,
-        worldObjectsRef: worldObjects
-    };
-    createElevator(sixthElevatorConfig); // Create the fourth elevator instance
+        // --- Elevator Configuration (for the single elevator in this setup) ---
+        currentElevatorConfig = {
+            id: "mainElevator",
+            x: SETTINGS.corridorWidth / 2, // Center X of the shaft
+            z: -SETTINGS.elevatorSize / 2 - 4, // Center Z of the shaft
+            shaftWidth: SETTINGS.corridorWidth,     // Width of the shaft opening
+            shaftDepth: SETTINGS.elevatorSize,      // Depth of the shaft
+            minFloorIndex: 0, // -SETTINGS.numBasementFloors,
+            maxFloorIndex: SETTINGS.numFloors, // Roof access is effectively maxFloorIndex + 1
+            startFloorIndex: SETTINGS.numFloors, // Start on the roof level
+            platformMaterial: elevatorMaterial,
+            shaftMaterial: concreteMaterial, // Material for shaft ceiling and pit
+            scene: scene,
+            worldObjectsRef: worldObjects
+        };
+        createElevator(currentElevatorConfig); // Create the first elevator instance
 
 
 
-    // --- Define Overall Elevator Shaft Dimensions for a 3-elevator bank ---
-    const single_shaftX_center = currentElevatorConfig.x;
-    const single_shaft_width = currentElevatorConfig.shaftWidth; // Width of one elevator shaft
-    const single_shaft_depth = currentElevatorConfig.shaftDepth;
-    const single_shaft_z_center = currentElevatorConfig.z;
+        // --- Create a second elevator ---
+        const secondElevatorConfig = {
+            id: "secondElevator",
+            x: currentElevatorConfig.x - 4, // Shifted 4 units in negative X
+            z: currentElevatorConfig.z,     // Same Z
+            shaftWidth: currentElevatorConfig.shaftWidth, // Same dimensions for now
+            shaftDepth: currentElevatorConfig.shaftDepth,
+            minFloorIndex: 0, // -SETTINGS.numBasementFloors, //currentElevatorConfig.minFloorIndex,
+            maxFloorIndex: SETTINGS.numFloors - 1, // //currentElevatorConfig.maxFloorIndex,
+            startFloorIndex: 0, // Start at ground floor
+            platformMaterial: elevatorMaterial, // new THREE.MeshStandardMaterial({ color: 0x11aa11, metalness: 0.8, roughness: 0.5  }), // Different color
+            shaftMaterial: concreteMaterial,
+            scene: scene,
+            worldObjectsRef: worldObjects
+        };
+        createElevator(secondElevatorConfig); // Create the second elevator instance
 
-    // Overall X dimensions for the 3-elevator bank
-    // Assumes middle elevator is at single_shaftX_center,
-    // side elevators are +/- 4 units away (center to center)
-    const overallShaftMinX = (single_shaftX_center - 4) - (single_shaft_width / 2);
-    const overallShaftMaxX = (single_shaftX_center + 4) + (single_shaft_width / 2);
-    const overallShaftActualWidth = overallShaftMaxX - overallShaftMinX;
-    const overallShaftActualCenterX = (overallShaftMinX + overallShaftMaxX) / 2; // Should still be single_shaftX_center
+        // --- Create a third elevator ---
+        const thirdElevatorConfig = {
+            id: "thirdElevator",
+            x: currentElevatorConfig.x + 4, // Shifted 4 units in positive X from the first
+            z: currentElevatorConfig.z,     // Same Z
+            shaftWidth: currentElevatorConfig.shaftWidth, // Same dimensions for now
+            shaftDepth: currentElevatorConfig.shaftDepth,
+            minFloorIndex: -SETTINGS.numBasementFloors, //currentElevatorConfig.minFloorIndex,
+            maxFloorIndex: 0, // SETTINGS.numFloors-1, // //currentElevatorConfig.maxFloorIndex,
+            startFloorIndex: 0, // Start at ground floor
+            platformMaterial: orangyYellowElevatorMaterial,
+            shaftMaterial: concreteMaterial,
+            scene: scene,
+            worldObjectsRef: worldObjects
+        };
+        createElevator(thirdElevatorConfig); // Create the third elevator instance
 
-    // Overall Z dimensions (assuming all elevators aligned in Z)
-    const overallShaftMinZ = single_shaft_z_center - single_shaft_depth / 2;
-    const overallShaftMaxZ = single_shaft_z_center + single_shaft_depth / 2;
-    const overallShaftActualDepth = single_shaft_depth;
-    const overallShaftActualCenterZ = single_shaft_z_center;
+        // --- Create a fourth elevator ---
+        const fourthElevatorConfig = {
+            id: "fouthElevator",
+            x: currentElevatorConfig.x, // Center X of the shaft
+            z: currentElevatorConfig.z - 4,     // Shifted 4 units in positive X from the first
+            shaftWidth: currentElevatorConfig.shaftWidth, // Same dimensions for now
+            shaftDepth: currentElevatorConfig.shaftDepth,
+            minFloorIndex: 0, // -SETTINGS.numBasementFloors, //currentElevatorConfig.minFloorIndex,
+            maxFloorIndex: SETTINGS.numFloors - 1, // //currentElevatorConfig.maxFloorIndex,
+            startFloorIndex: 2, // Start at ground floor
+            platformMaterial: blueElevatorMaterial,
+            shaftMaterial: concreteMaterial,
+            scene: scene,
+            worldObjectsRef: worldObjects
+        };
+        createElevator(fourthElevatorConfig); // Create the fourth elevator instance
 
-    // Recalculate buildingWidth to ensure it covers the new wider shaft
-    const buildingWidth = Math.max(SETTINGS.corridorWidth + (2 * roomSize), overallShaftActualWidth);
-
-    // --- Lawn, Perimeter Wall, and Gate ---
-    const lawnBorderWidth = 20.0; // How much the lawn extends beyond the building
-    const buildingBaseY = -0.05; // Top surface of the lawn, consistent with old ground
-
-    // Approximate building footprint for lawn calculation (using potentially new buildingWidth)
-    const buildingMinX = overallShaftActualCenterX - buildingWidth / 2; // Centered with the building/shaft
-    const buildingMaxX = overallShaftActualCenterX + buildingWidth / 2;
-    const buildingMinZ_footprint = -(2*SETTINGS.elevatorSize) - totalCorridorLength - SETTINGS.escalatorLength - 8; // Building front edge. Shaft is now behind this if elevatorSize > 0.
-    const buildingMaxZ_footprint = totalCorridorLength + SETTINGS.escalatorLength + 8; // Far end of escalator area
-
-    const lawnMinX = buildingMinX - lawnBorderWidth;
-    const lawnMaxX = buildingMaxX + lawnBorderWidth;
-    const lawnMinZ = buildingMinZ_footprint - lawnBorderWidth;
-    const lawnMaxZ = buildingMaxZ_footprint + lawnBorderWidth;
-
-    const lawnWidth = lawnMaxX - lawnMinX;
-    const lawnDepth = lawnMaxZ - lawnMinZ;
-    const lawnCenterX = (lawnMinX + lawnMaxX) / 2;
-    const lawnCenterZ = (lawnMinZ + lawnMaxZ) / 2;
-    const lawnThickness = 0.1;
-
-    // --- Lawn Generation with Hole for Elevator Shaft ---
-    const lawnPanels = [];
-    // Panel A (West of shaft)
-    if (overallShaftMinX > lawnMinX) {
-        const panelA_width = overallShaftMinX - lawnMinX;
-        const panelA_geo = new THREE.BoxGeometry(panelA_width, lawnThickness, lawnDepth);
-        const panelA = new THREE.Mesh(panelA_geo, lawnMaterial);
-        panelA.position.set((lawnMinX + overallShaftMinX) / 2, buildingBaseY - lawnThickness / 2, lawnCenterZ);
-        panelA.name = "LawnPanel_A"; lawnPanels.push(panelA);
-    }
-    // Panel B (East of shaft)
-    if (overallShaftMaxX < lawnMaxX) {
-        const panelB_width = lawnMaxX - overallShaftMaxX;
-        const panelB_geo = new THREE.BoxGeometry(panelB_width, lawnThickness, lawnDepth);
-        const panelB = new THREE.Mesh(panelB_geo, lawnMaterial);
-        panelB.position.set((overallShaftMaxX + lawnMaxX) / 2, buildingBaseY - lawnThickness / 2, lawnCenterZ);
-        panelB.name = "LawnPanel_B"; lawnPanels.push(panelB);
-    }
-    // Panel C (North of shaft, within shaft's X-span)
-    if (overallShaftMaxZ < lawnMaxZ) {
-        const panelC_depth = lawnMaxZ - overallShaftMaxZ;
-        const panelC_geo = new THREE.BoxGeometry(overallShaftActualWidth, lawnThickness, panelC_depth);
-        const panelC = new THREE.Mesh(panelC_geo, lawnMaterial);
-        panelC.position.set(overallShaftActualCenterX, buildingBaseY - lawnThickness / 2, (overallShaftMaxZ + lawnMaxZ) / 2);
-        panelC.name = "LawnPanel_C"; lawnPanels.push(panelC);
-    }
-    // Panel D (South of shaft, within shaft's X-span)
-    if (overallShaftMinZ > lawnMinZ) {
-        const panelD_depth = overallShaftMinZ - lawnMinZ;
-        const panelD_geo = new THREE.BoxGeometry(overallShaftActualWidth, lawnThickness, panelD_depth);
-        const panelD = new THREE.Mesh(panelD_geo, lawnMaterial);
-        panelD.position.set(overallShaftActualCenterX, buildingBaseY - lawnThickness / 2, (lawnMinZ + overallShaftMinZ) / 2);
-        panelD.name = "LawnPanel_D"; lawnPanels.push(panelD);
-    }
-
-    lawnPanels.forEach(panel => {
-        panel.receiveShadow = true;
-        scene.add(panel);
-        worldObjects.push(panel);
-    });
-
-    // const lawnGeo = new THREE.BoxGeometry(lawnWidth, lawnThickness, lawnDepth);
-    // const lawn = new THREE.Mesh(lawnGeo, lawnMaterial);
-    // lawn.position.set(lawnCenterX, buildingBaseY - lawnThickness / 2, lawnCenterZ);
-    // lawn.receiveShadow = true;
-    // lawn.name = "Lawn";
-    // scene.add(lawn);
-    // worldObjects.push(lawn);
-
-    // Perimeter Wall parameters
-    const perimeterWallHeight = 2.5;
-    const perimeterWallThickness = 0.5;
-    const perimeterWallY = buildingBaseY + perimeterWallHeight / 2;
-
-    // Gate parameters
-    const gateWidth = 4.0;
-    const gateGap = 0.1; // gateWidth + 0.2; // Total opening for the gate
-    const gateHeight = perimeterWallHeight - 0.3; // Slightly shorter than wall
-    const gateDoorThickness = 0.2;
-
-    // Wall 1: Front wall (at lawnMinZ) - with gate opening
-    const frontWallSegmentLength = (lawnWidth - gateGap) / 2;
-    if (frontWallSegmentLength > 0) {
-        const wall1aGeo = new THREE.BoxGeometry(frontWallSegmentLength, perimeterWallHeight, perimeterWallThickness);
-        const wall1a = new THREE.Mesh(wall1aGeo, perimeterWallMaterial);
-        wall1a.position.set(lawnMinX + frontWallSegmentLength / 2, perimeterWallY, lawnMinZ + perimeterWallThickness / 2);
-        wall1a.name = "PerimeterWall_FrontLeft";
-        wall1a.castShadow = true; wall1a.receiveShadow = true; scene.add(wall1a); worldObjects.push(wall1a);
-
-        const wall1bGeo = new THREE.BoxGeometry(frontWallSegmentLength, perimeterWallHeight, perimeterWallThickness);
-        const wall1b = new THREE.Mesh(wall1bGeo, perimeterWallMaterial);
-        wall1b.position.set(lawnMaxX - frontWallSegmentLength / 2, perimeterWallY, lawnMinZ + perimeterWallThickness / 2);
-        wall1b.name = "PerimeterWall_FrontRight";
-        wall1b.castShadow = true; wall1b.receiveShadow = true; scene.add(wall1b); worldObjects.push(wall1b);
-    }
-
-    // Wall 2: Back wall (at lawnMaxZ)
-    const wall2Geo = new THREE.BoxGeometry(lawnWidth, perimeterWallHeight, perimeterWallThickness);
-    const wall2 = new THREE.Mesh(wall2Geo, perimeterWallMaterial);
-    wall2.position.set(lawnCenterX, perimeterWallY, lawnMaxZ - perimeterWallThickness / 2);
-    wall2.name = "PerimeterWall_Back";
-    wall2.castShadow = true; wall2.receiveShadow = true; scene.add(wall2); worldObjects.push(wall2);
-
-    // Wall 3: Left wall (at lawnMinX)
-    const sideWallLength = lawnDepth - (2 * perimeterWallThickness); // Adjust to fit between front/back walls
-    const wall3Geo = new THREE.BoxGeometry(perimeterWallThickness, perimeterWallHeight, sideWallLength);
-    const wall3 = new THREE.Mesh(wall3Geo, perimeterWallMaterial);
-    wall3.position.set(lawnMinX + perimeterWallThickness / 2, perimeterWallY, lawnCenterZ);
-    wall3.name = "PerimeterWall_Left";
-    wall3.castShadow = true; wall3.receiveShadow = true; scene.add(wall3); worldObjects.push(wall3);
-
-    // Wall 4: Right wall (at lawnMaxX)
-    const wall4Geo = new THREE.BoxGeometry(perimeterWallThickness, perimeterWallHeight, sideWallLength);
-    const wall4 = new THREE.Mesh(wall4Geo, perimeterWallMaterial);
-    wall4.position.set(lawnMaxX - perimeterWallThickness / 2, perimeterWallY, lawnCenterZ);
-    wall4.name = "PerimeterWall_Right";
-    wall4.castShadow = true; wall4.receiveShadow = true; scene.add(wall4); worldObjects.push(wall4);
-
-    // Gate Doors (simple swinging doors)
-    const gateDoorWidth = gateWidth / 2;
-    const gateDoorGeo = new THREE.BoxGeometry(gateDoorWidth, gateHeight, gateDoorThickness);
-    
-    // Left Gate Door
-    const leftGateDoor = new THREE.Mesh(gateDoorGeo, gateMaterial);
-    // Position pivot at the edge of the gap
-    leftGateDoor.geometry.translate(gateDoorWidth / 2, 0, 0); // Shift geometry so rotation is around one edge
-    leftGateDoor.position.set(lawnCenterX - gateGap / 2, buildingBaseY + gateHeight / 2, lawnMinZ + perimeterWallThickness / 2);
-    leftGateDoor.name = "Gate_LeftDoor";
-    leftGateDoor.castShadow = true; leftGateDoor.receiveShadow = true;
-    // leftGateDoor.rotation.y = -Math.PI / 4; // Example: open
-    scene.add(leftGateDoor);
-    worldObjects.push(leftGateDoor);
-    // Add to doors array if you want to interact with it like other doors
-    // doors.push({ object: leftGateDoor, userData: { type: 'gateDoor', isOpen: false, locked: false } });
-
-    // Right Gate Door
-    const rightGateDoor = new THREE.Mesh(gateDoorGeo, gateMaterial);
-    rightGateDoor.geometry.translate(-gateDoorWidth / 2, 0, 0); // Shift geometry for right-side pivot
-    rightGateDoor.position.set(lawnCenterX + gateGap / 2, buildingBaseY + gateHeight / 2, lawnMinZ + perimeterWallThickness / 2);
-    rightGateDoor.name = "Gate_RightDoor";
-    rightGateDoor.castShadow = true; rightGateDoor.receiveShadow = true;
-    // rightGateDoor.rotation.y = Math.PI / 4; // Example: open
-    scene.add(rightGateDoor);
-    worldObjects.push(rightGateDoor);
-    // doors.push({ object: rightGateDoor, userData: { type: 'gateDoor', isOpen: false, locked: false } });
-    
-    // Escalator Floor Plane (replace PlaneGeometry with BoxGeometry)
-    const floorEscGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (2 * escalatorWidth), floorDepth, escalatorLength + 4);
-    const floorEsc = new THREE.Mesh(floorEscGeo, floorMaterial);
-    floorEsc.name = `Floor Escalator`;
-    floorEsc.position.set(
-        SETTINGS.corridorWidth / 2,
-        -floorDepth / 2, // So the top is at y=0
-        totalCorridorLength + (escalatorLength / 2) + 2 // Centered in the corridor
-    );
-    floorEsc.receiveShadow = true;
-    scene.add(floorEsc);
-    worldObjects.push(floorEsc);
-
-    // Escalator B Floor Plane (replace PlaneGeometry with BoxGeometry)
-    const floorEscBGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (2 * escalatorWidth), floorDepth, escalatorLength + 4);
-    const floorEscB = new THREE.Mesh(floorEscBGeo, floorMaterial);
-    floorEscB.name = `Floor B Escalator`;
-    floorEscB.position.set(
-        SETTINGS.corridorWidth / 2,
-        -floorDepth / 2, // So the top is at y=0
-        -16 - (totalCorridorLength + (escalatorLength / 2) + 2 )// Centered in the corridor
-    );
-    floorEscB.receiveShadow = true;
-    scene.add(floorEscB);
-    worldObjects.push(floorEscB);
+        // --- Create a fifth elevator ---
+        const fifthElevatorConfig = {
+            id: "fifthElevator",
+            x: currentElevatorConfig.x - 4, // Shifted 4 units in negative X
+            z: currentElevatorConfig.z - 4,     // Shifted 4 units in positive X from the first
+            shaftWidth: currentElevatorConfig.shaftWidth, // Same dimensions for now
+            shaftDepth: currentElevatorConfig.shaftDepth,
+            minFloorIndex: 0, // -SETTINGS.numBasementFloors, //currentElevatorConfig.minFloorIndex,
+            maxFloorIndex: 2, //  SETTINGS.numFloors-1, // //currentElevatorConfig.maxFloorIndex,
+            startFloorIndex: 0, // Start at ground floor
+            platformMaterial: blueElevatorMaterial,
+            shaftMaterial: concreteMaterial,
+            scene: scene,
+            worldObjectsRef: worldObjects
+        };
+        createElevator(fifthElevatorConfig); // Create the fourth elevator instance
 
 
-    
-    // Roof Plane
-    const roofGeo = new THREE.BoxGeometry(buildingWidth, floorDepth/2, 4 + totalCorridorLength + escalatorLength + 8);
-    const roof = new THREE.Mesh(roofGeo, floorMaterial);
-    roof.name = `Roof`;
-    // roof.position.set(SETTINGS.corridorWidth / 2, (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth/2, 2 + ((totalCorridorLength + escalatorLength) / 2)); // Old
-    roof.position.set(SETTINGS.corridorWidth / 2, (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth/4, 2 + ((totalCorridorLength + escalatorLength) / 2));
-    roof.receiveShadow = true;
-    scene.add(roof);
-    worldObjects.push(roof);
-
-    // Roof B Plane
-    const roofBGeo = new THREE.BoxGeometry(buildingWidth, floorDepth, 4+4 + totalCorridorLength + escalatorLength + 8);
-    const roofB = new THREE.Mesh(roofBGeo, floorMaterial);
-    roofB.name = `Roof B`;
-    // roof.position.set(SETTINGS.corridorWidth / 2, (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth/2, 2 + ((totalCorridorLength + escalatorLength) / 2)); // Old
-    roofB.position.set(SETTINGS.corridorWidth / 2, (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth/2, 2 -16 -(2 + ((totalCorridorLength + escalatorLength) / 2)));
-    roofB.receiveShadow = true;
-    scene.add(roofB);
-    worldObjects.push(roofB);
-
-    //  roof over Left escalator
-    const roofEscLGeo = new THREE.BoxGeometry(SETTINGS.roomSize, floorDepth, 4);
-    const roofEscL = new THREE.Mesh(roofEscLGeo, floorMaterial);
-    roofEscL.name = `Left Escalator Roof`;
-    roofEscL.position.set(
-        SETTINGS.corridorWidth +(SETTINGS.roomSize/ 2),
-        (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth / 2, // So the top is at the roof level        
-        - 4 -2// Centered 
-    );
-    roofEscL.receiveShadow = true;
-    scene.add(roofEscL);
-    worldObjects.push(roofEscL);
-
-    //  roof over Right escalator
-    const roofEscRGeo = new THREE.BoxGeometry(SETTINGS.roomSize, floorDepth, 4);
-    const roofEscR = new THREE.Mesh(roofEscRGeo, floorMaterial);
-    roofEscR.name = `Right Escalator Roof`;
-    roofEscR.position.set(
-        - (SETTINGS.roomSize / 2),   
-        (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth / 2, // So the top is at the roof level
-        - 4 -2// Centered
-    );
-    roofEscR.receiveShadow = true;
-    scene.add(roofEscR);
-    worldObjects.push(roofEscR);
+        // --- Create a sixth elevator ---
+        const sixthElevatorConfig = {
+            id: "sixthElevator",
+            x: currentElevatorConfig.x + 4, // Shifted 4 units in positive X from the first
+            z: currentElevatorConfig.z - 4,     // Shifted 4 units in positive X from the first
+            shaftWidth: currentElevatorConfig.shaftWidth, // Same dimensions for now
+            shaftDepth: currentElevatorConfig.shaftDepth,
+            minFloorIndex: 0, // -SETTINGS.numBasementFloors, //currentElevatorConfig.minFloorIndex,
+            maxFloorIndex: 2, //  SETTINGS.numFloors-1, // //currentElevatorConfig.maxFloorIndex,
+            startFloorIndex: 0, // Start at ground floor
+            platformMaterial: blueElevatorMaterial,
+            shaftMaterial: concreteMaterial,
+            scene: scene,
+            worldObjectsRef: worldObjects
+        };
+        createElevator(sixthElevatorConfig); // Create the fourth elevator instance
 
 
-    // --- Walls for Elevator Penthouse on the Roof ---
-    // These walls surround the top part of the elevator shaft that protrudes above the main roof.
-    // The individual elevatorObj.shaftCeiling(s) are the roofs *inside* this penthouse.
-    const mainRoofSurfaceY = currentElevatorConfig.maxFloorIndex * SETTINGS.floorHeight;
-    // Use the Y of the first (middle) elevator's shaft ceiling as reference for penthouse height
-    const shaftCeilingBottomY = elevators.find(e => e.id === "mainElevator").shaftCeiling.position.y - floorDepth / 2;
-    const penthouseWallHeight = Math.max(0.1, shaftCeilingBottomY - mainRoofSurfaceY);
-    const penthouseWallCenterY = mainRoofSurfaceY + penthouseWallHeight / 2;
 
-    // Penthouse Wall Left (Player's Right when facing +Z)
-    const penthouseWallLeftGeo = new THREE.BoxGeometry(2*wallDepth, penthouseWallHeight + floorDepth, overallShaftActualDepth);
-    const penthouseWallLeft = new THREE.Mesh(penthouseWallLeftGeo, wallMaterial);
-    penthouseWallLeft.name = `ElevatorPenthouseWall_Left`;
-    penthouseWallLeft.position.set(
+        // --- Define Overall Elevator Shaft Dimensions for a 3-elevator bank ---
+        const single_shaftX_center = currentElevatorConfig.x;
+        const single_shaft_width = currentElevatorConfig.shaftWidth; // Width of one elevator shaft
+        const single_shaft_depth = currentElevatorConfig.shaftDepth;
+        const single_shaft_z_center = currentElevatorConfig.z;
+
+        // Overall X dimensions for the 3-elevator bank
+        // Assumes middle elevator is at single_shaftX_center,
+        // side elevators are +/- 4 units away (center to center)
+        const overallShaftMinX = (single_shaftX_center - 4) - (single_shaft_width / 2);
+        const overallShaftMaxX = (single_shaftX_center + 4) + (single_shaft_width / 2);
+        const overallShaftActualWidth = overallShaftMaxX - overallShaftMinX;
+        const overallShaftActualCenterX = (overallShaftMinX + overallShaftMaxX) / 2; // Should still be single_shaftX_center
+
+        // Overall Z dimensions (assuming all elevators aligned in Z)
+        const overallShaftMinZ = single_shaft_z_center - single_shaft_depth / 2;
+        const overallShaftMaxZ = single_shaft_z_center + single_shaft_depth / 2;
+        const overallShaftActualDepth = single_shaft_depth;
+        const overallShaftActualCenterZ = single_shaft_z_center;
+
+        // Recalculate buildingWidth to ensure it covers the new wider shaft
+        const buildingWidth = Math.max(SETTINGS.corridorWidth + (2 * roomSize), overallShaftActualWidth);
+
+        // --- Lawn, Perimeter Wall, and Gate ---
+        const lawnBorderWidth = 20.0; // How much the lawn extends beyond the building
+        const buildingBaseY = -0.05; // Top surface of the lawn, consistent with old ground
+
+        // Approximate building footprint for lawn calculation (using potentially new buildingWidth)
+        const buildingMinX = overallShaftActualCenterX - buildingWidth / 2; // Centered with the building/shaft
+        const buildingMaxX = overallShaftActualCenterX + buildingWidth / 2;
+        const buildingMinZ_footprint = -(2 * SETTINGS.elevatorSize) - totalCorridorLength - SETTINGS.escalatorLength - 8; // Building front edge. Shaft is now behind this if elevatorSize > 0.
+        const buildingMaxZ_footprint = totalCorridorLength + SETTINGS.escalatorLength + 8; // Far end of escalator area
+
+        const lawnMinX = buildingMinX - lawnBorderWidth;
+        const lawnMaxX = buildingMaxX + lawnBorderWidth;
+        const lawnMinZ = buildingMinZ_footprint - lawnBorderWidth;
+        const lawnMaxZ = buildingMaxZ_footprint + lawnBorderWidth;
+
+        const lawnWidth = lawnMaxX - lawnMinX;
+        const lawnDepth = lawnMaxZ - lawnMinZ;
+        const lawnCenterX = (lawnMinX + lawnMaxX) / 2;
+        const lawnCenterZ = (lawnMinZ + lawnMaxZ) / 2;
+        const lawnThickness = 0.1;
+
+        // --- Lawn Generation with Hole for Elevator Shaft ---
+        const lawnPanels = [];
+        // Panel A (West of shaft)
+        if (overallShaftMinX > lawnMinX) {
+            const panelA_width = overallShaftMinX - lawnMinX;
+            const panelA_geo = new THREE.BoxGeometry(panelA_width, lawnThickness, lawnDepth);
+            const panelA = new THREE.Mesh(panelA_geo, lawnMaterial);
+            panelA.position.set((lawnMinX + overallShaftMinX) / 2, buildingBaseY - lawnThickness / 2, lawnCenterZ);
+            panelA.name = "LawnPanel_A"; lawnPanels.push(panelA);
+        }
+        // Panel B (East of shaft)
+        if (overallShaftMaxX < lawnMaxX) {
+            const panelB_width = lawnMaxX - overallShaftMaxX;
+            const panelB_geo = new THREE.BoxGeometry(panelB_width, lawnThickness, lawnDepth);
+            const panelB = new THREE.Mesh(panelB_geo, lawnMaterial);
+            panelB.position.set((overallShaftMaxX + lawnMaxX) / 2, buildingBaseY - lawnThickness / 2, lawnCenterZ);
+            panelB.name = "LawnPanel_B"; lawnPanels.push(panelB);
+        }
+        // Panel C (North of shaft, within shaft's X-span)
+        if (overallShaftMaxZ < lawnMaxZ) {
+            const panelC_depth = lawnMaxZ - overallShaftMaxZ;
+            const panelC_geo = new THREE.BoxGeometry(overallShaftActualWidth, lawnThickness, panelC_depth);
+            const panelC = new THREE.Mesh(panelC_geo, lawnMaterial);
+            panelC.position.set(overallShaftActualCenterX, buildingBaseY - lawnThickness / 2, (overallShaftMaxZ + lawnMaxZ) / 2);
+            panelC.name = "LawnPanel_C"; lawnPanels.push(panelC);
+        }
+        // Panel D (South of shaft, within shaft's X-span)
+        if (overallShaftMinZ > lawnMinZ) {
+            const panelD_depth = overallShaftMinZ - lawnMinZ;
+            const panelD_geo = new THREE.BoxGeometry(overallShaftActualWidth, lawnThickness, panelD_depth);
+            const panelD = new THREE.Mesh(panelD_geo, lawnMaterial);
+            panelD.position.set(overallShaftActualCenterX, buildingBaseY - lawnThickness / 2, (lawnMinZ + overallShaftMinZ) / 2);
+            panelD.name = "LawnPanel_D"; lawnPanels.push(panelD);
+        }
+
+        lawnPanels.forEach(panel => {
+            panel.receiveShadow = true;
+            scene.add(panel);
+            worldObjects.push(panel);
+        });
+
+        // const lawnGeo = new THREE.BoxGeometry(lawnWidth, lawnThickness, lawnDepth);
+        // const lawn = new THREE.Mesh(lawnGeo, lawnMaterial);
+        // lawn.position.set(lawnCenterX, buildingBaseY - lawnThickness / 2, lawnCenterZ);
+        // lawn.receiveShadow = true;
+        // lawn.name = "Lawn";
+        // scene.add(lawn);
+        // worldObjects.push(lawn);
+
+        // Perimeter Wall parameters
+        const perimeterWallHeight = 2.5;
+        const perimeterWallThickness = 0.5;
+        const perimeterWallY = buildingBaseY + perimeterWallHeight / 2;
+
+        // Gate parameters
+        const gateWidth = 4.0;
+        const gateGap = 0.1; // gateWidth + 0.2; // Total opening for the gate
+        const gateHeight = perimeterWallHeight - 0.3; // Slightly shorter than wall
+        const gateDoorThickness = 0.2;
+
+        // Wall 1: Front wall (at lawnMinZ) - with gate opening
+        const frontWallSegmentLength = (lawnWidth - gateGap) / 2;
+        if (frontWallSegmentLength > 0) {
+            const wall1aGeo = new THREE.BoxGeometry(frontWallSegmentLength, perimeterWallHeight, perimeterWallThickness);
+            const wall1a = new THREE.Mesh(wall1aGeo, perimeterWallMaterial);
+            wall1a.position.set(lawnMinX + frontWallSegmentLength / 2, perimeterWallY, lawnMinZ + perimeterWallThickness / 2);
+            wall1a.name = "PerimeterWall_FrontLeft";
+            wall1a.castShadow = true; wall1a.receiveShadow = true; scene.add(wall1a); worldObjects.push(wall1a);
+
+            const wall1bGeo = new THREE.BoxGeometry(frontWallSegmentLength, perimeterWallHeight, perimeterWallThickness);
+            const wall1b = new THREE.Mesh(wall1bGeo, perimeterWallMaterial);
+            wall1b.position.set(lawnMaxX - frontWallSegmentLength / 2, perimeterWallY, lawnMinZ + perimeterWallThickness / 2);
+            wall1b.name = "PerimeterWall_FrontRight";
+            wall1b.castShadow = true; wall1b.receiveShadow = true; scene.add(wall1b); worldObjects.push(wall1b);
+        }
+
+        // Wall 2: Back wall (at lawnMaxZ)
+        const wall2Geo = new THREE.BoxGeometry(lawnWidth, perimeterWallHeight, perimeterWallThickness);
+        const wall2 = new THREE.Mesh(wall2Geo, perimeterWallMaterial);
+        wall2.position.set(lawnCenterX, perimeterWallY, lawnMaxZ - perimeterWallThickness / 2);
+        wall2.name = "PerimeterWall_Back";
+        wall2.castShadow = true; wall2.receiveShadow = true; scene.add(wall2); worldObjects.push(wall2);
+
+        // Wall 3: Left wall (at lawnMinX)
+        const sideWallLength = lawnDepth - (2 * perimeterWallThickness); // Adjust to fit between front/back walls
+        const wall3Geo = new THREE.BoxGeometry(perimeterWallThickness, perimeterWallHeight, sideWallLength);
+        const wall3 = new THREE.Mesh(wall3Geo, perimeterWallMaterial);
+        wall3.position.set(lawnMinX + perimeterWallThickness / 2, perimeterWallY, lawnCenterZ);
+        wall3.name = "PerimeterWall_Left";
+        wall3.castShadow = true; wall3.receiveShadow = true; scene.add(wall3); worldObjects.push(wall3);
+
+        // Wall 4: Right wall (at lawnMaxX)
+        const wall4Geo = new THREE.BoxGeometry(perimeterWallThickness, perimeterWallHeight, sideWallLength);
+        const wall4 = new THREE.Mesh(wall4Geo, perimeterWallMaterial);
+        wall4.position.set(lawnMaxX - perimeterWallThickness / 2, perimeterWallY, lawnCenterZ);
+        wall4.name = "PerimeterWall_Right";
+        wall4.castShadow = true; wall4.receiveShadow = true; scene.add(wall4); worldObjects.push(wall4);
+
+        // Gate Doors (simple swinging doors)
+        const gateDoorWidth = gateWidth / 2;
+        const gateDoorGeo = new THREE.BoxGeometry(gateDoorWidth, gateHeight, gateDoorThickness);
+
+        // Left Gate Door
+        const leftGateDoor = new THREE.Mesh(gateDoorGeo, gateMaterial);
+        // Position pivot at the edge of the gap
+        leftGateDoor.geometry.translate(gateDoorWidth / 2, 0, 0); // Shift geometry so rotation is around one edge
+        leftGateDoor.position.set(lawnCenterX - gateGap / 2, buildingBaseY + gateHeight / 2, lawnMinZ + perimeterWallThickness / 2);
+        leftGateDoor.name = "Gate_LeftDoor";
+        leftGateDoor.castShadow = true; leftGateDoor.receiveShadow = true;
+        // leftGateDoor.rotation.y = -Math.PI / 4; // Example: open
+        scene.add(leftGateDoor);
+        worldObjects.push(leftGateDoor);
+        // Add to doors array if you want to interact with it like other doors
+        // doors.push({ object: leftGateDoor, userData: { type: 'gateDoor', isOpen: false, locked: false } });
+
+        // Right Gate Door
+        const rightGateDoor = new THREE.Mesh(gateDoorGeo, gateMaterial);
+        rightGateDoor.geometry.translate(-gateDoorWidth / 2, 0, 0); // Shift geometry for right-side pivot
+        rightGateDoor.position.set(lawnCenterX + gateGap / 2, buildingBaseY + gateHeight / 2, lawnMinZ + perimeterWallThickness / 2);
+        rightGateDoor.name = "Gate_RightDoor";
+        rightGateDoor.castShadow = true; rightGateDoor.receiveShadow = true;
+        // rightGateDoor.rotation.y = Math.PI / 4; // Example: open
+        scene.add(rightGateDoor);
+        worldObjects.push(rightGateDoor);
+        // doors.push({ object: rightGateDoor, userData: { type: 'gateDoor', isOpen: false, locked: false } });
+
+        // Escalator Floor Plane (replace PlaneGeometry with BoxGeometry)
+        const floorEscGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (2 * escalatorWidth), floorDepth, escalatorLength + 4);
+        const floorEsc = new THREE.Mesh(floorEscGeo, floorMaterial);
+        floorEsc.name = `Floor Escalator`;
+        floorEsc.position.set(
+            SETTINGS.corridorWidth / 2,
+            -floorDepth / 2, // So the top is at y=0
+            totalCorridorLength + (escalatorLength / 2) + 2 // Centered in the corridor
+        );
+        floorEsc.receiveShadow = true;
+        scene.add(floorEsc);
+        worldObjects.push(floorEsc);
+
+        // Escalator B Floor Plane (replace PlaneGeometry with BoxGeometry)
+        const floorEscBGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (2 * escalatorWidth), floorDepth, escalatorLength + 4);
+        const floorEscB = new THREE.Mesh(floorEscBGeo, floorMaterial);
+        floorEscB.name = `Floor B Escalator`;
+        floorEscB.position.set(
+            SETTINGS.corridorWidth / 2,
+            -floorDepth / 2, // So the top is at y=0
+            -16 - (totalCorridorLength + (escalatorLength / 2) + 2)// Centered in the corridor
+        );
+        floorEscB.receiveShadow = true;
+        scene.add(floorEscB);
+        worldObjects.push(floorEscB);
+
+
+
+        // Roof Plane
+        const roofGeo = new THREE.BoxGeometry(buildingWidth, floorDepth / 2, 4 + totalCorridorLength + escalatorLength + 8);
+        const roof = new THREE.Mesh(roofGeo, floorMaterial);
+        roof.name = `Roof`;
+        // roof.position.set(SETTINGS.corridorWidth / 2, (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth/2, 2 + ((totalCorridorLength + escalatorLength) / 2)); // Old
+        roof.position.set(SETTINGS.corridorWidth / 2, (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth / 4, 2 + ((totalCorridorLength + escalatorLength) / 2));
+        roof.receiveShadow = true;
+        scene.add(roof);
+        worldObjects.push(roof);
+
+        // Roof B Plane
+        const roofBGeo = new THREE.BoxGeometry(buildingWidth, floorDepth, 4 + 4 + totalCorridorLength + escalatorLength + 8);
+        const roofB = new THREE.Mesh(roofBGeo, floorMaterial);
+        roofB.name = `Roof B`;
+        // roof.position.set(SETTINGS.corridorWidth / 2, (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth/2, 2 + ((totalCorridorLength + escalatorLength) / 2)); // Old
+        roofB.position.set(SETTINGS.corridorWidth / 2, (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth / 2, 2 - 16 - (2 + ((totalCorridorLength + escalatorLength) / 2)));
+        roofB.receiveShadow = true;
+        scene.add(roofB);
+        worldObjects.push(roofB);
+
+        //  roof over Left escalator
+        const roofEscLGeo = new THREE.BoxGeometry(SETTINGS.roomSize, floorDepth, 4);
+        const roofEscL = new THREE.Mesh(roofEscLGeo, floorMaterial);
+        roofEscL.name = `Left Escalator Roof`;
+        roofEscL.position.set(
+            SETTINGS.corridorWidth + (SETTINGS.roomSize / 2),
+            (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth / 2, // So the top is at the roof level        
+            - 4 - 2// Centered 
+        );
+        roofEscL.receiveShadow = true;
+        scene.add(roofEscL);
+        worldObjects.push(roofEscL);
+
+        //  roof over Right escalator
+        const roofEscRGeo = new THREE.BoxGeometry(SETTINGS.roomSize, floorDepth, 4);
+        const roofEscR = new THREE.Mesh(roofEscRGeo, floorMaterial);
+        roofEscR.name = `Right Escalator Roof`;
+        roofEscR.position.set(
+            - (SETTINGS.roomSize / 2),
+            (SETTINGS.numFloors) * SETTINGS.floorHeight - floorDepth / 2, // So the top is at the roof level
+            - 4 - 2// Centered
+        );
+        roofEscR.receiveShadow = true;
+        scene.add(roofEscR);
+        worldObjects.push(roofEscR);
+
+
+        // --- Walls for Elevator Penthouse on the Roof ---
+        // These walls surround the top part of the elevator shaft that protrudes above the main roof.
+        // The individual elevatorObj.shaftCeiling(s) are the roofs *inside* this penthouse.
+        const mainRoofSurfaceY = currentElevatorConfig.maxFloorIndex * SETTINGS.floorHeight;
+        // Use the Y of the first (middle) elevator's shaft ceiling as reference for penthouse height
+        const shaftCeilingBottomY = elevators.find(e => e.id === "mainElevator").shaftCeiling.position.y - floorDepth / 2;
+        const penthouseWallHeight = Math.max(0.1, shaftCeilingBottomY - mainRoofSurfaceY);
+        const penthouseWallCenterY = mainRoofSurfaceY + penthouseWallHeight / 2;
+
+        // Penthouse Wall Left (Player's Right when facing +Z)
+        const penthouseWallLeftGeo = new THREE.BoxGeometry(2 * wallDepth, penthouseWallHeight + floorDepth, overallShaftActualDepth);
+        const penthouseWallLeft = new THREE.Mesh(penthouseWallLeftGeo, wallMaterial);
+        penthouseWallLeft.name = `ElevatorPenthouseWall_Left`;
+        penthouseWallLeft.position.set(
         /* overallShaftMinX */ - wallDepth, // Adjusted
-        penthouseWallCenterY,
-        overallShaftActualCenterZ
-    );
-    penthouseWallLeft.castShadow = true; penthouseWallLeft.receiveShadow = true;
-    scene.add(penthouseWallLeft); worldObjects.push(penthouseWallLeft);
+            penthouseWallCenterY,
+            overallShaftActualCenterZ
+        );
+        penthouseWallLeft.castShadow = true; penthouseWallLeft.receiveShadow = true;
+        scene.add(penthouseWallLeft); worldObjects.push(penthouseWallLeft);
 
-    // Penthouse Wall Right (Player's Left when facing +Z)
-    const penthouseWallRightGeo = new THREE.BoxGeometry(wallDepth*2, penthouseWallHeight + floorDepth, overallShaftActualDepth);
-    const penthouseWallRight = new THREE.Mesh(penthouseWallRightGeo, wallMaterial);
-    penthouseWallRight.name = `ElevatorPenthouseWall_Right`;
-    penthouseWallRight.position.set(
+        // Penthouse Wall Right (Player's Left when facing +Z)
+        const penthouseWallRightGeo = new THREE.BoxGeometry(wallDepth * 2, penthouseWallHeight + floorDepth, overallShaftActualDepth);
+        const penthouseWallRight = new THREE.Mesh(penthouseWallRightGeo, wallMaterial);
+        penthouseWallRight.name = `ElevatorPenthouseWall_Right`;
+        penthouseWallRight.position.set(
         /* overallShaftMaxX */ SETTINGS.elevatorSize + wallDepth, // Adjusted
-        penthouseWallCenterY,
-        overallShaftActualCenterZ
-    );
-    penthouseWallRight.castShadow = true; penthouseWallRight.receiveShadow = true;
-    scene.add(penthouseWallRight); worldObjects.push(penthouseWallRight);
-
-    
-
-    // --- Floodlight on Elevator Shaft Roof ---
-    const floodlightHousingMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7, roughness: 0.4 });
-    const floodlightLensMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFEE, emissive: 0xFFFFDD, emissiveIntensity: 0.5 }); // Slightly glowing lens
-
-    const floodlightHousingGeo = new THREE.BoxGeometry(0.8, 0.4, 0.4); // width, height, depth
-    const floodlightHousing = new THREE.Mesh(floodlightHousingGeo, floodlightHousingMaterial);
-
-    const floodlightLensGeo = new THREE.CylinderGeometry(0.15, 0.18, 0.1, 16); // radiusTop, radiusBottom, height, segments
-    const floodlightLens = new THREE.Mesh(floodlightLensGeo, floodlightLensMaterial);
-    floodlightLens.rotation.x = Math.PI / 2;
-    floodlightLens.position.z = 0.2; // Position at the front of the housing
-
-    const floodlightAssembly = new THREE.Group();
-    floodlightAssembly.add(floodlightHousing);
-    floodlightAssembly.add(floodlightLens);
-
-    // Position the floodlight assembly on top of the 'Top Roof over Elevator'
-    // Use the middle elevator's shaft ceiling for floodlight positioning
-    const middleElevatorShaftCeiling = elevators.find(e => e.id === "mainElevator").shaftCeiling;
-    const shaftCeilingSurfaceY = middleElevatorShaftCeiling.position.y + floorDepth / 2;
-    floodlightAssembly.position.set(
-        middleElevatorShaftCeiling.position.x, // Centered on X of middle elevator's ceiling
-        shaftCeilingSurfaceY + 0.2, // Housing height/2 = 0.4/2 = 0.2
-        middleElevatorShaftCeiling.position.z + (overallShaftActualDepth / 2) - 0.3 // Near the edge facing the main roof
-    );
-    scene.add(floodlightAssembly);
-
-    const rooftopSpotLight = new THREE.SpotLight(0xffffff, 20, 200, Math.PI / 3, 1, 1.5); // color, intensity, distance, angle, penumbra, decay
-    rooftopSpotLight.position.copy(floodlightAssembly.position);
-    rooftopSpotLight.position.z += 0.2; // Emitter slightly in front of housing
-    // Target the center of the main roof area
-    // const totalCorridorLength = SETTINGS.doorsPerSide * SETTINGS.corridorSegmentLength; // Already defined
-    const mainRoofCenterY = (SETTINGS.numFloors) * SETTINGS.floorHeight;
-    const mainRoofCenterZ = 4 + ((totalCorridorLength + SETTINGS.escalatorLength) / 2);
-    rooftopSpotLight.target.position.set(SETTINGS.corridorWidth / 2, mainRoofCenterY, mainRoofCenterZ);
-
-    rooftopSpotLight.castShadow = true;
-    rooftopSpotLight.shadow.mapSize.width = 1024;
-    rooftopSpotLight.shadow.mapSize.height = 1024;
-    rooftopSpotLight.shadow.camera.near = 1;
-    rooftopSpotLight.shadow.camera.far = 200;
-    rooftopSpotLight.shadow.focus = 1; // Softer shadows
-
-    scene.add(rooftopSpotLight);
-    scene.add(rooftopSpotLight.target); // Important: add the target to the scene as well
-
-    // RoofTop B-Wing Spot Light
-    // --- Floodlight on Elevator Shaft Roof ---
-    //const floodlightHousingMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7, roughness: 0.4 });
-    //const floodlightLensMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFEE, emissive: 0xFFFFDD, emissiveIntensity: 0.5 }); // Slightly glowing lens
-
-    const floodlightHousingGeoB = new THREE.BoxGeometry(0.8, 0.4, 0.4); // width, height, depth
-    const floodlightHousingB = new THREE.Mesh(floodlightHousingGeoB, floodlightHousingMaterial);
-
-    const floodlightLensGeoB = new THREE.CylinderGeometry(0.15, 0.18, 0.1, 16); // radiusTop, radiusBottom, height, segments
-    const floodlightLensB = new THREE.Mesh(floodlightLensGeoB, floodlightLensMaterial);
-    floodlightLensB.rotation.x = Math.PI / 2;
-    floodlightLensB.position.z = -0.2; // Position at the front of the housing
-
-    const floodlightAssemblyB = new THREE.Group();
-    floodlightAssemblyB.add(floodlightHousingB);
-    floodlightAssemblyB.add(floodlightLensB);
-
-    floodlightAssemblyB.name = "FloodlightAssembly_B";
-
-    // Position the floodlight assembly on top of the 'Top Roof over Elevator'
-    // Use the middle elevator's shaft ceiling for floodlight positioning
-    //const middleElevatorShaftCeiling = elevators.find(e => e.id === "mainElevator").shaftCeiling;
-    //const shaftCeilingSurfaceY = middleElevatorShaftCeiling.position.y + floorDepth / 2;
-    floodlightAssemblyB.position.set(
-        middleElevatorShaftCeiling.position.x, // Centered on X of middle elevator's ceiling
-        shaftCeilingSurfaceY + 0.2, // Housing height/2 = 0.4/2 = 0.2
-        middleElevatorShaftCeiling.position.z - (overallShaftActualDepth / 2) + 0.3 // Near the edge facing the main roof
-    );
-    scene.add(floodlightAssemblyB);
-
-    const rooftopSpotLightB = new THREE.SpotLight(0xffffff, 20, 200, Math.PI / 3, 1, 1.5); // color, intensity, distance, angle, penumbra, decay
-    rooftopSpotLightB.position.copy(floodlightAssemblyB.position);
-    rooftopSpotLightB.position.z -= 0.2; // Emitter slightly in front of housing
-    // Target the center of the main roof area
-    // const totalCorridorLength = SETTINGS.doorsPerSide * SETTINGS.corridorSegmentLength; // Already defined
-    //const mainRoofCenterY = (SETTINGS.numFloors) * SETTINGS.floorHeight;
-    const mainRoofCenterZB = -8-4 - ((totalCorridorLength + SETTINGS.escalatorLength) / 2);
-    rooftopSpotLightB.target.position.set(SETTINGS.corridorWidth / 2, mainRoofCenterY, mainRoofCenterZB);
-
-    rooftopSpotLightB.castShadow = true;
-    rooftopSpotLightB.shadow.mapSize.width = 1024;
-    rooftopSpotLightB.shadow.mapSize.height = 1024;
-    rooftopSpotLightB.shadow.camera.near = 1;
-    rooftopSpotLightB.shadow.camera.far = 200;
-    rooftopSpotLightB.shadow.focus = 1; // Softer shadows
-
-    scene.add(rooftopSpotLightB);
-    scene.add(rooftopSpotLightB.target); // Important: add the target to the scene as well
-
-    //End RoofTop B-Wing Spot Light
-
-
-    // --- Rooftop Perimeter Walls ---
-    const rooftopWallHeight = 1.0; // Low walls
-    const rooftopWallThickness = 0.5; // Wide walls
-    const rooftopWallMaterial = wallMaterial.clone(); 
-    rooftopWallMaterial.color.set(0x777777); // Different color for rooftop walls to avoid z-fighting
-
-    const roofActualWidth = buildingWidth; // Use the potentially wider buildingWidth
-    const roofActualDepth = totalCorridorLength + SETTINGS.escalatorLength + 12;
-    const roofActualCenterX = overallShaftActualCenterX; // Center roof with the shaft/building
-    const roofActualCenterZ = 2 + ((totalCorridorLength + SETTINGS.escalatorLength) / 2); // Z center remains the same
-    const roofActualCenterZB = -16 - (2 + ((totalCorridorLength + SETTINGS.escalatorLength) / 2)); // Z center remains the same
-    const roofTopSurfaceY = (SETTINGS.numFloors) * SETTINGS.floorHeight; // Top Y of the main roof slab
-    
-    const wallYPos = roofTopSurfaceY + rooftopWallHeight / 2; // Position walls to sit ON the roof surface
-
-    // Wall 1: Far Z (Positive Z end of the roof)
-    const wallFarZGeo = new THREE.BoxGeometry(roofActualWidth, rooftopWallHeight, rooftopWallThickness);
-    const wallFarZ = new THREE.Mesh(wallFarZGeo, rooftopWallMaterial);
-    wallFarZ.position.set(roofActualCenterX, wallYPos, roofActualCenterZ + roofActualDepth / 2 - rooftopWallThickness / 2);
-    wallFarZ.name = "RooftopWall_FarZ";
-    wallFarZ.castShadow = true; wallFarZ.receiveShadow = true; wallFarZ.geometry.computeBoundingBox();
-    scene.add(wallFarZ); worldObjects.push(wallFarZ);
-
-    // Wall 1B: Far Z (Nagative Z end of the roof)
-    const wallFarZBGeo = new THREE.BoxGeometry(roofActualWidth, rooftopWallHeight, rooftopWallThickness);
-    const wallFarZB = new THREE.Mesh(wallFarZBGeo, rooftopWallMaterial);
-    wallFarZB.position.set(roofActualCenterX, wallYPos, roofActualCenterZB - roofActualDepth / 2 + rooftopWallThickness / 2);
-    wallFarZB.name = "RooftopWall_B_FarZ";
-    wallFarZB.castShadow = true; wallFarZB.receiveShadow = true; wallFarZB.geometry.computeBoundingBox();
-    scene.add(wallFarZB); worldObjects.push(wallFarZB);
-
-    // Wall 2: Near Z (Negative Z end of the roof), with opening for elevator
-    // Elevator opening X: from 0 to SETTINGS.corridorWidth. Roof X spans from -SETTINGS.roomSize to SETTINGS.corridorWidth + SETTINGS.roomSize
-    // const nearWallZPos = roofActualCenterZ - roofActualDepth / 2 + rooftopWallThickness / 2;
-
-   
-
-    // Wall 3: Side X (Negative X side of roof, at X = -SETTINGS.roomSize)
-    const wallSideLeftGeo = new THREE.BoxGeometry(rooftopWallThickness, rooftopWallHeight, roofActualDepth + 2);
-    const wallSideLeft = new THREE.Mesh(wallSideLeftGeo, rooftopWallMaterial);
-    wallSideLeft.position.set(roofActualCenterX - roofActualWidth / 2 + rooftopWallThickness / 2, wallYPos, roofActualCenterZ - 1);
-    wallSideLeft.name = "RooftopWall_SideLeft";
-    wallSideLeft.castShadow = true; wallSideLeft.receiveShadow = true; wallSideLeft.geometry.computeBoundingBox();
-    scene.add(wallSideLeft); worldObjects.push(wallSideLeft);
-
-    // Wall 3B : Side X (Negative X side of roof, at X = -SETTINGS.roomSize)
-    const wallSideLeftBGeo = new THREE.BoxGeometry(rooftopWallThickness, rooftopWallHeight, roofActualDepth + 6);
-    const wallSideLeftB = new THREE.Mesh(wallSideLeftBGeo, rooftopWallMaterial);
-    wallSideLeftB.position.set(roofActualCenterX - roofActualWidth / 2 + rooftopWallThickness / 2, wallYPos, -16-roofActualCenterZ + 3);
-    wallSideLeftB.name = "RooftopWall_B_SideLeft";
-    wallSideLeftB.castShadow = true; wallSideLeftB.receiveShadow = true; wallSideLeftB.geometry.computeBoundingBox();
-    scene.add(wallSideLeftB); worldObjects.push(wallSideLeftB);
-
-
-    // Wall 4: Side X (Positive X side of roof, at X = SETTINGS.corridorWidth + SETTINGS.roomSize)
-    const wallSideRightGeo = new THREE.BoxGeometry(rooftopWallThickness, rooftopWallHeight, roofActualDepth + 2);
-    const wallSideRight = new THREE.Mesh(wallSideRightGeo, rooftopWallMaterial);
-    wallSideRight.position.set(roofActualCenterX + roofActualWidth / 2 - rooftopWallThickness / 2, wallYPos, roofActualCenterZ - 1);
-    wallSideRight.name = "RooftopWall_SideRight";
-    wallSideRight.castShadow = true; wallSideRight.receiveShadow = true; wallSideRight.geometry.computeBoundingBox();
-    scene.add(wallSideRight); worldObjects.push(wallSideRight);
-
-    // Wall 4B : Side X (Negative X side of roof, at X = -SETTINGS.roomSize)
-    const wallSideRightBGeo = new THREE.BoxGeometry(rooftopWallThickness, rooftopWallHeight, roofActualDepth + 6);
-    const wallSideRightB = new THREE.Mesh(wallSideRightBGeo, rooftopWallMaterial);
-    wallSideRightB.position.set(roofActualCenterX + roofActualWidth / 2 - rooftopWallThickness / 2, wallYPos, -16-roofActualCenterZ + 3);
-    wallSideRightB.name = "RooftopWall_B_SideRight";
-    wallSideRightB.castShadow = true; wallSideRightB.receiveShadow = true; wallSideRightB.geometry.computeBoundingBox();
-    scene.add(wallSideRightB); worldObjects.push(wallSideRightB);
-
- 
-
-
-    // --- Define Building Footprint for Basement ---
-    // Use overall shaft/building dimensions for basement footprint
-    const basementMinX = overallShaftActualCenterX - buildingWidth / 2;
-    const basementMaxX = overallShaftActualCenterX + buildingWidth / 2;
-    const basementWidth = buildingWidth; // Use the potentially wider buildingWidth
-    const basementCenterX = overallShaftActualCenterX;
-
-    const basementMinZ = -SETTINGS.elevatorSize; // Front of building at elevator
-    const basementMaxZ = totalCorridorLength + 4 + SETTINGS.escalatorLength + 4; // Back of building
-    const basementDepth = basementMaxZ - basementMinZ;
-    const basementCenterZ = (basementMinZ + basementMaxZ) / 2;
-
-
-    // Floor levels
-    // Loop from the lowest basement floor up to the highest above-ground floor
-    for (let i = -SETTINGS.numBasementFloors; i < SETTINGS.numFloors; i++) {
-        const floorY = i * SETTINGS.floorHeight;
-        const redDoorIndex = Math.floor(Math.random() * SETTINGS.doorsPerSide * 4);
-        let currentDoorIndex = 0;
-
-        if (i < 0) { // --- Basement Floor Generation ---
-            const basementFloorPanels = [];
-            const basementCeilingPanels = [];
-            const floorPanelY = floorY - floorDepth / 2; // Y for top surface of floor slab
-            const ceilingPanelY = floorY + SETTINGS.wallHeight - (floorDepth / 4); // Y for top surface of ceiling slab
-
-            
-
-            const connectorBasementCeilingGeo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth / 2, 4); // Adjusted width
-            const connectorBasementCeiling = new THREE.Mesh(connectorBasementCeilingGeo, concreteMaterial);
-            connectorBasementCeiling.position.set(overallShaftActualCenterX, ceilingPanelY, -2); // Adjusted X
-            connectorBasementCeiling.name = `BasementConnectorCeiling_F${i}`;
-            scene.add(connectorBasementCeiling); worldObjects.push(connectorBasementCeiling);
-
-            // Panel A (West of shaft)
-            if (overallShaftMinX > basementMinX) {
-                const panelA_width = overallShaftMinX - basementMinX;
-                const panelA_floor_geo = new THREE.BoxGeometry(panelA_width, floorDepth, basementDepth);
-                const panelA_floor = new THREE.Mesh(panelA_floor_geo, concreteMaterial);
-                panelA_floor.position.set((basementMinX + overallShaftMinX) / 2, floorPanelY, basementCenterZ);
-                panelA_floor.name = `BasementFloorPanel_A_F${i}`; basementFloorPanels.push(panelA_floor);
-
-                const panelA_ceil_geo = new THREE.BoxGeometry(panelA_width, floorDepth / 2, basementDepth);
-                const panelA_ceil = new THREE.Mesh(panelA_ceil_geo, concreteMaterial);
-                panelA_ceil.position.set((basementMinX + overallShaftMinX) / 2, ceilingPanelY, basementCenterZ);
-                panelA_ceil.name = `BasementCeilingPanel_A_F${i}`; basementCeilingPanels.push(panelA_ceil);
-            }
-            // Panel B (East of shaft)
-            if (overallShaftMaxX < basementMaxX) {
-                const panelB_width = basementMaxX - overallShaftMaxX;
-                const panelB_floor_geo = new THREE.BoxGeometry(panelB_width, floorDepth, basementDepth);
-                const panelB_floor = new THREE.Mesh(panelB_floor_geo, concreteMaterial);
-                panelB_floor.position.set((overallShaftMaxX + basementMaxX) / 2, floorPanelY, basementCenterZ);
-                panelB_floor.name = `BasementFloorPanel_B_F${i}`; basementFloorPanels.push(panelB_floor);
-
-                const panelB_ceil_geo = new THREE.BoxGeometry(panelB_width, floorDepth / 2, basementDepth);
-                const panelB_ceil = new THREE.Mesh(panelB_ceil_geo, concreteMaterial);
-                panelB_ceil.position.set((overallShaftMaxX + basementMaxX) / 2, ceilingPanelY, basementCenterZ);
-                panelB_ceil.name = `BasementCeilingPanel_B_F${i}`; basementCeilingPanels.push(panelB_ceil);
-            }
-            // Panel C (North of shaft, within shaft's X-span)
-            if (overallShaftMaxZ < basementMaxZ) {
-                const panelC_depth = basementMaxZ - overallShaftMaxZ;
-                const panelC_floor_geo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth, panelC_depth);
-                const panelC_floor = new THREE.Mesh(panelC_floor_geo, concreteMaterial);
-                panelC_floor.position.set(overallShaftActualCenterX, floorPanelY, (overallShaftMaxZ + basementMaxZ) / 2);
-                panelC_floor.name = `BasementFloorPanel_C_F${i}`; basementFloorPanels.push(panelC_floor);
-
-                const panelC_ceil_geo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth / 2, panelC_depth);
-                const panelC_ceil = new THREE.Mesh(panelC_ceil_geo, concreteMaterial);
-                panelC_ceil.position.set(overallShaftActualCenterX, ceilingPanelY, (overallShaftMaxZ + basementMaxZ) / 2);
-                panelC_ceil.name = `BasementCeilingPanel_C_F${i}`; basementCeilingPanels.push(panelC_ceil);
-            }
-            // Panel D (South of shaft, within shaft's X-span)
-            if (overallShaftMinZ > basementMinZ) {
-                const panelD_depth = overallShaftMinZ - basementMinZ;
-                const panelD_floor_geo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth, panelD_depth);
-                const panelD_floor = new THREE.Mesh(panelD_floor_geo, concreteMaterial);
-                panelD_floor.position.set(overallShaftActualCenterX, floorPanelY, (basementMinZ + overallShaftMinZ) / 2);
-                panelD_floor.name = `BasementFloorPanel_D_F${i}`; basementFloorPanels.push(panelD_floor);
-
-                const panelD_ceil_geo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth / 2, panelD_depth);
-                const panelD_ceil = new THREE.Mesh(panelD_ceil_geo, concreteMaterial);
-                panelD_ceil.position.set(overallShaftActualCenterX, ceilingPanelY, (basementMinZ + overallShaftMinZ) / 2);
-                panelD_ceil.name = `BasementCeilingPanel_D_F${i}`; basementCeilingPanels.push(panelD_ceil);
-            }
-
-            basementFloorPanels.forEach(panel => {
-                panel.receiveShadow = true;
-                scene.add(panel);
-                worldObjects.push(panel);
-            });
-            basementCeilingPanels.forEach(panel => {
-                panel.castShadow = true;
-                scene.add(panel);
-                worldObjects.push(panel);
-            });
-
-            // --- Basement Perimeter Walls ---
-            // Back Wall (Far Z) - with Garage Door Opening
-            const garageDoorWidth = 6;
-            const garageDoorHeight = SETTINGS.wallHeight - 0.5; // Leave 0.5m for header
-            const garageDoorPanelThickness = 0.2;
-            const wallFarZPlane = basementMaxZ - wallDepth / 2;
-
-            // Segment Left of Garage Door
-            const farWallLeftWidth = (basementWidth - garageDoorWidth) / 2;
-            if (farWallLeftWidth > 0.01) {
-                const farWallLeftGeo = new THREE.BoxGeometry(farWallLeftWidth, SETTINGS.wallHeight, wallDepth);
-                const farWallLeft = new THREE.Mesh(farWallLeftGeo, basementWallMaterial);
-                farWallLeft.position.set(basementMinX + farWallLeftWidth / 2, floorY + SETTINGS.wallHeight / 2, wallFarZPlane);
-                farWallLeft.name = `BasementWall_Far_Right_F${i}`; // Adjusted: MinX side is player's right
-                farWallLeft.castShadow = true; farWallLeft.receiveShadow = true;
-                scene.add(farWallLeft); worldObjects.push(farWallLeft);
-            }
-
-            // Segment Right of Garage Door
-            const farWallRightWidth = (basementWidth - garageDoorWidth) / 2;
-            if (farWallRightWidth > 0.01) {
-                const farWallRightGeo = new THREE.BoxGeometry(farWallRightWidth, SETTINGS.wallHeight, wallDepth);
-                const farWallRight = new THREE.Mesh(farWallRightGeo, basementWallMaterial);
-                farWallRight.position.set(basementMaxX - farWallRightWidth / 2, floorY + SETTINGS.wallHeight / 2, wallFarZPlane);
-                farWallRight.name = `BasementWall_Far_Left_F${i}`; // Adjusted: MaxX side is player's left
-                farWallRight.castShadow = true; farWallRight.receiveShadow = true;
-                scene.add(farWallRight); worldObjects.push(farWallRight);
-            }
-
-            // Header Above Garage Door
-            const headerHeight = SETTINGS.wallHeight - garageDoorHeight;
-            if (headerHeight > 0.01) {
-                const headerGeo = new THREE.BoxGeometry(garageDoorWidth, headerHeight, wallDepth);
-                const header = new THREE.Mesh(headerGeo, basementWallMaterial);
-                header.position.set(basementCenterX, floorY + garageDoorHeight + headerHeight / 2, wallFarZPlane);
-                header.name = `BasementWall_Far_Header_F${i}`;
-                header.castShadow = true; header.receiveShadow = true;
-                scene.add(header); worldObjects.push(header);
-            }
-
-            // Create Garage Door (only for the lowest basement floor for now)
-            if (i === -SETTINGS.numBasementFloors) {
-                const garageDoorGeo = new THREE.BoxGeometry(garageDoorWidth, garageDoorHeight, garageDoorPanelThickness);
-                garageDoorGeo.translate(0, -garageDoorHeight / 2, 0); // Pivot at top edge
-                const garageDoor = new THREE.Mesh(garageDoorGeo, garageDoorMaterial);
-                garageDoor.name = `GarageDoor_F${i}`;
-                garageDoor.position.set(basementCenterX, floorY + garageDoorHeight, wallFarZPlane - wallDepth/2 + garageDoorPanelThickness/2); // Position top edge
-                garageDoor.castShadow = true; garageDoor.receiveShadow = true;
-                garageDoor.userData = { type: 'garageDoor', isOpen: false, isAnimating: false, targetRotationX: 0, floor: i };
-                scene.add(garageDoor); worldObjects.push(garageDoor); doors.push(garageDoor); // Add to doors for interaction
-
-                // --- Add Garage Structure Behind the Door ---
-                const garageDepthVal = 8; // How deep the garage extends
-                const garageWallThickness = wallDepth; // Use existing wallDepth
-
-                // Garage Floor
-                const garageFloorGeo = new THREE.BoxGeometry(garageDoorWidth, floorDepth, garageDepthVal);
-                const garageFloor = new THREE.Mesh(garageFloorGeo, concreteMaterial);
-                garageFloor.name = `Garage_Floor_F${i}`;
-                garageFloor.position.set(basementCenterX, floorY - floorDepth / 2, wallFarZPlane + wallDepth/2 + garageDepthVal / 2);
-                garageFloor.receiveShadow = true;
-                scene.add(garageFloor); worldObjects.push(garageFloor);
-
-                // Garage Ceiling
-                const garageCeilingGeo = new THREE.BoxGeometry(garageDoorWidth, floorDepth / 2, garageDepthVal); // Thinner ceiling for garage
-                const garageCeiling = new THREE.Mesh(garageCeilingGeo, concreteMaterial);
-                garageCeiling.name = `Garage_Ceiling_F${i}`;
-                garageCeiling.position.set(basementCenterX, floorY + SETTINGS.wallHeight + (floorDepth/2)/2, wallFarZPlane + wallDepth/2 + garageDepthVal / 2);
-                garageCeiling.castShadow = true;
-                scene.add(garageCeiling); worldObjects.push(garageCeiling);
-
-                // Garage Side Walls
-                const garageSideWallGeo = new THREE.BoxGeometry(garageWallThickness, SETTINGS.wallHeight, garageDepthVal);
-                const garageSideWallLeft = new THREE.Mesh(garageSideWallGeo, basementWallMaterial);
-                garageSideWallLeft.name = `Garage_SideWall_Left_F${i}`;
-                garageSideWallLeft.position.set(basementCenterX - garageDoorWidth/2 + garageWallThickness/2, floorY + SETTINGS.wallHeight/2, wallFarZPlane + wallDepth/2 + garageDepthVal/2);
-                scene.add(garageSideWallLeft); worldObjects.push(garageSideWallLeft);
-
-                const garageSideWallRight = new THREE.Mesh(garageSideWallGeo, basementWallMaterial);
-                garageSideWallRight.name = `Garage_SideWall_Right_F${i}`;
-                garageSideWallRight.position.set(basementCenterX + garageDoorWidth/2 - garageWallThickness/2, floorY + SETTINGS.wallHeight/2, wallFarZPlane + wallDepth/2 + garageDepthVal/2);
-                scene.add(garageSideWallRight); worldObjects.push(garageSideWallRight);
-
-                // Garage Back Wall
-                const garageBackWallGeo = new THREE.BoxGeometry(garageDoorWidth, SETTINGS.wallHeight, garageWallThickness);
-                const garageBackWall = new THREE.Mesh(garageBackWallGeo, basementWallMaterial);
-                garageBackWall.name = `Garage_BackWall_F${i}`;
-                garageBackWall.position.set(basementCenterX, floorY + SETTINGS.wallHeight/2, wallFarZPlane + wallDepth/2 + garageDepthVal - garageWallThickness/2);
-                scene.add(garageBackWall); worldObjects.push(garageBackWall);
-
-                // Garage Light
-                const garageLightYPos = floorY + SETTINGS.wallHeight - 0.5;
-                const garageLightXPos = basementCenterX;
-                const garageLightZPos = wallFarZPlane + wallDepth/2 + garageDepthVal/2;
-
-                const garagePointLight = new THREE.PointLight(0xffccaa, 0.7, 15); // Light color, intensity, range
-                garagePointLight.position.set(garageLightXPos, garageLightYPos, garageLightZPos);
-                garagePointLight.castShadow = true; // Enable shadow casting for the garage light
-                garagePointLight.shadow.mapSize.width = 1024; // Increase shadow map resolution for better quality
-                garagePointLight.shadow.mapSize.height = 1024;
-                garagePointLight.shadow.camera.far = 15; // Set shadow camera far plane to match light's distance
-                
-                scene.add(garagePointLight);
-
-                // Add a simple fixture mesh for the garage light
-                const garageFixtureGeo = new THREE.BoxGeometry(1.0, 0.15, 0.2); // A bit smaller or different style
-                const garageFixtureMat = new THREE.MeshStandardMaterial({color: 0xffeeaa, emissive: 1, emissiveIntensity: 100}); // Slightly different color for variety
-                const garageFixture = new THREE.Mesh(garageFixtureGeo, garageFixtureMat);
-                garageFixture.position.set(garageLightXPos, garageLightYPos + 0.075, garageLightZPos); // Centered with the light Y
-                scene.add(garageFixture);
-
-                // Add the car model to the garage floor
-                // The garage floor's top surface is at y = floorY.
-                addGarageCar(scene, new THREE.Vector3(basementCenterX, floorY, wallFarZPlane + wallDepth/2 + garageDepthVal / 2));
-            
-            }
-            
-            // Front Wall (Near Z - around elevator shaft)
-            // Part 1: Left of elevator shaft (X from basementMinX to 0)
-            const frontWallLeftWidth = 0 - basementMinX; // Width of this segment
-
-            // Part 2: Right of elevator shaft (X from SETTINGS.corridorWidth to basementMaxX)
-            const frontWallRightWidth = basementMaxX - SETTINGS.corridorWidth; // Width of this segment
-
-            // Note: The actual back wall of the elevator shaft itself is handled by `endWallNear` later.
-
-            // Side Wall Left (Min X)
-            const wallSideLeftGeo = new THREE.BoxGeometry(wallDepth, SETTINGS.wallHeight, basementDepth);
-            const wallSideLeft = new THREE.Mesh(wallSideLeftGeo, basementWallMaterial);
-            wallSideLeft.position.set(basementMinX + wallDepth / 2, floorY + SETTINGS.wallHeight / 2, basementCenterZ);
-            wallSideLeft.name = `BasementWall_SideRight_F${i}`; // Adjusted: MinX side is player's right
-            wallSideLeft.castShadow = true; wallSideLeft.receiveShadow = true;
-            scene.add(wallSideLeft); worldObjects.push(wallSideLeft);
-
-            // Side Wall Right (Max X)
-            const wallSideRightGeo = new THREE.BoxGeometry(wallDepth, SETTINGS.wallHeight, basementDepth);
-            const wallSideRight = new THREE.Mesh(wallSideRightGeo, basementWallMaterial);
-            wallSideRight.position.set(basementMaxX - wallDepth / 2, floorY + SETTINGS.wallHeight / 2, basementCenterZ);
-            wallSideRight.name = `BasementWall_SideLeft_F${i}`; // Adjusted: MaxX side is player's left
-            wallSideRight.castShadow = true; wallSideRight.receiveShadow = true;
-            scene.add(wallSideRight); worldObjects.push(wallSideRight);
-
-            // Concrete Pillars
-            const pillarSize = 0.5;
-            const pillarGeo = new THREE.BoxGeometry(pillarSize, SETTINGS.wallHeight, pillarSize);
-            const pillarYPos = floorY + SETTINGS.wallHeight / 2;
-            const pillarSpacingX = 7;
-            const pillarSpacingZ = 7;
-            // Use overall shaft dimensions for pillar exclusion zone
-            const elevatorShaftZone = { minX: overallShaftMinX - 0.1, maxX: overallShaftMaxX + 0.1, minZ: overallShaftMinZ - 0.1, maxZ: overallShaftMaxZ + 0.1 };
-           
-
-            for (let px = basementMinX + pillarSpacingX / 2; px < basementMaxX; px += pillarSpacingX) {
-                for (let pz = basementMinZ + pillarSpacingZ / 2; pz < basementMaxZ; pz += pillarSpacingZ) {
-                    if (px > elevatorShaftZone.minX && px < elevatorShaftZone.maxX &&
-                        pz > elevatorShaftZone.minZ && pz < elevatorShaftZone.maxZ) {
-                        continue;
-                    }
-     
-
-                    const pillar = new THREE.Mesh(pillarGeo, pillarMaterial);
-                    pillar.position.set(px, pillarYPos, pz);
-                    pillar.name = `BasementPillar_F${i}_X${Math.round(px)}_Z${Math.round(pz)}`;
-                    pillar.castShadow = true; pillar.receiveShadow = true;
-                    scene.add(pillar);
-                    worldObjects.push(pillar);
+            penthouseWallCenterY,
+            overallShaftActualCenterZ
+        );
+        penthouseWallRight.castShadow = true; penthouseWallRight.receiveShadow = true;
+        scene.add(penthouseWallRight); worldObjects.push(penthouseWallRight);
+
+
+
+        // --- Floodlight on Elevator Shaft Roof ---
+        const floodlightHousingMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7, roughness: 0.4 });
+        const floodlightLensMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFEE, emissive: 0xFFFFDD, emissiveIntensity: 0.5 }); // Slightly glowing lens
+
+        const floodlightHousingGeo = new THREE.BoxGeometry(0.8, 0.4, 0.4); // width, height, depth
+        const floodlightHousing = new THREE.Mesh(floodlightHousingGeo, floodlightHousingMaterial);
+
+        const floodlightLensGeo = new THREE.CylinderGeometry(0.15, 0.18, 0.1, 16); // radiusTop, radiusBottom, height, segments
+        const floodlightLens = new THREE.Mesh(floodlightLensGeo, floodlightLensMaterial);
+        floodlightLens.rotation.x = Math.PI / 2;
+        floodlightLens.position.z = 0.2; // Position at the front of the housing
+
+        const floodlightAssembly = new THREE.Group();
+        floodlightAssembly.add(floodlightHousing);
+        floodlightAssembly.add(floodlightLens);
+
+        // Position the floodlight assembly on top of the 'Top Roof over Elevator'
+        // Use the middle elevator's shaft ceiling for floodlight positioning
+        const middleElevatorShaftCeiling = elevators.find(e => e.id === "mainElevator").shaftCeiling;
+        const shaftCeilingSurfaceY = middleElevatorShaftCeiling.position.y + floorDepth / 2;
+        floodlightAssembly.position.set(
+            middleElevatorShaftCeiling.position.x, // Centered on X of middle elevator's ceiling
+            shaftCeilingSurfaceY + 0.2, // Housing height/2 = 0.4/2 = 0.2
+            middleElevatorShaftCeiling.position.z + (overallShaftActualDepth / 2) - 0.3 // Near the edge facing the main roof
+        );
+        scene.add(floodlightAssembly);
+
+        const rooftopSpotLight = new THREE.SpotLight(0xffffff, 20, 200, Math.PI / 3, 1, 1.5); // color, intensity, distance, angle, penumbra, decay
+        rooftopSpotLight.position.copy(floodlightAssembly.position);
+        rooftopSpotLight.position.z += 0.2; // Emitter slightly in front of housing
+        // Target the center of the main roof area
+        // const totalCorridorLength = SETTINGS.doorsPerSide * SETTINGS.corridorSegmentLength; // Already defined
+        const mainRoofCenterY = (SETTINGS.numFloors) * SETTINGS.floorHeight;
+        const mainRoofCenterZ = 4 + ((totalCorridorLength + SETTINGS.escalatorLength) / 2);
+        rooftopSpotLight.target.position.set(SETTINGS.corridorWidth / 2, mainRoofCenterY, mainRoofCenterZ);
+
+        rooftopSpotLight.castShadow = true;
+        rooftopSpotLight.shadow.mapSize.width = 1024;
+        rooftopSpotLight.shadow.mapSize.height = 1024;
+        rooftopSpotLight.shadow.camera.near = 1;
+        rooftopSpotLight.shadow.camera.far = 200;
+        rooftopSpotLight.shadow.focus = 1; // Softer shadows
+
+        scene.add(rooftopSpotLight);
+        scene.add(rooftopSpotLight.target); // Important: add the target to the scene as well
+
+        // RoofTop B-Wing Spot Light
+        // --- Floodlight on Elevator Shaft Roof ---
+        //const floodlightHousingMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7, roughness: 0.4 });
+        //const floodlightLensMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFEE, emissive: 0xFFFFDD, emissiveIntensity: 0.5 }); // Slightly glowing lens
+
+        const floodlightHousingGeoB = new THREE.BoxGeometry(0.8, 0.4, 0.4); // width, height, depth
+        const floodlightHousingB = new THREE.Mesh(floodlightHousingGeoB, floodlightHousingMaterial);
+
+        const floodlightLensGeoB = new THREE.CylinderGeometry(0.15, 0.18, 0.1, 16); // radiusTop, radiusBottom, height, segments
+        const floodlightLensB = new THREE.Mesh(floodlightLensGeoB, floodlightLensMaterial);
+        floodlightLensB.rotation.x = Math.PI / 2;
+        floodlightLensB.position.z = -0.2; // Position at the front of the housing
+
+        const floodlightAssemblyB = new THREE.Group();
+        floodlightAssemblyB.add(floodlightHousingB);
+        floodlightAssemblyB.add(floodlightLensB);
+
+        floodlightAssemblyB.name = "FloodlightAssembly_B";
+
+        // Position the floodlight assembly on top of the 'Top Roof over Elevator'
+        // Use the middle elevator's shaft ceiling for floodlight positioning
+        //const middleElevatorShaftCeiling = elevators.find(e => e.id === "mainElevator").shaftCeiling;
+        //const shaftCeilingSurfaceY = middleElevatorShaftCeiling.position.y + floorDepth / 2;
+        floodlightAssemblyB.position.set(
+            middleElevatorShaftCeiling.position.x, // Centered on X of middle elevator's ceiling
+            shaftCeilingSurfaceY + 0.2, // Housing height/2 = 0.4/2 = 0.2
+            middleElevatorShaftCeiling.position.z - (overallShaftActualDepth / 2) + 0.3 // Near the edge facing the main roof
+        );
+        scene.add(floodlightAssemblyB);
+
+        const rooftopSpotLightB = new THREE.SpotLight(0xffffff, 20, 200, Math.PI / 3, 1, 1.5); // color, intensity, distance, angle, penumbra, decay
+        rooftopSpotLightB.position.copy(floodlightAssemblyB.position);
+        rooftopSpotLightB.position.z -= 0.2; // Emitter slightly in front of housing
+        // Target the center of the main roof area
+        // const totalCorridorLength = SETTINGS.doorsPerSide * SETTINGS.corridorSegmentLength; // Already defined
+        //const mainRoofCenterY = (SETTINGS.numFloors) * SETTINGS.floorHeight;
+        const mainRoofCenterZB = -8 - 4 - ((totalCorridorLength + SETTINGS.escalatorLength) / 2);
+        rooftopSpotLightB.target.position.set(SETTINGS.corridorWidth / 2, mainRoofCenterY, mainRoofCenterZB);
+
+        rooftopSpotLightB.castShadow = true;
+        rooftopSpotLightB.shadow.mapSize.width = 1024;
+        rooftopSpotLightB.shadow.mapSize.height = 1024;
+        rooftopSpotLightB.shadow.camera.near = 1;
+        rooftopSpotLightB.shadow.camera.far = 200;
+        rooftopSpotLightB.shadow.focus = 1; // Softer shadows
+
+        scene.add(rooftopSpotLightB);
+        scene.add(rooftopSpotLightB.target); // Important: add the target to the scene as well
+
+        //End RoofTop B-Wing Spot Light
+
+
+        // --- Rooftop Perimeter Walls ---
+        const rooftopWallHeight = 1.0; // Low walls
+        const rooftopWallThickness = 0.5; // Wide walls
+        const rooftopWallMaterial = wallMaterial.clone();
+        rooftopWallMaterial.color.set(0x777777); // Different color for rooftop walls to avoid z-fighting
+
+        const roofActualWidth = buildingWidth; // Use the potentially wider buildingWidth
+        const roofActualDepth = totalCorridorLength + SETTINGS.escalatorLength + 12;
+        const roofActualCenterX = overallShaftActualCenterX; // Center roof with the shaft/building
+        const roofActualCenterZ = 2 + ((totalCorridorLength + SETTINGS.escalatorLength) / 2); // Z center remains the same
+        const roofActualCenterZB = -16 - (2 + ((totalCorridorLength + SETTINGS.escalatorLength) / 2)); // Z center remains the same
+        const roofTopSurfaceY = (SETTINGS.numFloors) * SETTINGS.floorHeight; // Top Y of the main roof slab
+
+        const wallYPos = roofTopSurfaceY + rooftopWallHeight / 2; // Position walls to sit ON the roof surface
+
+        // Wall 1: Far Z (Positive Z end of the roof)
+        const wallFarZGeo = new THREE.BoxGeometry(roofActualWidth, rooftopWallHeight, rooftopWallThickness);
+        const wallFarZ = new THREE.Mesh(wallFarZGeo, rooftopWallMaterial);
+        wallFarZ.position.set(roofActualCenterX, wallYPos, roofActualCenterZ + roofActualDepth / 2 - rooftopWallThickness / 2);
+        wallFarZ.name = "RooftopWall_FarZ";
+        wallFarZ.castShadow = true; wallFarZ.receiveShadow = true; wallFarZ.geometry.computeBoundingBox();
+        scene.add(wallFarZ); worldObjects.push(wallFarZ);
+
+        // Wall 1B: Far Z (Nagative Z end of the roof)
+        const wallFarZBGeo = new THREE.BoxGeometry(roofActualWidth, rooftopWallHeight, rooftopWallThickness);
+        const wallFarZB = new THREE.Mesh(wallFarZBGeo, rooftopWallMaterial);
+        wallFarZB.position.set(roofActualCenterX, wallYPos, roofActualCenterZB - roofActualDepth / 2 + rooftopWallThickness / 2);
+        wallFarZB.name = "RooftopWall_B_FarZ";
+        wallFarZB.castShadow = true; wallFarZB.receiveShadow = true; wallFarZB.geometry.computeBoundingBox();
+        scene.add(wallFarZB); worldObjects.push(wallFarZB);
+
+        // Wall 2: Near Z (Negative Z end of the roof), with opening for elevator
+        // Elevator opening X: from 0 to SETTINGS.corridorWidth. Roof X spans from -SETTINGS.roomSize to SETTINGS.corridorWidth + SETTINGS.roomSize
+        // const nearWallZPos = roofActualCenterZ - roofActualDepth / 2 + rooftopWallThickness / 2;
+
+
+
+        // Wall 3: Side X (Negative X side of roof, at X = -SETTINGS.roomSize)
+        const wallSideLeftGeo = new THREE.BoxGeometry(rooftopWallThickness, rooftopWallHeight, roofActualDepth + 2);
+        const wallSideLeft = new THREE.Mesh(wallSideLeftGeo, rooftopWallMaterial);
+        wallSideLeft.position.set(roofActualCenterX - roofActualWidth / 2 + rooftopWallThickness / 2, wallYPos, roofActualCenterZ - 1);
+        wallSideLeft.name = "RooftopWall_SideLeft";
+        wallSideLeft.castShadow = true; wallSideLeft.receiveShadow = true; wallSideLeft.geometry.computeBoundingBox();
+        scene.add(wallSideLeft); worldObjects.push(wallSideLeft);
+
+        // Wall 3B : Side X (Negative X side of roof, at X = -SETTINGS.roomSize)
+        const wallSideLeftBGeo = new THREE.BoxGeometry(rooftopWallThickness, rooftopWallHeight, roofActualDepth + 6);
+        const wallSideLeftB = new THREE.Mesh(wallSideLeftBGeo, rooftopWallMaterial);
+        wallSideLeftB.position.set(roofActualCenterX - roofActualWidth / 2 + rooftopWallThickness / 2, wallYPos, -16 - roofActualCenterZ + 3);
+        wallSideLeftB.name = "RooftopWall_B_SideLeft";
+        wallSideLeftB.castShadow = true; wallSideLeftB.receiveShadow = true; wallSideLeftB.geometry.computeBoundingBox();
+        scene.add(wallSideLeftB); worldObjects.push(wallSideLeftB);
+
+
+        // Wall 4: Side X (Positive X side of roof, at X = SETTINGS.corridorWidth + SETTINGS.roomSize)
+        const wallSideRightGeo = new THREE.BoxGeometry(rooftopWallThickness, rooftopWallHeight, roofActualDepth + 2);
+        const wallSideRight = new THREE.Mesh(wallSideRightGeo, rooftopWallMaterial);
+        wallSideRight.position.set(roofActualCenterX + roofActualWidth / 2 - rooftopWallThickness / 2, wallYPos, roofActualCenterZ - 1);
+        wallSideRight.name = "RooftopWall_SideRight";
+        wallSideRight.castShadow = true; wallSideRight.receiveShadow = true; wallSideRight.geometry.computeBoundingBox();
+        scene.add(wallSideRight); worldObjects.push(wallSideRight);
+
+        // Wall 4B : Side X (Negative X side of roof, at X = -SETTINGS.roomSize)
+        const wallSideRightBGeo = new THREE.BoxGeometry(rooftopWallThickness, rooftopWallHeight, roofActualDepth + 6);
+        const wallSideRightB = new THREE.Mesh(wallSideRightBGeo, rooftopWallMaterial);
+        wallSideRightB.position.set(roofActualCenterX + roofActualWidth / 2 - rooftopWallThickness / 2, wallYPos, -16 - roofActualCenterZ + 3);
+        wallSideRightB.name = "RooftopWall_B_SideRight";
+        wallSideRightB.castShadow = true; wallSideRightB.receiveShadow = true; wallSideRightB.geometry.computeBoundingBox();
+        scene.add(wallSideRightB); worldObjects.push(wallSideRightB);
+
+
+
+
+        // --- Define Building Footprint for Basement ---
+        // Use overall shaft/building dimensions for basement footprint
+        const basementMinX = overallShaftActualCenterX - buildingWidth / 2;
+        const basementMaxX = overallShaftActualCenterX + buildingWidth / 2;
+        const basementWidth = buildingWidth; // Use the potentially wider buildingWidth
+        const basementCenterX = overallShaftActualCenterX;
+
+        const basementMinZ = -SETTINGS.elevatorSize; // Front of building at elevator
+        const basementMaxZ = totalCorridorLength + 4 + SETTINGS.escalatorLength + 4; // Back of building
+        const basementDepth = basementMaxZ - basementMinZ;
+        const basementCenterZ = (basementMinZ + basementMaxZ) / 2;
+
+
+        // Floor levels
+        // Loop from the lowest basement floor up to the highest above-ground floor
+        for (let i = -SETTINGS.numBasementFloors; i < SETTINGS.numFloors; i++) {
+            const floorY = i * SETTINGS.floorHeight;
+            const redDoorIndex = Math.floor(Math.random() * SETTINGS.doorsPerSide * 4);
+            let currentDoorIndex = 0;
+
+            if (i < 0) { // --- Basement Floor Generation ---
+                const basementFloorPanels = [];
+                const basementCeilingPanels = [];
+                const floorPanelY = floorY - floorDepth / 2; // Y for top surface of floor slab
+                const ceilingPanelY = floorY + SETTINGS.wallHeight - (floorDepth / 4); // Y for top surface of ceiling slab
+
+
+
+                const connectorBasementCeilingGeo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth / 2, 4); // Adjusted width
+                const connectorBasementCeiling = new THREE.Mesh(connectorBasementCeilingGeo, concreteMaterial);
+                connectorBasementCeiling.position.set(overallShaftActualCenterX, ceilingPanelY, -2); // Adjusted X
+                connectorBasementCeiling.name = `BasementConnectorCeiling_F${i}`;
+                scene.add(connectorBasementCeiling); worldObjects.push(connectorBasementCeiling);
+
+                // Panel A (West of shaft)
+                if (overallShaftMinX > basementMinX) {
+                    const panelA_width = overallShaftMinX - basementMinX;
+                    const panelA_floor_geo = new THREE.BoxGeometry(panelA_width, floorDepth, basementDepth);
+                    const panelA_floor = new THREE.Mesh(panelA_floor_geo, concreteMaterial);
+                    panelA_floor.position.set((basementMinX + overallShaftMinX) / 2, floorPanelY, basementCenterZ);
+                    panelA_floor.name = `BasementFloorPanel_A_F${i}`; basementFloorPanels.push(panelA_floor);
+
+                    const panelA_ceil_geo = new THREE.BoxGeometry(panelA_width, floorDepth / 2, basementDepth);
+                    const panelA_ceil = new THREE.Mesh(panelA_ceil_geo, concreteMaterial);
+                    panelA_ceil.position.set((basementMinX + overallShaftMinX) / 2, ceilingPanelY, basementCenterZ);
+                    panelA_ceil.name = `BasementCeilingPanel_A_F${i}`; basementCeilingPanels.push(panelA_ceil);
                 }
-            }
+                // Panel B (East of shaft)
+                if (overallShaftMaxX < basementMaxX) {
+                    const panelB_width = basementMaxX - overallShaftMaxX;
+                    const panelB_floor_geo = new THREE.BoxGeometry(panelB_width, floorDepth, basementDepth);
+                    const panelB_floor = new THREE.Mesh(panelB_floor_geo, concreteMaterial);
+                    panelB_floor.position.set((overallShaftMaxX + basementMaxX) / 2, floorPanelY, basementCenterZ);
+                    panelB_floor.name = `BasementFloorPanel_B_F${i}`; basementFloorPanels.push(panelB_floor);
 
-            // Place enemies on basement floors
-            const numBasementEnemies = 3; // Number of enemies per basement floor
-            for (let e = 0; e < numBasementEnemies; e++) {
-                let enemyX, enemyZ;
-                let attempts = 0;
-                const maxAttempts = 10; // Prevent infinite loops if space is too constrained
-
-                do {
-                    enemyX = basementMinX + Math.random() * (basementMaxX - basementMinX);
-                    enemyZ = basementMinZ + Math.random() * (basementMaxZ - basementMinZ);
-                    attempts++;
-                    // Check if the random position is inside the elevator shaft zone
-                    // Add a small buffer to avoid placing enemies too close to the shaft walls
-                    const buffer = 1.0; // Buffer around the elevator shaft
-                    const isInShaft = (enemyX > elevatorShaftZone.minX - buffer && enemyX < elevatorShaftZone.maxX + buffer &&
-                                        enemyZ > elevatorShaftZone.minZ - buffer && enemyZ < elevatorShaftZone.maxZ + buffer);
-
-                    if (!isInShaft) {
-                        createEnemy(enemyX, floorY, enemyZ, i);
-                        break; // Found a valid spot, move to next enemy
-                    }
-                } while (attempts < maxAttempts);
-
-                if (attempts >= maxAttempts) {
-                    console.warn(`Could not find a suitable spot for basement enemy ${e} on floor ${i} after ${maxAttempts} attempts.`);
+                    const panelB_ceil_geo = new THREE.BoxGeometry(panelB_width, floorDepth / 2, basementDepth);
+                    const panelB_ceil = new THREE.Mesh(panelB_ceil_geo, concreteMaterial);
+                    panelB_ceil.position.set((overallShaftMaxX + basementMaxX) / 2, ceilingPanelY, basementCenterZ);
+                    panelB_ceil.name = `BasementCeilingPanel_B_F${i}`; basementCeilingPanels.push(panelB_ceil);
                 }
-            }
+                // Panel C (North of shaft, within shaft's X-span)
+                if (overallShaftMaxZ < basementMaxZ) {
+                    const panelC_depth = basementMaxZ - overallShaftMaxZ;
+                    const panelC_floor_geo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth, panelC_depth);
+                    const panelC_floor = new THREE.Mesh(panelC_floor_geo, concreteMaterial);
+                    panelC_floor.position.set(overallShaftActualCenterX, floorPanelY, (overallShaftMaxZ + basementMaxZ) / 2);
+                    panelC_floor.name = `BasementFloorPanel_C_F${i}`; basementFloorPanels.push(panelC_floor);
 
-            // Basement Lighting (simple point lights for now)
-            const lightSpacing = 6; // Reduced spacing for better coverage
-            const lightYPos = floorY + SETTINGS.wallHeight - 0.5; // Under the ceiling
-
-            // Determine X positions for lights, ensuring they are centered around basementCenterX
-            // basementWidth and basementCenterX are defined earlier in generateWorld
-            const numLightsX = Math.max(1, Math.floor(basementWidth / lightSpacing));
-            const totalLightSpanX = (numLightsX - 1) * lightSpacing;
-            const startLx = basementCenterX - totalLightSpanX / 2;
-
-            for (let lz = basementMinZ + lightSpacing / 2; lz < basementMaxZ; lz += lightSpacing) {
-                for (let k = 0; k < numLightsX; k++) {
-                    const lx = startLx + k * lightSpacing;
-
-                    const parkingLight = new THREE.PointLight(0xddddff, 0.5, 18); // Dim, cool white
-                    parkingLight.position.set(lx, lightYPos, lz);
-                    // parkingLight.castShadow = true; // Optional: for performance, might turn off
-                    scene.add(parkingLight);
-
-                    // Add a simple fixture mesh
-                    const fixtureGeo = new THREE.BoxGeometry(1.2, 0.15, 0.25); // Fluorescent light like
-                    const fixtureMat = new THREE.MeshStandardMaterial({color: 0xffffff,  emissive: 1, emissiveIntensity: 100}); // Slightly glowing
-                    const fixture = new THREE.Mesh(fixtureGeo, fixtureMat);
-                    fixture.position.set(lx, lightYPos + 0.1, lz); // Slightly below ceiling
-                    scene.add(fixture);
+                    const panelC_ceil_geo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth / 2, panelC_depth);
+                    const panelC_ceil = new THREE.Mesh(panelC_ceil_geo, concreteMaterial);
+                    panelC_ceil.position.set(overallShaftActualCenterX, ceilingPanelY, (overallShaftMaxZ + basementMaxZ) / 2);
+                    panelC_ceil.name = `BasementCeilingPanel_C_F${i}`; basementCeilingPanels.push(panelC_ceil);
                 }
-            }
-        } else { // --- Office Floor Generation (i >= 0) ---
+                // Panel D (South of shaft, within shaft's X-span)
+                if (overallShaftMinZ > basementMinZ) {
+                    const panelD_depth = overallShaftMinZ - basementMinZ;
+                    const panelD_floor_geo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth, panelD_depth);
+                    const panelD_floor = new THREE.Mesh(panelD_floor_geo, concreteMaterial);
+                    panelD_floor.position.set(overallShaftActualCenterX, floorPanelY, (basementMinZ + overallShaftMinZ) / 2);
+                    panelD_floor.name = `BasementFloorPanel_D_F${i}`; basementFloorPanels.push(panelD_floor);
 
-            // Floor Plane (Corridor only for office floors)
-            const floorGeo = new THREE.PlaneGeometry(SETTINGS.corridorWidth + (2*SETTINGS.roomSize), totalCorridorLength);
-            const floor = new THREE.Mesh(floorGeo, floorMaterial);
-            floor.name = `Floor ${i}`;
-            floor.rotation.x = -Math.PI / 2;
-            floor.position.set(SETTINGS.corridorWidth / 2, floorY, totalCorridorLength / 2);
-            floor.receiveShadow = true;
-            scene.add(floor);
-            worldObjects.push(floor);
-
-            // Floor Plane -Z (Corridor only for office floors)
-            //const floorGeo = new THREE.PlaneGeometry(SETTINGS.corridorWidth, totalCorridorLength);
-            const floorB = new THREE.Mesh(floorGeo, floorMaterial);
-            floorB.name = `Floor B ${i}`;
-            floorB.rotation.x = -Math.PI / 2;
-            floorB.position.set(SETTINGS.corridorWidth / 2, floorY, -16- totalCorridorLength / 2);
-            floorB.receiveShadow = true;
-            scene.add(floorB);
-            worldObjects.push(floorB);
-
-            // --- Add Connector Floor for Office Floors (between corridor end Z=0 and new shaft front Z=-4) ---
-            const connectorFloorGeo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth, 4); // Adjusted width
-            const connectorFloor = new THREE.Mesh(connectorFloorGeo, floorMaterial);
-            connectorFloor.name = `ConnectorFloor_F${i}`;
-            connectorFloor.position.set(overallShaftActualCenterX, floorY - floorDepth / 2, -2); // Adjusted X
-            connectorFloor.receiveShadow = true;
-            scene.add(connectorFloor);
-            worldObjects.push(connectorFloor);
-
-            const connectorFloorBGeo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth, 4); // Adjusted width
-            const connectorFloorB = new THREE.Mesh(connectorFloorBGeo, floorMaterial);
-            connectorFloorB.name = `ConnectorFloorB_F${i}`;
-            connectorFloorB.position.set(overallShaftActualCenterX, floorY - floorDepth / 2, -14); // Adjusted X
-            connectorFloorB.receiveShadow = true;
-            scene.add(connectorFloorB);
-            worldObjects.push(connectorFloorB);
-
-
-            // --- Add two ceiling lamps at each connector floor (x=0 and x=corridorWidth) ---
-            [0, SETTINGS.corridorWidth].forEach((lampX, lampIdx) => {
-                createStandardLamp(
-                    lampX,
-                    floorY + SETTINGS.wallHeight - 0.5,
-                    -2, // Z position for connector lamps
-                    i, // floorIndex
-                    `Connector_F${i}_Idx${lampIdx}`, // lampIdSuffix
-                    scene, lights, lightBulbMaterial // Pass scene, lights array, and global bulb material
-                );
-            });
-
-            // --- Add two ceiling lamps at each B wing connector floor (x=0 and x=corridorWidth) ---
-            [0, SETTINGS.corridorWidth].forEach((lampX, lampIdx) => {
-                createStandardLamp(
-                    lampX,
-                    floorY + SETTINGS.wallHeight - 0.5,
-                    -2-8-4, // Z position for connector lamps
-                    i, // floorIndex
-                    `Connector_B_F${i}_Idx${lampIdx}`, // lampIdSuffix
-                    scene, lights, lightBulbMaterial // Pass scene, lights array, and global bulb material
-                );
-            });
-
-
-            // Room Partition Walls
-            for (let k = 0; k <= SETTINGS.doorsPerSide; k++) {
-                const zPosBoundary = k * SETTINGS.corridorSegmentLength;
-                const partRGeo = new THREE.BoxGeometry(SETTINGS.roomSize+(wallDepth*0.8), SETTINGS.wallHeight, wallDepth);
-                const partR = new THREE.Mesh(partRGeo, wallMaterialA); // A-wing
-                partR.position.set(-SETTINGS.roomSize / 2, floorY + SETTINGS.wallHeight / 2, zPosBoundary);
-                partR.castShadow = true; partR.receiveShadow = true; scene.add(partR); worldObjects.push(partR);
-                partR.name = `RoomPartition_R_F${i}_Z${k}`;
-
-                // A-Wing Left partition wall
-                const partLGeo = new THREE.BoxGeometry(SETTINGS.roomSize +(wallDepth*0.8), SETTINGS.wallHeight, wallDepth);
-                const partL = new THREE.Mesh(partLGeo, wallMaterialA); // A-wing
-                partL.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize / 2, floorY + SETTINGS.wallHeight / 2, zPosBoundary);
-                partL.castShadow = true; partL.receiveShadow = true; scene.add(partL); worldObjects.push(partL);
-                partL.name = `RoomPartition_L_F${i}_Z${k}`;
-                
-                // B-Wing Right partition wall
-                const partRBGeo = new THREE.BoxGeometry(SETTINGS.roomSize+(wallDepth*0.8), SETTINGS.wallHeight, wallDepth);
-                const partRB = new THREE.Mesh(partRBGeo, wallMaterialB); // B-wing
-                partRB.position.set(-SETTINGS.roomSize / 2, floorY + SETTINGS.wallHeight / 2, zPosBoundary - 16 - totalCorridorLength);
-                partRB.castShadow = true; partRB.receiveShadow = true; scene.add(partRB); worldObjects.push(partRB);
-                partRB.name = `RoomPartition_B_R_F${i}_Z${k}`;
-
-                // B-Wing Left partition wall
-                const partLBGeo = new THREE.BoxGeometry(SETTINGS.roomSize +(wallDepth*0.8), SETTINGS.wallHeight, wallDepth);
-                const partLB = new THREE.Mesh(partLBGeo, wallMaterialB); // B-wing
-                partLB.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize / 2, floorY + SETTINGS.wallHeight / 2, zPosBoundary - 16 - totalCorridorLength);
-                partLB.castShadow = true; partLB.receiveShadow = true; scene.add(partLB); worldObjects.push(partLB);
-                partLB.name = `RoomPartition_B_L_F${i}_Z${k}`; 
-            }
-
-            // Loop for individual rooms
-            for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
-                const segmentCenterZ = (j + 0.5) * SETTINGS.corridorSegmentLength;
-                const segmentStartZ = j * SETTINGS.corridorSegmentLength;
-                const deskWidth = 1.5, deskHeight = 0.75, deskDepth = 0.8;
-                const cabinetWidth = 0.5, cabinetHeight = 1.5, cabinetDepth = 0.6;
-                const safeWidth = 0.8, safeHeight = 0.8, safeDepth = 0.8;
-                const dialRadius = 0.08, dialLength = 0.1;
-                const roomCeilingThickness = 0.2; // Thickness for individual room ceilings
-                const defaultSafeUserData = () => ({ isCracked: false, dialPresses: 0, dialPressesRequired: Math.floor(Math.random() * 9) + 2, pointsAwarded: false });
-
-                // --- Right Side Room ---
-                const roomRXCenter = -SETTINGS.roomSize / 2;
-                const isRightRoomRedDoor = (j === redDoorIndex);
-
-                
-                const deskRGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
-                const deskR = new THREE.Mesh(deskRGeo, deskMaterial);
-                deskR.rotateY(Math.PI / 2);
-                deskR.position.set(-(SETTINGS.roomSize/2), floorY + deskHeight / 2, segmentCenterZ +1.3);
-                deskR.castShadow = true; deskR.receiveShadow = true; // scene.add(deskR); worldObjects.push(deskR);
-                deskR.name = `Desk_R_F${i}_D${j}`;
-                const cabinetRGeo = new THREE.BoxGeometry(cabinetDepth, cabinetHeight, cabinetWidth);
-                const cabinetR = new THREE.Mesh(cabinetRGeo, cabinetMaterial);
-                cabinetR.position.set(-SETTINGS.roomSize + cabinetDepth / 2, floorY + cabinetHeight / 2, segmentStartZ + cabinetWidth / 2 + 0.1);
-                cabinetR.castShadow = true; cabinetR.receiveShadow = true; // scene.add(cabinetR); worldObjects.push(cabinetR);
-                cabinetR.name = `Cabinet_R_F${i}_D${j}`;
-                // Chair for Right Room
-                const chairSeatWidth = 0.5, chairSeatDepth = 0.65, chairSeatHeight = 0.5;
-                const chairBackrestHeight = 0.8, chairBackrestThickness = 0.15;
-                const backWallZ_R_Chair = segmentCenterZ + SETTINGS.corridorSegmentLength / 2;
-                const chairZ_R = 0.1+(deskR.position.z + backWallZ_R_Chair) / 2;
-                const chairX_R = -(SETTINGS.roomSize/2);
-                const chairY_R = floorY + chairSeatHeight / 2;
-                const chairSeat_R = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairSeatHeight, chairSeatDepth), deskMaterial);
-                chairSeat_R.position.set(chairX_R, chairY_R, chairZ_R); // scene.add(chairSeat_R); worldObjects.push(chairSeat_R);
-                const backrest_R = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairBackrestHeight, chairBackrestThickness), deskMaterial);
-                backrest_R.position.set(chairX_R, chairY_R + chairBackrestHeight / 2, chairZ_R + chairSeatDepth / 2 - chairBackrestThickness / 2);
-                // scene.add(backrest_R); worldObjects.push(backrest_R);
-                
-                const rightRoomContents = new THREE.Group();
-                const rightRoomId = `R_F${i}_D${j}`;
-                rightRoomContents.name = `RoomContents_${rightRoomId}`;
-                //rightRoomContents.add(rFloor); worldObjects.push(rFloor); // Add to worldObjects for collision if needed
-                //rightRoomContents.add(rCeiling); worldObjects.push(rCeiling);
-                rightRoomContents.add(deskR); worldObjects.push(deskR);
-                rightRoomContents.add(cabinetR); worldObjects.push(cabinetR);
-                rightRoomContents.add(chairSeat_R); worldObjects.push(chairSeat_R);
-                rightRoomContents.add(backrest_R); worldObjects.push(backrest_R);
-
-                if (isRightRoomRedDoor) {
-                    const safeRGeo = new THREE.BoxGeometry(safeDepth, safeHeight, safeWidth);
-                    const safeR = new THREE.Mesh(safeRGeo, safeMaterial);
-                    safeR.position.set(-SETTINGS.roomSize + safeDepth / 2, floorY + safeHeight / 2, segmentStartZ + SETTINGS.corridorSegmentLength - safeWidth / 2 - 0.1);
-                    safeR.castShadow = true; safeR.receiveShadow = true; safeR.name = `Safe_R_F${i}_D${j}`;
-                    safeR.userData = defaultSafeUserData(); // scene.add(safeR); worldObjects.push(safeR);
-                    rightRoomContents.add(safeR); worldObjects.push(safeR);
-                    const dialRGeo = new THREE.ConeGeometry(dialRadius, dialLength, 10);
-                    const dialR = new THREE.Mesh(dialRGeo, dialMaterial);
-                    dialR.position.set(safeDepth / 2, 0, 0); dialR.rotation.z = -Math.PI / 2;
-                    dialR.userData.isSafeDial = true; dialR.name = `Dial_Safe_R_F${i}_D${j}`; safeR.add(dialR);
+                    const panelD_ceil_geo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth / 2, panelD_depth);
+                    const panelD_ceil = new THREE.Mesh(panelD_ceil_geo, concreteMaterial);
+                    panelD_ceil.position.set(overallShaftActualCenterX, ceilingPanelY, (basementMinZ + overallShaftMinZ) / 2);
+                    panelD_ceil.name = `BasementCeilingPanel_D_F${i}`; basementCeilingPanels.push(panelD_ceil);
                 }
-                const roomLampR = createRoomLamp(roomRXCenter, floorY + SETTINGS.wallHeight - 0.5, segmentCenterZ, i, rightRoomId, lightBulbMaterial);
-                rightRoomContents.add(roomLampR); // Add lamp's visual group
 
-                // Call modified function for pillars and window
-                createOuterWall_SegmentFeatures(-SETTINGS.roomSize + wallDepth / 2, segmentCenterZ, SETTINGS.corridorSegmentLength, floorY, SETTINGS.wallHeight, wallDepth, wallMaterialA, opaqueGlassMaterial, glassMaterial, rightRoomId);
-
-                rightRoomContents.visible = false;
-                scene.add(rightRoomContents);
-
-
-                /* allRoomsData.push({
-                    id: rightRoomId,
-                    door: null, windowGlass: null, opaqueMaterial: null, transparentMaterial: null, contentsGroup: rightRoomContents,
-                    visibleByDoor: false, visibleByWindow: false, lamp: roomLampR }
-                );  */
-
-                // --- Right Side B Room ---
-                const segmentBCenterZ = ((j + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
-                const segmentBStartZ = (j * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
-
-                const roomBRXCenter = -SETTINGS.roomSize / 2;
-                const isRightBRoomRedDoor = (j === redDoorIndex);
-
-                
-                const deskRBGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
-                const deskRB = new THREE.Mesh(deskRBGeo, deskMaterial);
-                deskRB.rotateY(Math.PI / 2);
-                deskRB.position.set(-(SETTINGS.roomSize/2), floorY + deskHeight / 2, segmentBCenterZ +1.3);
-                deskRB.castShadow = true; deskRB.receiveShadow = true; // scene.add(deskRB); worldObjects.push(deskRB);
-                deskRB.name = `Desk_B_R_F${i}_D${j}`;
-                const cabinetRBGeo = new THREE.BoxGeometry(cabinetDepth, cabinetHeight, cabinetWidth);
-                const cabinetRB = new THREE.Mesh(cabinetRBGeo, cabinetMaterial);
-                cabinetRB.position.set(-SETTINGS.roomSize + cabinetDepth / 2, floorY + cabinetHeight / 2, segmentBStartZ + cabinetWidth / 2 + 0.1);
-                cabinetRB.castShadow = true; cabinetRB.receiveShadow = true; // scene.add(cabinetR); worldObjects.push(cabinetR);
-                cabinetRB.name = `Cabinet_R_B_F${i}_D${j}`;
-                // Chair for Right Room B
-                //const chairSeatWidth = 0.5, chairSeatDepth = 0.65, chairSeatHeight = 0.5;
-                //const chairBackrestHeight = 0.8, chairBackrestThickness = 0.15;
-                const backWallZ_B_R_Chair = segmentBCenterZ + SETTINGS.corridorSegmentLength / 2; // This is the Z of the wall behind the desk
-                const chairZ_B_R = 0.1 + (deskRB.position.z + backWallZ_B_R_Chair) / 2; // Position chair between desk and back wall
-                const chairX_B_R = -(SETTINGS.roomSize/2);
-                const chairY_B_R = floorY + chairSeatHeight / 2;
-                const chairBSeat_R = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairSeatHeight, chairSeatDepth), deskMaterial);
-                chairBSeat_R.position.set(chairX_B_R, chairY_B_R, chairZ_B_R); // scene.add(chairBSeat_R); worldObjects.push(chairBSeat_R);
-                const backrestB_R = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairBackrestHeight, chairBackrestThickness), deskMaterial);
-                backrestB_R.position.set(chairX_B_R, chairY_B_R + chairBackrestHeight / 2, chairZ_B_R + chairSeatDepth / 2 - chairBackrestThickness / 2);
-                // scene.add(backrestB_R); worldObjects.push(backrestB_R);
-                
-                //const rightRoomContents = new THREE.Group();
-                const rightRoomBId = `B_R_F${i}_D${j}`;
-                rightRoomContents.name = `RoomContents_B_${rightRoomBId}`;
-                //rightRoomContents.add(rFloorB); worldObjects.push(rFloorB); // Add to worldObjects for collision if needed
-                //rightRoomContents.add(rCeilingB); worldObjects.push(rCeilingB);
-                rightRoomContents.add(deskRB); worldObjects.push(deskRB);
-                rightRoomContents.add(cabinetRB); worldObjects.push(cabinetRB);
-                rightRoomContents.add(chairBSeat_R); worldObjects.push(chairBSeat_R);
-                rightRoomContents.add(backrestB_R); worldObjects.push(backrestB_R);
-
-                if (isRightBRoomRedDoor) {
-                    const safeRBGeo = new THREE.BoxGeometry(safeDepth, safeHeight, safeWidth);
-                    const safeBR = new THREE.Mesh(safeRBGeo, safeMaterial);
-                    safeBR.position.set(-SETTINGS.roomSize + safeDepth / 2, floorY + safeHeight / 2, segmentBStartZ + SETTINGS.corridorSegmentLength - safeWidth / 2 - 0.1);
-                    safeBR.castShadow = true; safeBR.receiveShadow = true; safeBR.name = `Safe_B_R_F${i}_D${j}`;
-                    safeBR.userData = defaultSafeUserData(); // scene.add(safeR); worldObjects.push(safeR);
-                    rightRoomContents.add(safeBR); worldObjects.push(safeBR);
-                    const dialRBGeo = new THREE.ConeGeometry(dialRadius, dialLength, 10);
-                    const dialRB = new THREE.Mesh(dialRBGeo, dialMaterial);
-                    dialRB.position.set(safeDepth / 2, 0, 0); dialRB.rotation.z = -Math.PI / 2;
-                    dialRB.userData.isSafeDial = true; dialRB.name = `Dial_Safe_B_R_F${i}_D${j}`; safeBR.add(dialRB);
-                }
-                const roomLampBR = createRoomLamp(roomRXCenter, floorY + SETTINGS.wallHeight - 0.5, segmentBCenterZ, i, rightRoomBId, lightBulbMaterial);
-                rightRoomContents.add(roomLampBR); // Add lamp's visual group
-
-                // Call modified function for pillars and window (B-Wing Right)
-                createOuterWall_SegmentFeatures(-SETTINGS.roomSize + wallDepth / 2, segmentBCenterZ, SETTINGS.corridorSegmentLength, floorY, SETTINGS.wallHeight, wallDepth, wallMaterialB, opaqueGlassMaterial, glassMaterial, rightRoomBId);
-
-                rightRoomContents.visible = false;
-                scene.add(rightRoomContents);
-
-                allRoomsData.push({
-                    id: rightRoomId,
-                    door: null, windowGlass: null, opaqueMaterial: null, transparentMaterial: null, contentsGroup: rightRoomContents,
-                    visibleByDoor: false, visibleByWindow: false, lamp: roomLampBR
+                basementFloorPanels.forEach(panel => {
+                    panel.receiveShadow = true;
+                    scene.add(panel);
+                    worldObjects.push(panel);
+                });
+                basementCeilingPanels.forEach(panel => {
+                    panel.castShadow = true;
+                    scene.add(panel);
+                    worldObjects.push(panel);
                 });
 
-                // --- Left Side Room ---
-                const roomLXCenter = SETTINGS.corridorWidth + SETTINGS.roomSize / 2;
-                const isLeftRoomRedDoor = ((SETTINGS.doorsPerSide + j) === redDoorIndex);
+                // --- Basement Perimeter Walls ---
+                // Back Wall (Far Z) - with Garage Door Opening
+                const garageDoorWidth = 6;
+                const garageDoorHeight = SETTINGS.wallHeight - 0.5; // Leave 0.5m for header
+                const garageDoorPanelThickness = 0.2;
+                const wallFarZPlane = basementMaxZ - wallDepth / 2;
 
-                
-                const deskLGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
-                const deskL = new THREE.Mesh(deskLGeo, deskMaterial);
-                deskL.rotateY(Math.PI / 2);
-                deskL.position.set(SETTINGS.corridorWidth + (SETTINGS.roomSize/2), floorY + deskHeight / 2, segmentCenterZ +1.3);
-                deskL.castShadow = true; deskL.receiveShadow = true; // scene.add(deskL); worldObjects.push(deskL);
-                deskL.name = `Desk_L_F${i}_D${j}`;
-                const cabinetLGeo = new THREE.BoxGeometry(cabinetDepth, cabinetHeight, cabinetWidth);
-                const cabinetL = new THREE.Mesh(cabinetLGeo, cabinetMaterial);
-                cabinetL.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize - cabinetDepth / 2, floorY + cabinetHeight / 2, segmentStartZ + cabinetWidth / 2 + 0.1);
-                cabinetL.castShadow = true; cabinetL.receiveShadow = true; // scene.add(cabinetL); worldObjects.push(cabinetL);
-                cabinetL.name = `Cabinet_L_F${i}_D${j}`;
-                // Chair for Left Room
-                const backWallZ_L_Chair = segmentCenterZ + SETTINGS.corridorSegmentLength / 2;
-                const chairZ_L = 0.15 + (deskL.position.z + backWallZ_L_Chair) / 2;
-                const chairX_L = SETTINGS.corridorWidth + (SETTINGS.roomSize/2);
-                const chairY_L = floorY + chairSeatHeight / 2;
-                const chairSeat_L = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairSeatHeight, chairSeatDepth), deskMaterial);
-                chairSeat_L.position.set(chairX_L, chairY_L, chairZ_L); // scene.add(chairSeat_L); worldObjects.push(chairSeat_L);
-                const backrest_L = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairBackrestHeight, chairBackrestThickness), deskMaterial);
-                backrest_L.position.set(chairX_L, chairY_L + chairBackrestHeight / 2, chairZ_L + chairSeatDepth / 2 - chairBackrestThickness / 2);
-                // scene.add(backrest_L); worldObjects.push(backrestL);
-                
-                const leftRoomContents = new THREE.Group();
-                const leftRoomId = `L_F${i}_D${j}`;
-                leftRoomContents.name = `RoomContents_${leftRoomId}`;
-                //leftRoomContents.add(lFloor); worldObjects.push(lFloor);
-                //leftRoomContents.add(lCeiling); worldObjects.push(lCeiling);
-                leftRoomContents.add(deskL); worldObjects.push(deskL);
-                leftRoomContents.add(cabinetL); worldObjects.push(cabinetL);
-                leftRoomContents.add(chairSeat_L); worldObjects.push(chairSeat_L);
-                leftRoomContents.add(backrest_L); worldObjects.push(backrest_L);
-
-                if (isLeftRoomRedDoor) {
-                    const safeLGeo = new THREE.BoxGeometry(safeDepth, safeHeight, safeWidth);
-                    const safeL = new THREE.Mesh(safeLGeo, safeMaterial);
-                    safeL.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize - safeDepth / 2, floorY + safeHeight / 2, segmentStartZ + SETTINGS.corridorSegmentLength - safeWidth / 2 - 0.1);
-                    safeL.castShadow = true; safeL.receiveShadow = true; safeL.name = `Safe_L_F${i}_D${j}`;
-                    safeL.userData = defaultSafeUserData(); // scene.add(safeL); worldObjects.push(safeL);
-                    leftRoomContents.add(safeL); worldObjects.push(safeL);
-                    const dialLGeo = new THREE.ConeGeometry(dialRadius, dialLength, 10);
-                    const dialL = new THREE.Mesh(dialLGeo, dialMaterial);
-                    dialL.position.set(-safeDepth / 2, 0, 0); dialL.rotation.z = Math.PI / 2;
-                    dialL.userData.isSafeDial = true; dialL.name = `Dial_Safe_L_F${i}_D${j}`; safeL.add(dialL);
+                // Segment Left of Garage Door
+                const farWallLeftWidth = (basementWidth - garageDoorWidth) / 2;
+                if (farWallLeftWidth > 0.01) {
+                    const farWallLeftGeo = new THREE.BoxGeometry(farWallLeftWidth, SETTINGS.wallHeight, wallDepth);
+                    const farWallLeft = new THREE.Mesh(farWallLeftGeo, basementWallMaterial);
+                    farWallLeft.position.set(basementMinX + farWallLeftWidth / 2, floorY + SETTINGS.wallHeight / 2, wallFarZPlane);
+                    farWallLeft.name = `BasementWall_Far_Right_F${i}`; // Adjusted: MinX side is player's right
+                    farWallLeft.castShadow = true; farWallLeft.receiveShadow = true;
+                    scene.add(farWallLeft); worldObjects.push(farWallLeft);
                 }
-                const roomLampL = createRoomLamp(roomLXCenter, floorY + SETTINGS.wallHeight - 0.5, segmentCenterZ, i, leftRoomId, lightBulbMaterial);
-                leftRoomContents.add(roomLampL);
 
-                // Call modified function for pillars and window (A-Wing Left)
-                createOuterWall_SegmentFeatures(SETTINGS.corridorWidth + SETTINGS.roomSize - wallDepth / 2, segmentCenterZ, SETTINGS.corridorSegmentLength, floorY, SETTINGS.wallHeight, wallDepth, wallMaterialA, opaqueGlassMaterial, glassMaterial, leftRoomId);
+                // Segment Right of Garage Door
+                const farWallRightWidth = (basementWidth - garageDoorWidth) / 2;
+                if (farWallRightWidth > 0.01) {
+                    const farWallRightGeo = new THREE.BoxGeometry(farWallRightWidth, SETTINGS.wallHeight, wallDepth);
+                    const farWallRight = new THREE.Mesh(farWallRightGeo, basementWallMaterial);
+                    farWallRight.position.set(basementMaxX - farWallRightWidth / 2, floorY + SETTINGS.wallHeight / 2, wallFarZPlane);
+                    farWallRight.name = `BasementWall_Far_Left_F${i}`; // Adjusted: MaxX side is player's left
+                    farWallRight.castShadow = true; farWallRight.receiveShadow = true;
+                    scene.add(farWallRight); worldObjects.push(farWallRight);
+                }
 
-                                leftRoomContents.visible = false;
-                                scene.add(leftRoomContents);
+                // Header Above Garage Door
+                const headerHeight = SETTINGS.wallHeight - garageDoorHeight;
+                if (headerHeight > 0.01) {
+                    const headerGeo = new THREE.BoxGeometry(garageDoorWidth, headerHeight, wallDepth);
+                    const header = new THREE.Mesh(headerGeo, basementWallMaterial);
+                    header.position.set(basementCenterX, floorY + garageDoorHeight + headerHeight / 2, wallFarZPlane);
+                    header.name = `BasementWall_Far_Header_F${i}`;
+                    header.castShadow = true; header.receiveShadow = true;
+                    scene.add(header); worldObjects.push(header);
+                }
 
-                                // --- Left Side B Room ---
-                                const roomBLXCenter = SETTINGS.corridorWidth + SETTINGS.roomSize / 2;
-                                const isLeftBRoomRedDoor = ((SETTINGS.doorsPerSide + j) === redDoorIndex);
+                // Create Garage Door (only for the lowest basement floor for now)
+                if (i === -SETTINGS.numBasementFloors) {
+                    const garageDoorGeo = new THREE.BoxGeometry(garageDoorWidth, garageDoorHeight, garageDoorPanelThickness);
+                    garageDoorGeo.translate(0, -garageDoorHeight / 2, 0); // Pivot at top edge
+                    const garageDoor = new THREE.Mesh(garageDoorGeo, garageDoorMaterial);
+                    garageDoor.name = `GarageDoor_F${i}`;
+                    garageDoor.position.set(basementCenterX, floorY + garageDoorHeight, wallFarZPlane - wallDepth / 2 + garageDoorPanelThickness / 2); // Position top edge
+                    garageDoor.castShadow = true; garageDoor.receiveShadow = true;
+                    garageDoor.userData = { type: 'garageDoor', isOpen: false, isAnimating: false, targetRotationX: 0, floor: i };
+                    scene.add(garageDoor); worldObjects.push(garageDoor); doors.push(garageDoor); // Add to doors for interaction
 
-                                
-                                const deskLBGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
-                                const deskBL = new THREE.Mesh(deskLBGeo, deskMaterial);
-                                deskBL.rotateY(Math.PI / 2);
-                                deskBL.position.set(SETTINGS.corridorWidth + (SETTINGS.roomSize/2), floorY + deskHeight / 2, segmentBCenterZ +1.3);
-                                deskBL.castShadow = true; deskBL.receiveShadow = true; // scene.add(deskL); worldObjects.push(deskL);
-                                deskBL.name = `Desk_B_L_F${i}_D${j}`;
-                                const cabinetBLGeo = new THREE.BoxGeometry(cabinetDepth, cabinetHeight, cabinetWidth);
-                                const cabinetBL = new THREE.Mesh(cabinetBLGeo, cabinetMaterial);
-                                cabinetBL.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize - cabinetDepth / 2, floorY + cabinetHeight / 2, segmentBStartZ + cabinetWidth / 2 + 0.1);
-                                cabinetBL.castShadow = true; cabinetBL.receiveShadow = true; // scene.add(cabinetL); worldObjects.push(cabinetL);
-                                cabinetBL.name = `Cabinet_B_L_F${i}_D${j}`;
-                                // Chair for Left Room
-                                const backWallZ_BL_Chair = segmentBCenterZ + SETTINGS.corridorSegmentLength / 2;
-                                const chairZ_BL = 0.15 + (deskL.position.z + backWallZ_L_Chair) / 2 - 16 -totalCorridorLength;
-                                const chairX_BL = SETTINGS.corridorWidth + (SETTINGS.roomSize/2);
-                                const chairY_BL = floorY + chairSeatHeight / 2;
-                                const chairSeat_BL = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairSeatHeight, chairSeatDepth), deskMaterial);
-                                chairSeat_BL.position.set(chairX_BL, chairY_BL, chairZ_BL); // scene.add(chairSeat_L); worldObjects.push(chairSeat_L);
-                                const backrest_BL = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairBackrestHeight, chairBackrestThickness), deskMaterial);
-                                backrest_BL.position.set(chairX_BL, chairY_BL + chairBackrestHeight / 2, chairZ_BL + chairSeatDepth / 2 - chairBackrestThickness / 2);
-                                // scene.add(backrest_L); worldObjects.push(backrest_L);
-                
-                                //const leftRoomContents = new THREE.Group();
-                                const leftRoomBId = `B_L_F${i}_D${j}`;
-                                leftRoomContents.name = `RoomContents_${leftRoomBId}`;
-                                //leftRoomContents.add(lFloorB); worldObjects.push(lFloorB);
-                                //leftRoomContents.add(lCeilingB); worldObjects.push(lCeilingB);
-                                leftRoomContents.add(deskBL); worldObjects.push(deskBL);
-                                leftRoomContents.add(cabinetBL); worldObjects.push(cabinetBL);
-                                leftRoomContents.add(chairSeat_BL); worldObjects.push(chairSeat_BL);
-                                leftRoomContents.add(backrest_BL); worldObjects.push(backrest_BL);
-                
-                                if (isLeftBRoomRedDoor) {
-                                    const safeBLGeo = new THREE.BoxGeometry(safeDepth, safeHeight, safeWidth);
-                                    const safeBL = new THREE.Mesh(safeBLGeo, safeMaterial);
-                                    safeBL.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize - safeDepth / 2, floorY + safeHeight / 2, segmentStartZ + SETTINGS.corridorSegmentLength - safeWidth / 2 - 0.1);
-                                    safeBL.castShadow = true; safeBL.receiveShadow = true; safeBL.name = `Safe_L_F${i}_D${j}`;
-                                    safeBL.userData = defaultSafeUserData(); // scene.add(safeL); worldObjects.push(safeL);
-                                    leftRoomContents.add(safeBL); worldObjects.push(safeBL);
-                                    const dialBLGeo = new THREE.ConeGeometry(dialRadius, dialLength, 10);
-                                    const dialBL = new THREE.Mesh(dialBLGeo, dialMaterial);
-                                    dialBL.position.set(-safeDepth / 2, 0, 0); dialBL.rotation.z = Math.PI / 2;
-                                    dialBL.userData.isSafeDial = true; dialBL.name = `Dial_Safe_B_L_F${i}_D${j}`; safeBL.add(dialBL);
-                                }
-                                const roomLampBL = createRoomLamp(roomBLXCenter, floorY + SETTINGS.wallHeight - 0.5, segmentBCenterZ, i, leftRoomBId, lightBulbMaterial);
-                                leftRoomContents.add(roomLampBL);
-                
-                                // Call modified function for pillars and window (B-Wing Left)
-                                createOuterWall_SegmentFeatures(SETTINGS.corridorWidth + SETTINGS.roomSize - wallDepth / 2, segmentBCenterZ, SETTINGS.corridorSegmentLength, floorY, SETTINGS.wallHeight, wallDepth, wallMaterialB, opaqueGlassMaterial, glassMaterial, leftRoomBId);
+                    // --- Add Garage Structure Behind the Door ---
+                    const garageDepthVal = 8; // How deep the garage extends
+                    const garageWallThickness = wallDepth; // Use existing wallDepth
 
-                                leftRoomContents.visible = false;
-                                scene.add(leftRoomContents);
-                                allRoomsData.push({ // Ensure new properties are initialized
-                                    id: leftRoomId, door: null, windowGlass: null, opaqueMaterial: null, transparentMaterial: null, contentsGroup: leftRoomContents,
-                                    visibleByDoor: false, visibleByWindow: false, lamp: roomLampBL
-                                });
-            }
+                    // Garage Floor
+                    const garageFloorGeo = new THREE.BoxGeometry(garageDoorWidth, floorDepth, garageDepthVal);
+                    const garageFloor = new THREE.Mesh(garageFloorGeo, concreteMaterial);
+                    garageFloor.name = `Garage_Floor_F${i}`;
+                    garageFloor.position.set(basementCenterX, floorY - floorDepth / 2, wallFarZPlane + wallDepth / 2 + garageDepthVal / 2);
+                    garageFloor.receiveShadow = true;
+                    scene.add(garageFloor); worldObjects.push(garageFloor);
 
-            // --- Create Long Sills and Headers for Outer Walls ---
-            const sillH = SETTINGS.wallHeight * WINDOW_SILL_RATIO;
-            const headerH = SETTINGS.wallHeight - (SETTINGS.wallHeight * WINDOW_HEIGHT_RATIO) - sillH;
+                    // Garage Ceiling
+                    const garageCeilingGeo = new THREE.BoxGeometry(garageDoorWidth, floorDepth / 2, garageDepthVal); // Thinner ceiling for garage
+                    const garageCeiling = new THREE.Mesh(garageCeilingGeo, concreteMaterial);
+                    garageCeiling.name = `Garage_Ceiling_F${i}`;
+                    garageCeiling.position.set(basementCenterX, floorY + SETTINGS.wallHeight + (floorDepth / 2) / 2, wallFarZPlane + wallDepth / 2 + garageDepthVal / 2);
+                    garageCeiling.castShadow = true;
+                    scene.add(garageCeiling); worldObjects.push(garageCeiling);
 
-            // A-Wing Outer Walls
-            const outerWallAX_Right = -SETTINGS.roomSize + wallDepth / 2;
-            const outerWallAX_Left = SETTINGS.corridorWidth + SETTINGS.roomSize - wallDepth / 2;
-            const centerZ_A = totalCorridorLength / 2;
+                    // Garage Side Walls
+                    const garageSideWallGeo = new THREE.BoxGeometry(garageWallThickness, SETTINGS.wallHeight, garageDepthVal);
+                    const garageSideWallLeft = new THREE.Mesh(garageSideWallGeo, basementWallMaterial);
+                    garageSideWallLeft.name = `Garage_SideWall_Left_F${i}`;
+                    garageSideWallLeft.position.set(basementCenterX - garageDoorWidth / 2 + garageWallThickness / 2, floorY + SETTINGS.wallHeight / 2, wallFarZPlane + wallDepth / 2 + garageDepthVal / 2);
+                    scene.add(garageSideWallLeft); worldObjects.push(garageSideWallLeft);
 
-            if (sillH > 0.01) {
-                const sillAGeo = new THREE.BoxGeometry(wallDepth, sillH, totalCorridorLength);
-                const sillAR = new THREE.Mesh(sillAGeo, wallMaterialA); // Right side sill
-                sillAR.position.set(outerWallAX_Right, floorY + sillH / 2, centerZ_A);
-                scene.add(sillAR); worldObjects.push(sillAR); sillAR.name = `OuterWallSill_A_R_F${i}`;
-                const sillAL = new THREE.Mesh(sillAGeo, wallMaterialA); // Left side sill
-                sillAL.position.set(outerWallAX_Left, floorY + sillH / 2, centerZ_A);
-                scene.add(sillAL); worldObjects.push(sillAL); sillAL.name = `OuterWallSill_A_L_F${i}`;
-            }
-            if (headerH > 0.01) {
-                const headerAGeo = new THREE.BoxGeometry(wallDepth, headerH, totalCorridorLength);
-                const headerAR = new THREE.Mesh(headerAGeo, wallMaterialA); // Right side header
-                headerAR.position.set(outerWallAX_Right, floorY + SETTINGS.wallHeight - headerH / 2, centerZ_A);
-                scene.add(headerAR); worldObjects.push(headerAR); headerAR.name = `OuterWallHeader_A_R_F${i}`;
-                const headerAL = new THREE.Mesh(headerAGeo, wallMaterialA); // Left side header
-                headerAL.position.set(outerWallAX_Left, floorY + SETTINGS.wallHeight - headerH / 2, centerZ_A);
-                scene.add(headerAL); worldObjects.push(headerAL); headerAL.name = `OuterWallHeader_A_L_F${i}`;
-            }
+                    const garageSideWallRight = new THREE.Mesh(garageSideWallGeo, basementWallMaterial);
+                    garageSideWallRight.name = `Garage_SideWall_Right_F${i}`;
+                    garageSideWallRight.position.set(basementCenterX + garageDoorWidth / 2 - garageWallThickness / 2, floorY + SETTINGS.wallHeight / 2, wallFarZPlane + wallDepth / 2 + garageDepthVal / 2);
+                    scene.add(garageSideWallRight); worldObjects.push(garageSideWallRight);
 
-            // B-Wing Outer Walls
-            const outerWallBX_Right = -SETTINGS.roomSize + wallDepth / 2; // Same X as A-wing
-            const outerWallBX_Left = SETTINGS.corridorWidth + SETTINGS.roomSize - wallDepth / 2; // Same X as A-wing
-            const centerZ_B = -16 - totalCorridorLength / 2;
+                    // Garage Back Wall
+                    const garageBackWallGeo = new THREE.BoxGeometry(garageDoorWidth, SETTINGS.wallHeight, garageWallThickness);
+                    const garageBackWall = new THREE.Mesh(garageBackWallGeo, basementWallMaterial);
+                    garageBackWall.name = `Garage_BackWall_F${i}`;
+                    garageBackWall.position.set(basementCenterX, floorY + SETTINGS.wallHeight / 2, wallFarZPlane + wallDepth / 2 + garageDepthVal - garageWallThickness / 2);
+                    scene.add(garageBackWall); worldObjects.push(garageBackWall);
 
-            if (sillH > 0.01) {
-                const sillBGeo = new THREE.BoxGeometry(wallDepth, sillH, totalCorridorLength);
-                const sillBR = new THREE.Mesh(sillBGeo, wallMaterialB); // Right side sill
-                sillBR.position.set(outerWallBX_Right, floorY + sillH / 2, centerZ_B);
-                scene.add(sillBR); worldObjects.push(sillBR); sillBR.name = `OuterWallSill_B_R_F${i}`;
-                const sillBL = new THREE.Mesh(sillBGeo, wallMaterialB); // Left side sill
-                sillBL.position.set(outerWallBX_Left, floorY + sillH / 2, centerZ_B);
-                scene.add(sillBL); worldObjects.push(sillBL); sillBL.name = `OuterWallSill_B_L_F${i}`;
-            }
-            if (headerH > 0.01) {
-                const headerBGeo = new THREE.BoxGeometry(wallDepth, headerH, totalCorridorLength);
-                const headerBR = new THREE.Mesh(headerBGeo, wallMaterialB); // Right side header
-                headerBR.position.set(outerWallBX_Right, floorY + SETTINGS.wallHeight - headerH / 2, centerZ_B);
-                scene.add(headerBR); worldObjects.push(headerBR); headerBR.name = `OuterWallHeader_B_R_F${i}`;
-                const headerBL = new THREE.Mesh(headerBGeo, wallMaterialB); // Left side header
-                headerBL.position.set(outerWallBX_Left, floorY + SETTINGS.wallHeight - headerH / 2, centerZ_B);
-                scene.add(headerBL); worldObjects.push(headerBL); headerBL.name = `OuterWallHeader_B_L_F${i}`;
-            }
+                    // Garage Light
+                    const garageLightYPos = floorY + SETTINGS.wallHeight - 0.5;
+                    const garageLightXPos = basementCenterX;
+                    const garageLightZPos = wallFarZPlane + wallDepth / 2 + garageDepthVal / 2;
 
-            // Corridor Ceiling Plane
-            const ceilingGeo = new THREE.PlaneGeometry(SETTINGS.corridorWidth + (2*SETTINGS.roomSize), totalCorridorLength);
-            const ceiling = new THREE.Mesh(ceilingGeo, ceilingMaterial);
-            ceiling.rotation.x = Math.PI / 2;
-            ceiling.position.set(SETTINGS.corridorWidth / 2, floorY + SETTINGS.wallHeight, totalCorridorLength / 2);
-            ceiling.castShadow = true;
-            scene.add(ceiling);
-            worldObjects.push(ceiling);
+                    const garagePointLight = new THREE.PointLight(0xffccaa, 0.7, 15); // Light color, intensity, range
+                    garagePointLight.position.set(garageLightXPos, garageLightYPos, garageLightZPos);
+                    garagePointLight.castShadow = true; // Enable shadow casting for the garage light
+                    garagePointLight.shadow.mapSize.width = 1024; // Increase shadow map resolution for better quality
+                    garagePointLight.shadow.mapSize.height = 1024;
+                    garagePointLight.shadow.camera.far = 15; // Set shadow camera far plane to match light's distance
 
-            // Corridor B Ceiling Plane
-            const ceilingBGeo = new THREE.PlaneGeometry(SETTINGS.corridorWidth + (2*SETTINGS.roomSize), totalCorridorLength);
-            const ceilingB = new THREE.Mesh(ceilingBGeo, ceilingMaterial);
-            ceilingB.rotation.x = Math.PI / 2;
-            ceilingB.position.set(SETTINGS.corridorWidth / 2, floorY + SETTINGS.wallHeight, (totalCorridorLength / 2) - 16 - totalCorridorLength);
-            ceilingB.castShadow = true;
-            scene.add(ceilingB);
-            worldObjects.push(ceilingB);
+                    scene.add(garagePointLight);
+
+                    // Add a simple fixture mesh for the garage light
+                    const garageFixtureGeo = new THREE.BoxGeometry(1.0, 0.15, 0.2); // A bit smaller or different style
+                    const garageFixtureMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 1, emissiveIntensity: 100 }); // Slightly different color for variety
+                    const garageFixture = new THREE.Mesh(garageFixtureGeo, garageFixtureMat);
+                    garageFixture.position.set(garageLightXPos, garageLightYPos + 0.075, garageLightZPos); // Centered with the light Y
+                    scene.add(garageFixture);
+
+                    // Add the car model to the garage floor
+                    // The garage floor's top surface is at y = floorY.
+                    addGarageCar(scene, new THREE.Vector3(basementCenterX, floorY, wallFarZPlane + wallDepth / 2 + garageDepthVal / 2));
+
+                }
+
+                // Front Wall (Near Z - around elevator shaft)
+                // Part 1: Left of elevator shaft (X from basementMinX to 0)
+                const frontWallLeftWidth = 0 - basementMinX; // Width of this segment
+
+                // Part 2: Right of elevator shaft (X from SETTINGS.corridorWidth to basementMaxX)
+                const frontWallRightWidth = basementMaxX - SETTINGS.corridorWidth; // Width of this segment
+
+                // Note: The actual back wall of the elevator shaft itself is handled by `endWallNear` later.
+
+                // Side Wall Left (Min X)
+                const wallSideLeftGeo = new THREE.BoxGeometry(wallDepth, SETTINGS.wallHeight, basementDepth);
+                const wallSideLeft = new THREE.Mesh(wallSideLeftGeo, basementWallMaterial);
+                wallSideLeft.position.set(basementMinX + wallDepth / 2, floorY + SETTINGS.wallHeight / 2, basementCenterZ);
+                wallSideLeft.name = `BasementWall_SideRight_F${i}`; // Adjusted: MinX side is player's right
+                wallSideLeft.castShadow = true; wallSideLeft.receiveShadow = true;
+                scene.add(wallSideLeft); worldObjects.push(wallSideLeft);
+
+                // Side Wall Right (Max X)
+                const wallSideRightGeo = new THREE.BoxGeometry(wallDepth, SETTINGS.wallHeight, basementDepth);
+                const wallSideRight = new THREE.Mesh(wallSideRightGeo, basementWallMaterial);
+                wallSideRight.position.set(basementMaxX - wallDepth / 2, floorY + SETTINGS.wallHeight / 2, basementCenterZ);
+                wallSideRight.name = `BasementWall_SideLeft_F${i}`; // Adjusted: MaxX side is player's left
+                wallSideRight.castShadow = true; wallSideRight.receiveShadow = true;
+                scene.add(wallSideRight); worldObjects.push(wallSideRight);
+
+                // Concrete Pillars
+                const pillarSize = 0.5;
+                const pillarGeo = new THREE.BoxGeometry(pillarSize, SETTINGS.wallHeight, pillarSize);
+                const pillarYPos = floorY + SETTINGS.wallHeight / 2;
+                const pillarSpacingX = 7;
+                const pillarSpacingZ = 7;
+                // Use overall shaft dimensions for pillar exclusion zone
+                const elevatorShaftZone = { minX: overallShaftMinX - 0.1, maxX: overallShaftMaxX + 0.1, minZ: overallShaftMinZ - 0.1, maxZ: overallShaftMaxZ + 0.1 };
 
 
-            // --- Corridor Walls & Doors ---
-            const wallAboveDoorHeight = SETTINGS.wallHeight - SETTINGS.doorHeight;
+                for (let px = basementMinX + pillarSpacingX / 2; px < basementMaxX; px += pillarSpacingX) {
+                    for (let pz = basementMinZ + pillarSpacingZ / 2; pz < basementMaxZ; pz += pillarSpacingZ) {
+                        if (px > elevatorShaftZone.minX && px < elevatorShaftZone.maxX &&
+                            pz > elevatorShaftZone.minZ && pz < elevatorShaftZone.maxZ) {
+                            continue;
+                        }
 
-            // Create long header walls for A-Wing
-            if (wallAboveDoorHeight > 0.01) { // Only create if there's actual height
-                const headerAGeo = new THREE.BoxGeometry(wallDepth, wallAboveDoorHeight, totalCorridorLength);
-                // Right side header (A-Wing)
-                const headerAR = new THREE.Mesh(headerAGeo, wallMaterialA);
-                headerAR.position.set(0, floorY + SETTINGS.doorHeight + wallAboveDoorHeight / 2, totalCorridorLength / 2);
-                headerAR.castShadow = true; headerAR.receiveShadow = true; scene.add(headerAR); worldObjects.push(headerAR);
-                // Left side header (A-Wing)
-                const headerAL = new THREE.Mesh(headerAGeo, wallMaterialA);
-                headerAL.position.set(SETTINGS.corridorWidth, floorY + SETTINGS.doorHeight + wallAboveDoorHeight / 2, totalCorridorLength / 2);
-                headerAL.castShadow = true; headerAL.receiveShadow = true; scene.add(headerAL); worldObjects.push(headerAL);
-            }
 
-            // Create long header walls for B-Wing
-            if (wallAboveDoorHeight > 0.01) { // Only create if there's actual height
-                const headerBGeo = new THREE.BoxGeometry(wallDepth, wallAboveDoorHeight, totalCorridorLength);
-                // Right side header (B-Wing)
-                const headerBR = new THREE.Mesh(headerBGeo, wallMaterialB);
-                headerBR.position.set(0, floorY + SETTINGS.doorHeight + wallAboveDoorHeight / 2, -16 - totalCorridorLength / 2);
-                headerBR.castShadow = true; headerBR.receiveShadow = true; scene.add(headerBR); worldObjects.push(headerBR);
-                // Left side header (B-Wing)
-                const headerBL = new THREE.Mesh(headerBGeo, wallMaterialB);
-                headerBL.position.set(SETTINGS.corridorWidth, floorY + SETTINGS.doorHeight + wallAboveDoorHeight / 2, -16 - totalCorridorLength / 2);
-                headerBL.castShadow = true; headerBL.receiveShadow = true; scene.add(headerBL); worldObjects.push(headerBL);
-            }
+                        const pillar = new THREE.Mesh(pillarGeo, pillarMaterial);
+                        pillar.position.set(px, pillarYPos, pz);
+                        pillar.name = `BasementPillar_F${i}_X${Math.round(px)}_Z${Math.round(pz)}`;
+                        pillar.castShadow = true; pillar.receiveShadow = true;
+                        scene.add(pillar);
+                        worldObjects.push(pillar);
+                    }
+                }
 
-            // Right Wall Segments (Positive X direction)
-            for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
-                const segmentZ = (j + 0.5) * SETTINGS.corridorSegmentLength;
-                // Wall segment next to door (door height)
-                const wall1Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
-                const wall1 = new THREE.Mesh(wall1Geo, wallMaterialA); // A-wing
-                wall1.position.set(0, floorY + SETTINGS.doorHeight / 2, segmentZ - SETTINGS.corridorSegmentLength / 2 + doorOffset / 2);
-                wall1.castShadow = true; wall1.receiveShadow = true; scene.add(wall1); worldObjects.push(wall1);
+                // Place enemies on basement floors
+                const numBasementEnemies = 3; // Number of enemies per basement floor
+                for (let e = 0; e < numBasementEnemies; e++) {
+                    let enemyX, enemyZ;
+                    let attempts = 0;
+                    const maxAttempts = 10; // Prevent infinite loops if space is too constrained
 
-                const isRed = currentDoorIndex === redDoorIndex;
-                const doorMaterialToUse = isRed ? redDoorMaterial : blackDoorMaterial;
-                const doorGeo = new THREE.BoxGeometry(SETTINGS.doorDepth, SETTINGS.doorHeight, SETTINGS.doorWidth);
-                doorGeo.translate(0, 0, SETTINGS.doorWidth/2);
-                const door = new THREE.Mesh(doorGeo, doorMaterialToUse);
-                const doorXPosR = 0; // Right side doors are at X=0
-                door.position.set(doorXPosR, floorY + SETTINGS.doorHeight/2, segmentZ - SETTINGS.doorWidth/2);
-                door.castShadow = true; door.userData = { type: 'door', floor: i, isRed: isRed, locked: (Math.random() < 0.3), isOpen: false };
-                const doorRoomIdR = `R_F${i}_D${j}`; // Associate with the correct room ID
-                door.userData.roomId = doorRoomIdR;
-                const roomDataR = allRoomsData.find(r => r.id === doorRoomIdR);
-                if (roomDataR) roomDataR.door = door;
-                door.name = `${i + 1}${String(currentDoorIndex + 1).padStart(2, '0')}`;
-                scene.add(door); doors.push(door); worldObjects.push(door);
+                    do {
+                        enemyX = basementMinX + Math.random() * (basementMaxX - basementMinX);
+                        enemyZ = basementMinZ + Math.random() * (basementMaxZ - basementMinZ);
+                        attempts++;
+                        // Check if the random position is inside the elevator shaft zone
+                        // Add a small buffer to avoid placing enemies too close to the shaft walls
+                        const buffer = 1.0; // Buffer around the elevator shaft
+                        const isInShaft = (enemyX > elevatorShaftZone.minX - buffer && enemyX < elevatorShaftZone.maxX + buffer &&
+                            enemyZ > elevatorShaftZone.minZ - buffer && enemyZ < elevatorShaftZone.maxZ + buffer);
 
-                const knobGeometry = new THREE.SphereGeometry(0.06, 8, 6);
-                const knobMaterial = new THREE.MeshStandardMaterial({ color: 0xffaa11, metalness: 0.8, roughness: 0.1 });
-                const knob = new THREE.Mesh(knobGeometry, knobMaterial);
-                knob.position.set(SETTINGS.doorDepth/2 + 0.05, 0, SETTINGS.doorWidth - 0.15);
-                knob.userData.doorKnob = true; door.add(knob); door.userData.knob = knob;
-                const knob2 = new THREE.Mesh(knobGeometry, knobMaterial);
-                knob2.position.set(-SETTINGS.doorDepth/2 - 0.05, 0, SETTINGS.doorWidth - 0.15);
-                knob2.userData.doorKnob = true; door.add(knob2); door.userData.knob2 = knob2;
+                        if (!isInShaft) {
+                            createEnemy(enemyX, floorY, enemyZ, i);
+                            break; // Found a valid spot, move to next enemy
+                        }
+                    } while (attempts < maxAttempts);
 
-                const wall2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
-                const wall2 = new THREE.Mesh(wall2Geo, wallMaterialA); // A-wing
-                wall2.position.set(0, floorY + SETTINGS.doorHeight / 2, segmentZ + SETTINGS.doorWidth / 2 + doorOffset / 2);
-                wall2.castShadow = true; wall2.receiveShadow = true; scene.add(wall2); worldObjects.push(wall2);
-                currentDoorIndex++;
-            }
-            // Right Wall B Segments (Negative Z Direction) (Positive X direction)
-            for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
-                const segmentBZ = ((j + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
-                const wall1Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
-                const wall1 = new THREE.Mesh(wall1Geo, wallMaterialB); // B-wing
-                wall1.position.set(0, floorY + SETTINGS.doorHeight / 2, segmentBZ - SETTINGS.corridorSegmentLength / 2 + doorOffset / 2);
-                wall1.castShadow = true; wall1.receiveShadow = true; scene.add(wall1); worldObjects.push(wall1);
-                const isRed = currentDoorIndex === redDoorIndex;
-                const doorMaterialToUse = isRed ? redDoorMaterial : navyDoorMaterial; // Use navy for B-Wing
-                const doorGeo = new THREE.BoxGeometry(SETTINGS.doorDepth, SETTINGS.doorHeight, SETTINGS.doorWidth);
-                doorGeo.translate(0, 0, SETTINGS.doorWidth/2);
-                const door = new THREE.Mesh(doorGeo, doorMaterialToUse);
-                const doorXPosR = 0; // Right side doors are at X=0
-                door.position.set(doorXPosR, floorY + SETTINGS.doorHeight/2, segmentBZ - SETTINGS.doorWidth/2);
-                door.castShadow = true; door.userData = { type: 'door', floor: i, isRed: isRed, locked: (Math.random() < 0.3), isOpen: false };
-                const doorRoomIdR = `R_F${i}_D${j}`; // Associate with the correct room ID
-                door.userData.roomId = doorRoomIdR;
-                const roomDataR = allRoomsData.find(r => r.id === doorRoomIdR);
-                if (roomDataR) roomDataR.door = door;
-                door.name = `${i + 1}${String(currentDoorIndex + 1).padStart(2, '0')}`;
-                scene.add(door); doors.push(door); worldObjects.push(door);
+                    if (attempts >= maxAttempts) {
+                        console.warn(`Could not find a suitable spot for basement enemy ${e} on floor ${i} after ${maxAttempts} attempts.`);
+                    }
+                }
 
-                const knobGeometry = new THREE.SphereGeometry(0.06, 8, 6); // B-Wing knob material
-                const knobMaterial = whiteMaterial.clone(); // Use white for B-Wing knobs
-                const knob = new THREE.Mesh(knobGeometry, knobMaterial);
-                knob.position.set(SETTINGS.doorDepth/2 + 0.05, 0, SETTINGS.doorWidth - 0.15);
-                knob.userData.doorKnob = true; door.add(knob); door.userData.knob = knob;
-                const knob2 = new THREE.Mesh(knobGeometry, knobMaterial);
-                knob2.position.set(-SETTINGS.doorDepth/2 - 0.05, 0, SETTINGS.doorWidth - 0.15);
-                knob2.userData.doorKnob = true; door.add(knob2); door.userData.knob2 = knob2;
+                // Basement Lighting (simple point lights for now)
+                const lightSpacing = 6; // Reduced spacing for better coverage
+                const lightYPos = floorY + SETTINGS.wallHeight - 0.5; // Under the ceiling
 
-                const wall2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
-                const wall2 = new THREE.Mesh(wall2Geo, wallMaterialB); // B-wing
-                wall2.position.set(0, floorY + SETTINGS.doorHeight / 2, segmentBZ + SETTINGS.doorWidth / 2 + doorOffset / 2);
-                wall2.castShadow = true; wall2.receiveShadow = true; scene.add(wall2); worldObjects.push(wall2);
-                currentDoorIndex++;
-            }
-            // Left Wall Segments
-            const LeftWallX = SETTINGS.corridorWidth;
-            for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
-                const segmentZ = (j + 0.5) * SETTINGS.corridorSegmentLength;
-                const wall1Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
-                const wall1 = new THREE.Mesh(wall1Geo, wallMaterialA); // A-wing
-                wall1.position.set(LeftWallX, floorY + SETTINGS.doorHeight / 2, segmentZ - SETTINGS.corridorSegmentLength / 2 + doorOffset / 2);
-                wall1.castShadow = true; wall1.receiveShadow = true; scene.add(wall1); worldObjects.push(wall1);
-                const isRed = currentDoorIndex === redDoorIndex;
-                const doorMaterialToUse = isRed ? redDoorMaterial : blackDoorMaterial;
-                const doorGeo = new THREE.BoxGeometry(SETTINGS.doorDepth, SETTINGS.doorHeight, SETTINGS.doorWidth);
-                doorGeo.translate(0, 0, SETTINGS.doorWidth/2);
-                const door = new THREE.Mesh(doorGeo, doorMaterialToUse);
-                const doorXPosL = LeftWallX; // Left side doors
-                door.position.set(doorXPosL, floorY + SETTINGS.doorHeight/2, segmentZ - SETTINGS.doorWidth/2);
-                door.castShadow = true; door.userData = { type: 'door', floor: i, isRed: isRed, locked: (Math.random() < 0.3), isOpen: false };
-                const doorRoomIdL = `L_F${i}_D${j}`; // Associate with the correct room ID
-                door.userData.roomId = doorRoomIdL;
-                const roomDataL = allRoomsData.find(r => r.id === doorRoomIdL);
-                if (roomDataL) roomDataL.door = door;
-                door.name = `${i + 1}${String(currentDoorIndex + 1).padStart(2, '0')}`;
-                scene.add(door); doors.push(door); worldObjects.push(door);
+                // Determine X positions for lights, ensuring they are centered around basementCenterX
+                // basementWidth and basementCenterX are defined earlier in generateWorld
+                const numLightsX = Math.max(1, Math.floor(basementWidth / lightSpacing));
+                const totalLightSpanX = (numLightsX - 1) * lightSpacing;
+                const startLx = basementCenterX - totalLightSpanX / 2;
 
-                const knobGeometry = new THREE.SphereGeometry(0.06, 8, 6);
-                const knobMaterial = new THREE.MeshStandardMaterial({ color: 0xffaa11, metalness: 0.8, roughness: 0.1});
-                const knob = new THREE.Mesh(knobGeometry, knobMaterial);
-                knob.position.set(SETTINGS.doorDepth/2 + 0.05, 0, SETTINGS.doorWidth - 0.15);
-                knob.userData.doorKnob = true; door.add(knob); door.userData.knob = knob;
-                const knob2 = new THREE.Mesh(knobGeometry, knobMaterial);
-                knob2.position.set(-SETTINGS.doorDepth/2 - 0.05, 0, SETTINGS.doorWidth - 0.15);
-                knob2.userData.doorKnob = true; door.add(knob2); door.userData.knob2 = knob2; // Corrected typo
+                for (let lz = basementMinZ + lightSpacing / 2; lz < basementMaxZ; lz += lightSpacing) {
+                    for (let k = 0; k < numLightsX; k++) {
+                        const lx = startLx + k * lightSpacing;
 
-                const wall2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
-                const wall2 = new THREE.Mesh(wall2Geo, wallMaterialA); // A-wing
-                wall2.position.set(LeftWallX, floorY + SETTINGS.doorHeight / 2, segmentZ + SETTINGS.doorWidth / 2 + doorOffset / 2);
-                wall2.castShadow = true; wall2.receiveShadow = true; scene.add(wall2); worldObjects.push(wall2);
-                currentDoorIndex++;
-            }
-            // Left Wall B Segments (Negative Z Direction) (Positive X direction)
-            const LeftWallBX = SETTINGS.corridorWidth;
-            for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
-                const segmentBZ = ((j + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
-                const wall1Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
-                const wall1 = new THREE.Mesh(wall1Geo, wallMaterialB); // B-wing
-                wall1.position.set(LeftWallX, floorY + SETTINGS.doorHeight / 2, segmentBZ - SETTINGS.corridorSegmentLength / 2 + doorOffset / 2);
-                wall1.castShadow = true; wall1.receiveShadow = true; scene.add(wall1); worldObjects.push(wall1);
-                const isRed = currentDoorIndex === redDoorIndex;
-                const doorMaterialToUse = isRed ? redDoorMaterial : navyDoorMaterial; // Use navy for B-Wing
-                const doorGeo = new THREE.BoxGeometry(SETTINGS.doorDepth, SETTINGS.doorHeight, SETTINGS.doorWidth);
-                doorGeo.translate(0, 0, SETTINGS.doorWidth/2);
-                const door = new THREE.Mesh(doorGeo, doorMaterialToUse);
-                const doorXPosL = LeftWallX; // Left side doors
-                door.position.set(doorXPosL, floorY + SETTINGS.doorHeight/2, segmentBZ - SETTINGS.doorWidth/2);
-                door.castShadow = true; door.userData = { type: 'door', floor: i, isRed: isRed, locked: (Math.random() < 0.3), isOpen: false };
-                const doorRoomIdL = `L_F${i}_D${j}`; // Associate with the correct room ID
-                door.userData.roomId = doorRoomIdL;
-                const roomDataL = allRoomsData.find(r => r.id === doorRoomIdL);
-                if (roomDataL) roomDataL.door = door;
-                door.name = `${i + 1}${String(currentDoorIndex + 1).padStart(2, '0')}`;
-                scene.add(door); doors.push(door); worldObjects.push(door);
+                        const parkingLight = new THREE.PointLight(0xddddff, 0.5, 18); // Dim, cool white
+                        parkingLight.position.set(lx, lightYPos, lz);
+                        // parkingLight.castShadow = true; // Optional: for performance, might turn off
+                        scene.add(parkingLight);
 
-                const knobGeometry = new THREE.SphereGeometry(0.06, 8, 6); // B-Wing knob material
-                const knobMaterial = whiteMaterial.clone(); // Use white for B-Wing knobs
-                const knob = new THREE.Mesh(knobGeometry, knobMaterial);
-                knob.position.set(SETTINGS.doorDepth/2 + 0.05, 0, SETTINGS.doorWidth - 0.15);
-                knob.userData.doorKnob = true; door.add(knob); door.userData.knob = knob;
-                const knob2 = new THREE.Mesh(knobGeometry, knobMaterial);
-                knob2.position.set(-SETTINGS.doorDepth/2 - 0.05, 0, SETTINGS.doorWidth - 0.15);
-                knob2.userData.doorKnob = true; door.add(knob2); door.userData.knob2 = knob2; // Corrected typo
+                        // Add a simple fixture mesh
+                        const fixtureGeo = new THREE.BoxGeometry(1.2, 0.15, 0.25); // Fluorescent light like
+                        const fixtureMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 1, emissiveIntensity: 100 }); // Slightly glowing
+                        const fixture = new THREE.Mesh(fixtureGeo, fixtureMat);
+                        fixture.position.set(lx, lightYPos + 0.1, lz); // Slightly below ceiling
+                        scene.add(fixture);
+                    }
+                }
+            } else { // --- Office Floor Generation (i >= 0) ---
 
-                const wall2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
-                const wall2 = new THREE.Mesh(wall2Geo, wallMaterialB); // B-wing
-                wall2.position.set(LeftWallX, floorY + SETTINGS.doorHeight / 2, segmentBZ + SETTINGS.doorWidth / 2 + doorOffset / 2);
-                wall2.castShadow = true; wall2.receiveShadow = true; scene.add(wall2); worldObjects.push(wall2);
-                currentDoorIndex++;
-            }
+                // Floor Plane (Corridor only for office floors)
+                const floorGeo = new THREE.PlaneGeometry(SETTINGS.corridorWidth + (2 * SETTINGS.roomSize), totalCorridorLength);
+                const floor = new THREE.Mesh(floorGeo, floorMaterial);
+                floor.name = `Floor ${i}`;
+                floor.rotation.x = -Math.PI / 2;
+                floor.position.set(SETTINGS.corridorWidth / 2, floorY, totalCorridorLength / 2);
+                floor.receiveShadow = true;
+                scene.add(floor);
+                worldObjects.push(floor);
 
-            // Corridor Ceiling Lights
-            for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
-                const segmentZ = (j + 0.5) * SETTINGS.corridorSegmentLength;
-                createStandardLamp(
-                    SETTINGS.corridorWidth / 2,
-                    floorY + SETTINGS.wallHeight - 0.5,
-                    segmentZ,
-                    i, // floorIndex
-                    `${i + 1}${String(j + 1).padStart(2, '0')}`, // lampIdSuffix, e.g., "101", "102"
-                    scene, lights, lightBulbMaterial
+                // Floor Plane -Z (Corridor only for office floors)
+                //const floorGeo = new THREE.PlaneGeometry(SETTINGS.corridorWidth, totalCorridorLength);
+                const floorB = new THREE.Mesh(floorGeo, floorMaterial);
+                floorB.name = `Floor B ${i}`;
+                floorB.rotation.x = -Math.PI / 2;
+                floorB.position.set(SETTINGS.corridorWidth / 2, floorY, -16 - totalCorridorLength / 2);
+                floorB.receiveShadow = true;
+                scene.add(floorB);
+                worldObjects.push(floorB);
+
+                // --- Add Connector Floor for Office Floors (between corridor end Z=0 and new shaft front Z=-4) ---
+                const connectorFloorGeo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth, 4); // Adjusted width
+                const connectorFloor = new THREE.Mesh(connectorFloorGeo, floorMaterial);
+                connectorFloor.name = `ConnectorFloor_F${i}`;
+                connectorFloor.position.set(overallShaftActualCenterX, floorY - floorDepth / 2, -2); // Adjusted X
+                connectorFloor.receiveShadow = true;
+                scene.add(connectorFloor);
+                worldObjects.push(connectorFloor);
+
+                const connectorFloorBGeo = new THREE.BoxGeometry(overallShaftActualWidth, floorDepth, 4); // Adjusted width
+                const connectorFloorB = new THREE.Mesh(connectorFloorBGeo, floorMaterial);
+                connectorFloorB.name = `ConnectorFloorB_F${i}`;
+                connectorFloorB.position.set(overallShaftActualCenterX, floorY - floorDepth / 2, -14); // Adjusted X
+                connectorFloorB.receiveShadow = true;
+                scene.add(connectorFloorB);
+                worldObjects.push(connectorFloorB);
+
+
+                // --- Add two ceiling lamps at each connector floor (x=0 and x=corridorWidth) ---
+                [0, SETTINGS.corridorWidth].forEach((lampX, lampIdx) => {
+                    createStandardLamp(
+                        lampX,
+                        floorY + SETTINGS.wallHeight - 0.5,
+                        -2, // Z position for connector lamps
+                        i, // floorIndex
+                        `Connector_F${i}_Idx${lampIdx}`, // lampIdSuffix
+                        scene, lights, lightBulbMaterial // Pass scene, lights array, and global bulb material
+                    );
+                });
+
+                // --- Add two ceiling lamps at each B wing connector floor (x=0 and x=corridorWidth) ---
+                [0, SETTINGS.corridorWidth].forEach((lampX, lampIdx) => {
+                    createStandardLamp(
+                        lampX,
+                        floorY + SETTINGS.wallHeight - 0.5,
+                        -2 - 8 - 4, // Z position for connector lamps
+                        i, // floorIndex
+                        `Connector_B_F${i}_Idx${lampIdx}`, // lampIdSuffix
+                        scene, lights, lightBulbMaterial // Pass scene, lights array, and global bulb material
+                    );
+                });
+
+
+                // Room Partition Walls
+                for (let k = 0; k <= SETTINGS.doorsPerSide; k++) {
+                    const zPosBoundary = k * SETTINGS.corridorSegmentLength;
+                    const partRGeo = new THREE.BoxGeometry(SETTINGS.roomSize + (wallDepth * 0.8), SETTINGS.wallHeight, wallDepth);
+                    const partR = new THREE.Mesh(partRGeo, wallMaterialA); // A-wing
+                    partR.position.set(-SETTINGS.roomSize / 2, floorY + SETTINGS.wallHeight / 2, zPosBoundary);
+                    partR.castShadow = true; partR.receiveShadow = true; scene.add(partR); worldObjects.push(partR);
+                    partR.name = `RoomPartition_R_F${i}_Z${k}`;
+
+                    // A-Wing Left partition wall
+                    const partLGeo = new THREE.BoxGeometry(SETTINGS.roomSize + (wallDepth * 0.8), SETTINGS.wallHeight, wallDepth);
+                    const partL = new THREE.Mesh(partLGeo, wallMaterialA); // A-wing
+                    partL.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize / 2, floorY + SETTINGS.wallHeight / 2, zPosBoundary);
+                    partL.castShadow = true; partL.receiveShadow = true; scene.add(partL); worldObjects.push(partL);
+                    partL.name = `RoomPartition_L_F${i}_Z${k}`;
+
+                    // B-Wing Right partition wall
+                    const partRBGeo = new THREE.BoxGeometry(SETTINGS.roomSize + (wallDepth * 0.8), SETTINGS.wallHeight, wallDepth);
+                    const partRB = new THREE.Mesh(partRBGeo, wallMaterialB); // B-wing
+                    partRB.position.set(-SETTINGS.roomSize / 2, floorY + SETTINGS.wallHeight / 2, zPosBoundary - 16 - totalCorridorLength);
+                    partRB.castShadow = true; partRB.receiveShadow = true; scene.add(partRB); worldObjects.push(partRB);
+                    partRB.name = `RoomPartition_B_R_F${i}_Z${k}`;
+
+                    // B-Wing Left partition wall
+                    const partLBGeo = new THREE.BoxGeometry(SETTINGS.roomSize + (wallDepth * 0.8), SETTINGS.wallHeight, wallDepth);
+                    const partLB = new THREE.Mesh(partLBGeo, wallMaterialB); // B-wing
+                    partLB.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize / 2, floorY + SETTINGS.wallHeight / 2, zPosBoundary - 16 - totalCorridorLength);
+                    partLB.castShadow = true; partLB.receiveShadow = true; scene.add(partLB); worldObjects.push(partLB);
+                    partLB.name = `RoomPartition_B_L_F${i}_Z${k}`;
+                }
+
+                // Loop for individual rooms
+                for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
+                    const segmentCenterZ = (j + 0.5) * SETTINGS.corridorSegmentLength;
+                    const segmentStartZ = j * SETTINGS.corridorSegmentLength;
+                    const deskWidth = 1.5, deskHeight = 0.75, deskDepth = 0.8;
+                    const cabinetWidth = 0.5, cabinetHeight = 1.5, cabinetDepth = 0.6;
+                    const safeWidth = 0.8, safeHeight = 0.8, safeDepth = 0.8;
+                    const dialRadius = 0.08, dialLength = 0.1;
+                    const roomCeilingThickness = 0.2; // Thickness for individual room ceilings
+                    const defaultSafeUserData = () => ({ isCracked: false, dialPresses: 0, dialPressesRequired: Math.floor(Math.random() * 9) + 2, pointsAwarded: false });
+
+                    // --- Right Side Room ---
+                    const roomRXCenter = -SETTINGS.roomSize / 2;
+                    const isRightRoomRedDoor = (j === redDoorIndex);
+
+
+                    const deskRGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
+                    const deskR = new THREE.Mesh(deskRGeo, deskMaterial);
+                    deskR.rotateY(Math.PI / 2);
+                    deskR.position.set(-(SETTINGS.roomSize / 2), floorY + deskHeight / 2, segmentCenterZ + 1.3);
+                    deskR.castShadow = true; deskR.receiveShadow = true; // scene.add(deskR); worldObjects.push(deskR);
+                    deskR.name = `Desk_R_F${i}_D${j}`;
+                    const cabinetRGeo = new THREE.BoxGeometry(cabinetDepth, cabinetHeight, cabinetWidth);
+                    const cabinetR = new THREE.Mesh(cabinetRGeo, cabinetMaterial);
+                    cabinetR.position.set(-SETTINGS.roomSize + cabinetDepth / 2, floorY + cabinetHeight / 2, segmentStartZ + cabinetWidth / 2 + 0.1);
+                    cabinetR.castShadow = true; cabinetR.receiveShadow = true; // scene.add(cabinetR); worldObjects.push(cabinetR);
+                    cabinetR.name = `Cabinet_R_F${i}_D${j}`;
+                    // Chair for Right Room
+                    const chairSeatWidth = 0.5, chairSeatDepth = 0.65, chairSeatHeight = 0.5;
+                    const chairBackrestHeight = 0.8, chairBackrestThickness = 0.15;
+                    const backWallZ_R_Chair = segmentCenterZ + SETTINGS.corridorSegmentLength / 2;
+                    const chairZ_R = 0.1 + (deskR.position.z + backWallZ_R_Chair) / 2;
+                    const chairX_R = -(SETTINGS.roomSize / 2);
+                    const chairY_R = floorY + chairSeatHeight / 2;
+                    const chairSeat_R = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairSeatHeight, chairSeatDepth), deskMaterial);
+                    chairSeat_R.position.set(chairX_R, chairY_R, chairZ_R); // scene.add(chairSeat_R); worldObjects.push(chairSeat_R);
+                    const backrest_R = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairBackrestHeight, chairBackrestThickness), deskMaterial);
+                    backrest_R.position.set(chairX_R, chairY_R + chairBackrestHeight / 2, chairZ_R + chairSeatDepth / 2 - chairBackrestThickness / 2);
+                    // scene.add(backrest_R); worldObjects.push(backrest_R);
+
+                    const rightRoomContents = new THREE.Group();
+                    const rightRoomId = `R_F${i}_D${j}`;
+                    rightRoomContents.name = `RoomContents_${rightRoomId}`;
+                    //rightRoomContents.add(rFloor); worldObjects.push(rFloor); // Add to worldObjects for collision if needed
+                    //rightRoomContents.add(rCeiling); worldObjects.push(rCeiling);
+                    rightRoomContents.add(deskR); worldObjects.push(deskR);
+                    rightRoomContents.add(cabinetR); worldObjects.push(cabinetR);
+                    rightRoomContents.add(chairSeat_R); worldObjects.push(chairSeat_R);
+                    rightRoomContents.add(backrest_R); worldObjects.push(backrest_R);
+
+                    if (isRightRoomRedDoor) {
+                        const safeRGeo = new THREE.BoxGeometry(safeDepth, safeHeight, safeWidth);
+                        const safeR = new THREE.Mesh(safeRGeo, safeMaterial);
+                        safeR.position.set(-SETTINGS.roomSize + safeDepth / 2, floorY + safeHeight / 2, segmentStartZ + SETTINGS.corridorSegmentLength - safeWidth / 2 - 0.1);
+                        safeR.castShadow = true; safeR.receiveShadow = true; safeR.name = `Safe_R_F${i}_D${j}`;
+                        safeR.userData = defaultSafeUserData(); // scene.add(safeR); worldObjects.push(safeR);
+                        rightRoomContents.add(safeR); worldObjects.push(safeR);
+                        const dialRGeo = new THREE.ConeGeometry(dialRadius, dialLength, 10);
+                        const dialR = new THREE.Mesh(dialRGeo, dialMaterial);
+                        dialR.position.set(safeDepth / 2, 0, 0); dialR.rotation.z = -Math.PI / 2;
+                        dialR.userData.isSafeDial = true; dialR.name = `Dial_Safe_R_F${i}_D${j}`; safeR.add(dialR);
+                    }
+                    const roomLampR = createRoomLamp(roomRXCenter, floorY + SETTINGS.wallHeight - 0.5, segmentCenterZ, i, rightRoomId, lightBulbMaterial);
+                    rightRoomContents.add(roomLampR); // Add lamp's visual group
+
+                    // Call modified function for pillars and window
+                    createOuterWall_SegmentFeatures(-SETTINGS.roomSize + wallDepth / 2, segmentCenterZ, SETTINGS.corridorSegmentLength, floorY, SETTINGS.wallHeight, wallDepth, wallMaterialA, opaqueGlassMaterial, glassMaterial, rightRoomId);
+
+                    rightRoomContents.visible = false;
+                    scene.add(rightRoomContents);
+
+
+                    /* allRoomsData.push({
+                        id: rightRoomId,
+                        door: null, windowGlass: null, opaqueMaterial: null, transparentMaterial: null, contentsGroup: rightRoomContents,
+                        visibleByDoor: false, visibleByWindow: false, lamp: roomLampR }
+                    );  */
+
+                    // --- Right Side B Room ---
+                    const segmentBCenterZ = ((j + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
+                    const segmentBStartZ = (j * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
+
+                    const roomBRXCenter = -SETTINGS.roomSize / 2;
+                    const isRightBRoomRedDoor = (j === redDoorIndex);
+
+
+                    const deskRBGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
+                    const deskRB = new THREE.Mesh(deskRBGeo, deskMaterial);
+                    deskRB.rotateY(Math.PI / 2);
+                    deskRB.position.set(-(SETTINGS.roomSize / 2), floorY + deskHeight / 2, segmentBCenterZ + 1.3);
+                    deskRB.castShadow = true; deskRB.receiveShadow = true; // scene.add(deskRB); worldObjects.push(deskRB);
+                    deskRB.name = `Desk_B_R_F${i}_D${j}`;
+                    const cabinetRBGeo = new THREE.BoxGeometry(cabinetDepth, cabinetHeight, cabinetWidth);
+                    const cabinetRB = new THREE.Mesh(cabinetRBGeo, cabinetMaterial);
+                    cabinetRB.position.set(-SETTINGS.roomSize + cabinetDepth / 2, floorY + cabinetHeight / 2, segmentBStartZ + cabinetWidth / 2 + 0.1);
+                    cabinetRB.castShadow = true; cabinetRB.receiveShadow = true; // scene.add(cabinetR); worldObjects.push(cabinetR);
+                    cabinetRB.name = `Cabinet_R_B_F${i}_D${j}`;
+                    // Chair for Right Room B
+                    //const chairSeatWidth = 0.5, chairSeatDepth = 0.65, chairSeatHeight = 0.5;
+                    //const chairBackrestHeight = 0.8, chairBackrestThickness = 0.15;
+                    const backWallZ_B_R_Chair = segmentBCenterZ + SETTINGS.corridorSegmentLength / 2; // This is the Z of the wall behind the desk
+                    const chairZ_B_R = 0.1 + (deskRB.position.z + backWallZ_B_R_Chair) / 2; // Position chair between desk and back wall
+                    const chairX_B_R = -(SETTINGS.roomSize / 2);
+                    const chairY_B_R = floorY + chairSeatHeight / 2;
+                    const chairBSeat_R = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairSeatHeight, chairSeatDepth), deskMaterial);
+                    chairBSeat_R.position.set(chairX_B_R, chairY_B_R, chairZ_B_R); // scene.add(chairBSeat_R); worldObjects.push(chairBSeat_R);
+                    const backrestB_R = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairBackrestHeight, chairBackrestThickness), deskMaterial);
+                    backrestB_R.position.set(chairX_B_R, chairY_B_R + chairBackrestHeight / 2, chairZ_B_R + chairSeatDepth / 2 - chairBackrestThickness / 2);
+                    // scene.add(backrestB_R); worldObjects.push(backrestB_R);
+
+                    //const rightRoomContents = new THREE.Group();
+                    const rightRoomBId = `B_R_F${i}_D${j}`;
+                    rightRoomContents.name = `RoomContents_B_${rightRoomBId}`;
+                    //rightRoomContents.add(rFloorB); worldObjects.push(rFloorB); // Add to worldObjects for collision if needed
+                    //rightRoomContents.add(rCeilingB); worldObjects.push(rCeilingB);
+                    rightRoomContents.add(deskRB); worldObjects.push(deskRB);
+                    rightRoomContents.add(cabinetRB); worldObjects.push(cabinetRB);
+                    rightRoomContents.add(chairBSeat_R); worldObjects.push(chairBSeat_R);
+                    rightRoomContents.add(backrestB_R); worldObjects.push(backrestB_R);
+
+                    if (isRightBRoomRedDoor) {
+                        const safeRBGeo = new THREE.BoxGeometry(safeDepth, safeHeight, safeWidth);
+                        const safeBR = new THREE.Mesh(safeRBGeo, safeMaterial);
+                        safeBR.position.set(-SETTINGS.roomSize + safeDepth / 2, floorY + safeHeight / 2, segmentBStartZ + SETTINGS.corridorSegmentLength - safeWidth / 2 - 0.1);
+                        safeBR.castShadow = true; safeBR.receiveShadow = true; safeBR.name = `Safe_B_R_F${i}_D${j}`;
+                        safeBR.userData = defaultSafeUserData(); // scene.add(safeR); worldObjects.push(safeR);
+                        rightRoomContents.add(safeBR); worldObjects.push(safeBR);
+                        const dialRBGeo = new THREE.ConeGeometry(dialRadius, dialLength, 10);
+                        const dialRB = new THREE.Mesh(dialRBGeo, dialMaterial);
+                        dialRB.position.set(safeDepth / 2, 0, 0); dialRB.rotation.z = -Math.PI / 2;
+                        dialRB.userData.isSafeDial = true; dialRB.name = `Dial_Safe_B_R_F${i}_D${j}`; safeBR.add(dialRB);
+                    }
+                    const roomLampBR = createRoomLamp(roomRXCenter, floorY + SETTINGS.wallHeight - 0.5, segmentBCenterZ, i, rightRoomBId, lightBulbMaterial);
+                    rightRoomContents.add(roomLampBR); // Add lamp's visual group
+
+                    // Call modified function for pillars and window (B-Wing Right)
+                    createOuterWall_SegmentFeatures(-SETTINGS.roomSize + wallDepth / 2, segmentBCenterZ, SETTINGS.corridorSegmentLength, floorY, SETTINGS.wallHeight, wallDepth, wallMaterialB, opaqueGlassMaterial, glassMaterial, rightRoomBId);
+
+                    rightRoomContents.visible = false;
+                    scene.add(rightRoomContents);
+
+                    allRoomsData.push({
+                        id: rightRoomId,
+                        door: null, windowGlass: null, opaqueMaterial: null, transparentMaterial: null, contentsGroup: rightRoomContents,
+                        visibleByDoor: false, visibleByWindow: false, lamp: roomLampBR
+                    });
+
+                    // --- Left Side Room ---
+                    const roomLXCenter = SETTINGS.corridorWidth + SETTINGS.roomSize / 2;
+                    const isLeftRoomRedDoor = ((SETTINGS.doorsPerSide + j) === redDoorIndex);
+
+
+                    const deskLGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
+                    const deskL = new THREE.Mesh(deskLGeo, deskMaterial);
+                    deskL.rotateY(Math.PI / 2);
+                    deskL.position.set(SETTINGS.corridorWidth + (SETTINGS.roomSize / 2), floorY + deskHeight / 2, segmentCenterZ + 1.3);
+                    deskL.castShadow = true; deskL.receiveShadow = true; // scene.add(deskL); worldObjects.push(deskL);
+                    deskL.name = `Desk_L_F${i}_D${j}`;
+                    const cabinetLGeo = new THREE.BoxGeometry(cabinetDepth, cabinetHeight, cabinetWidth);
+                    const cabinetL = new THREE.Mesh(cabinetLGeo, cabinetMaterial);
+                    cabinetL.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize - cabinetDepth / 2, floorY + cabinetHeight / 2, segmentStartZ + cabinetWidth / 2 + 0.1);
+                    cabinetL.castShadow = true; cabinetL.receiveShadow = true; // scene.add(cabinetL); worldObjects.push(cabinetL);
+                    cabinetL.name = `Cabinet_L_F${i}_D${j}`;
+                    // Chair for Left Room
+                    const backWallZ_L_Chair = segmentCenterZ + SETTINGS.corridorSegmentLength / 2;
+                    const chairZ_L = 0.15 + (deskL.position.z + backWallZ_L_Chair) / 2;
+                    const chairX_L = SETTINGS.corridorWidth + (SETTINGS.roomSize / 2);
+                    const chairY_L = floorY + chairSeatHeight / 2;
+                    const chairSeat_L = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairSeatHeight, chairSeatDepth), deskMaterial);
+                    chairSeat_L.position.set(chairX_L, chairY_L, chairZ_L); // scene.add(chairSeat_L); worldObjects.push(chairSeat_L);
+                    const backrest_L = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairBackrestHeight, chairBackrestThickness), deskMaterial);
+                    backrest_L.position.set(chairX_L, chairY_L + chairBackrestHeight / 2, chairZ_L + chairSeatDepth / 2 - chairBackrestThickness / 2);
+                    // scene.add(backrest_L); worldObjects.push(backrestL);
+
+                    const leftRoomContents = new THREE.Group();
+                    const leftRoomId = `L_F${i}_D${j}`;
+                    leftRoomContents.name = `RoomContents_${leftRoomId}`;
+                    //leftRoomContents.add(lFloor); worldObjects.push(lFloor);
+                    //leftRoomContents.add(lCeiling); worldObjects.push(lCeiling);
+                    leftRoomContents.add(deskL); worldObjects.push(deskL);
+                    leftRoomContents.add(cabinetL); worldObjects.push(cabinetL);
+                    leftRoomContents.add(chairSeat_L); worldObjects.push(chairSeat_L);
+                    leftRoomContents.add(backrest_L); worldObjects.push(backrest_L);
+
+                    if (isLeftRoomRedDoor) {
+                        const safeLGeo = new THREE.BoxGeometry(safeDepth, safeHeight, safeWidth);
+                        const safeL = new THREE.Mesh(safeLGeo, safeMaterial);
+                        safeL.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize - safeDepth / 2, floorY + safeHeight / 2, segmentStartZ + SETTINGS.corridorSegmentLength - safeWidth / 2 - 0.1);
+                        safeL.castShadow = true; safeL.receiveShadow = true; safeL.name = `Safe_L_F${i}_D${j}`;
+                        safeL.userData = defaultSafeUserData(); // scene.add(safeL); worldObjects.push(safeL);
+                        leftRoomContents.add(safeL); worldObjects.push(safeL);
+                        const dialLGeo = new THREE.ConeGeometry(dialRadius, dialLength, 10);
+                        const dialL = new THREE.Mesh(dialLGeo, dialMaterial);
+                        dialL.position.set(-safeDepth / 2, 0, 0); dialL.rotation.z = Math.PI / 2;
+                        dialL.userData.isSafeDial = true; dialL.name = `Dial_Safe_L_F${i}_D${j}`; safeL.add(dialL);
+                    }
+                    const roomLampL = createRoomLamp(roomLXCenter, floorY + SETTINGS.wallHeight - 0.5, segmentCenterZ, i, leftRoomId, lightBulbMaterial);
+                    leftRoomContents.add(roomLampL);
+
+                    // Call modified function for pillars and window (A-Wing Left)
+                    createOuterWall_SegmentFeatures(SETTINGS.corridorWidth + SETTINGS.roomSize - wallDepth / 2, segmentCenterZ, SETTINGS.corridorSegmentLength, floorY, SETTINGS.wallHeight, wallDepth, wallMaterialA, opaqueGlassMaterial, glassMaterial, leftRoomId);
+
+                    leftRoomContents.visible = false;
+                    scene.add(leftRoomContents);
+
+                    // --- Left Side B Room ---
+                    const roomBLXCenter = SETTINGS.corridorWidth + SETTINGS.roomSize / 2;
+                    const isLeftBRoomRedDoor = ((SETTINGS.doorsPerSide + j) === redDoorIndex);
+
+
+                    const deskLBGeo = new THREE.BoxGeometry(deskDepth, deskHeight, deskWidth);
+                    const deskBL = new THREE.Mesh(deskLBGeo, deskMaterial);
+                    deskBL.rotateY(Math.PI / 2);
+                    deskBL.position.set(SETTINGS.corridorWidth + (SETTINGS.roomSize / 2), floorY + deskHeight / 2, segmentBCenterZ + 1.3);
+                    deskBL.castShadow = true; deskBL.receiveShadow = true; // scene.add(deskL); worldObjects.push(deskL);
+                    deskBL.name = `Desk_B_L_F${i}_D${j}`;
+                    const cabinetBLGeo = new THREE.BoxGeometry(cabinetDepth, cabinetHeight, cabinetWidth);
+                    const cabinetBL = new THREE.Mesh(cabinetBLGeo, cabinetMaterial);
+                    cabinetBL.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize - cabinetDepth / 2, floorY + cabinetHeight / 2, segmentBStartZ + cabinetWidth / 2 + 0.1);
+                    cabinetBL.castShadow = true; cabinetBL.receiveShadow = true; // scene.add(cabinetL); worldObjects.push(cabinetL);
+                    cabinetBL.name = `Cabinet_B_L_F${i}_D${j}`;
+                    // Chair for Left Room
+                    const backWallZ_BL_Chair = segmentBCenterZ + SETTINGS.corridorSegmentLength / 2;
+                    const chairZ_BL = 0.15 + (deskL.position.z + backWallZ_L_Chair) / 2 - 16 - totalCorridorLength;
+                    const chairX_BL = SETTINGS.corridorWidth + (SETTINGS.roomSize / 2);
+                    const chairY_BL = floorY + chairSeatHeight / 2;
+                    const chairSeat_BL = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairSeatHeight, chairSeatDepth), deskMaterial);
+                    chairSeat_BL.position.set(chairX_BL, chairY_BL, chairZ_BL); // scene.add(chairSeat_L); worldObjects.push(chairSeat_L);
+                    const backrest_BL = new THREE.Mesh(new THREE.BoxGeometry(chairSeatWidth, chairBackrestHeight, chairBackrestThickness), deskMaterial);
+                    backrest_BL.position.set(chairX_BL, chairY_BL + chairBackrestHeight / 2, chairZ_BL + chairSeatDepth / 2 - chairBackrestThickness / 2);
+                    // scene.add(backrest_L); worldObjects.push(backrest_L);
+
+                    //const leftRoomContents = new THREE.Group();
+                    const leftRoomBId = `B_L_F${i}_D${j}`;
+                    leftRoomContents.name = `RoomContents_${leftRoomBId}`;
+                    //leftRoomContents.add(lFloorB); worldObjects.push(lFloorB);
+                    //leftRoomContents.add(lCeilingB); worldObjects.push(lCeilingB);
+                    leftRoomContents.add(deskBL); worldObjects.push(deskBL);
+                    leftRoomContents.add(cabinetBL); worldObjects.push(cabinetBL);
+                    leftRoomContents.add(chairSeat_BL); worldObjects.push(chairSeat_BL);
+                    leftRoomContents.add(backrest_BL); worldObjects.push(backrest_BL);
+
+                    if (isLeftBRoomRedDoor) {
+                        const safeBLGeo = new THREE.BoxGeometry(safeDepth, safeHeight, safeWidth);
+                        const safeBL = new THREE.Mesh(safeBLGeo, safeMaterial);
+                        safeBL.position.set(SETTINGS.corridorWidth + SETTINGS.roomSize - safeDepth / 2, floorY + safeHeight / 2, segmentStartZ + SETTINGS.corridorSegmentLength - safeWidth / 2 - 0.1);
+                        safeBL.castShadow = true; safeBL.receiveShadow = true; safeBL.name = `Safe_L_F${i}_D${j}`;
+                        safeBL.userData = defaultSafeUserData(); // scene.add(safeL); worldObjects.push(safeL);
+                        leftRoomContents.add(safeBL); worldObjects.push(safeBL);
+                        const dialBLGeo = new THREE.ConeGeometry(dialRadius, dialLength, 10);
+                        const dialBL = new THREE.Mesh(dialBLGeo, dialMaterial);
+                        dialBL.position.set(-safeDepth / 2, 0, 0); dialBL.rotation.z = Math.PI / 2;
+                        dialBL.userData.isSafeDial = true; dialBL.name = `Dial_Safe_B_L_F${i}_D${j}`; safeBL.add(dialBL);
+                    }
+                    const roomLampBL = createRoomLamp(roomBLXCenter, floorY + SETTINGS.wallHeight - 0.5, segmentBCenterZ, i, leftRoomBId, lightBulbMaterial);
+                    leftRoomContents.add(roomLampBL);
+
+                    // Call modified function for pillars and window (B-Wing Left)
+                    createOuterWall_SegmentFeatures(SETTINGS.corridorWidth + SETTINGS.roomSize - wallDepth / 2, segmentBCenterZ, SETTINGS.corridorSegmentLength, floorY, SETTINGS.wallHeight, wallDepth, wallMaterialB, opaqueGlassMaterial, glassMaterial, leftRoomBId);
+
+                    leftRoomContents.visible = false;
+                    scene.add(leftRoomContents);
+                    allRoomsData.push({ // Ensure new properties are initialized
+                        id: leftRoomId, door: null, windowGlass: null, opaqueMaterial: null, transparentMaterial: null, contentsGroup: leftRoomContents,
+                        visibleByDoor: false, visibleByWindow: false, lamp: roomLampBL
+                    });
+                }
+
+                // --- Create Long Sills and Headers for Outer Walls ---
+                const sillH = SETTINGS.wallHeight * WINDOW_SILL_RATIO;
+                const headerH = SETTINGS.wallHeight - (SETTINGS.wallHeight * WINDOW_HEIGHT_RATIO) - sillH;
+
+                // A-Wing Outer Walls
+                const outerWallAX_Right = -SETTINGS.roomSize + wallDepth / 2;
+                const outerWallAX_Left = SETTINGS.corridorWidth + SETTINGS.roomSize - wallDepth / 2;
+                const centerZ_A = totalCorridorLength / 2;
+
+                if (sillH > 0.01) {
+                    const sillAGeo = new THREE.BoxGeometry(wallDepth, sillH, totalCorridorLength);
+                    const sillAR = new THREE.Mesh(sillAGeo, wallMaterialA); // Right side sill
+                    sillAR.position.set(outerWallAX_Right, floorY + sillH / 2, centerZ_A);
+                    scene.add(sillAR); worldObjects.push(sillAR); sillAR.name = `OuterWallSill_A_R_F${i}`;
+                    const sillAL = new THREE.Mesh(sillAGeo, wallMaterialA); // Left side sill
+                    sillAL.position.set(outerWallAX_Left, floorY + sillH / 2, centerZ_A);
+                    scene.add(sillAL); worldObjects.push(sillAL); sillAL.name = `OuterWallSill_A_L_F${i}`;
+                }
+                if (headerH > 0.01) {
+                    const headerAGeo = new THREE.BoxGeometry(wallDepth, headerH, totalCorridorLength);
+                    const headerAR = new THREE.Mesh(headerAGeo, wallMaterialA); // Right side header
+                    headerAR.position.set(outerWallAX_Right, floorY + SETTINGS.wallHeight - headerH / 2, centerZ_A);
+                    scene.add(headerAR); worldObjects.push(headerAR); headerAR.name = `OuterWallHeader_A_R_F${i}`;
+                    const headerAL = new THREE.Mesh(headerAGeo, wallMaterialA); // Left side header
+                    headerAL.position.set(outerWallAX_Left, floorY + SETTINGS.wallHeight - headerH / 2, centerZ_A);
+                    scene.add(headerAL); worldObjects.push(headerAL); headerAL.name = `OuterWallHeader_A_L_F${i}`;
+                }
+
+                // B-Wing Outer Walls
+                const outerWallBX_Right = -SETTINGS.roomSize + wallDepth / 2; // Same X as A-wing
+                const outerWallBX_Left = SETTINGS.corridorWidth + SETTINGS.roomSize - wallDepth / 2; // Same X as A-wing
+                const centerZ_B = -16 - totalCorridorLength / 2;
+
+                if (sillH > 0.01) {
+                    const sillBGeo = new THREE.BoxGeometry(wallDepth, sillH, totalCorridorLength);
+                    const sillBR = new THREE.Mesh(sillBGeo, wallMaterialB); // Right side sill
+                    sillBR.position.set(outerWallBX_Right, floorY + sillH / 2, centerZ_B);
+                    scene.add(sillBR); worldObjects.push(sillBR); sillBR.name = `OuterWallSill_B_R_F${i}`;
+                    const sillBL = new THREE.Mesh(sillBGeo, wallMaterialB); // Left side sill
+                    sillBL.position.set(outerWallBX_Left, floorY + sillH / 2, centerZ_B);
+                    scene.add(sillBL); worldObjects.push(sillBL); sillBL.name = `OuterWallSill_B_L_F${i}`;
+                }
+                if (headerH > 0.01) {
+                    const headerBGeo = new THREE.BoxGeometry(wallDepth, headerH, totalCorridorLength);
+                    const headerBR = new THREE.Mesh(headerBGeo, wallMaterialB); // Right side header
+                    headerBR.position.set(outerWallBX_Right, floorY + SETTINGS.wallHeight - headerH / 2, centerZ_B);
+                    scene.add(headerBR); worldObjects.push(headerBR); headerBR.name = `OuterWallHeader_B_R_F${i}`;
+                    const headerBL = new THREE.Mesh(headerBGeo, wallMaterialB); // Left side header
+                    headerBL.position.set(outerWallBX_Left, floorY + SETTINGS.wallHeight - headerH / 2, centerZ_B);
+                    scene.add(headerBL); worldObjects.push(headerBL); headerBL.name = `OuterWallHeader_B_L_F${i}`;
+                }
+
+                // Corridor Ceiling Plane
+                const ceilingGeo = new THREE.PlaneGeometry(SETTINGS.corridorWidth + (2 * SETTINGS.roomSize), totalCorridorLength);
+                const ceiling = new THREE.Mesh(ceilingGeo, ceilingMaterial);
+                ceiling.rotation.x = Math.PI / 2;
+                ceiling.position.set(SETTINGS.corridorWidth / 2, floorY + SETTINGS.wallHeight, totalCorridorLength / 2);
+                ceiling.castShadow = true;
+                scene.add(ceiling);
+                worldObjects.push(ceiling);
+
+                // Corridor B Ceiling Plane
+                const ceilingBGeo = new THREE.PlaneGeometry(SETTINGS.corridorWidth + (2 * SETTINGS.roomSize), totalCorridorLength);
+                const ceilingB = new THREE.Mesh(ceilingBGeo, ceilingMaterial);
+                ceilingB.rotation.x = Math.PI / 2;
+                ceilingB.position.set(SETTINGS.corridorWidth / 2, floorY + SETTINGS.wallHeight, (totalCorridorLength / 2) - 16 - totalCorridorLength);
+                ceilingB.castShadow = true;
+                scene.add(ceilingB);
+                worldObjects.push(ceilingB);
+
+
+                // --- Corridor Walls & Doors ---
+                const wallAboveDoorHeight = SETTINGS.wallHeight - SETTINGS.doorHeight;
+
+                // Create long header walls for A-Wing
+                if (wallAboveDoorHeight > 0.01) { // Only create if there's actual height
+                    const headerAGeo = new THREE.BoxGeometry(wallDepth, wallAboveDoorHeight, totalCorridorLength);
+                    // Right side header (A-Wing)
+                    const headerAR = new THREE.Mesh(headerAGeo, wallMaterialA);
+                    headerAR.position.set(0, floorY + SETTINGS.doorHeight + wallAboveDoorHeight / 2, totalCorridorLength / 2);
+                    headerAR.castShadow = true; headerAR.receiveShadow = true; scene.add(headerAR); worldObjects.push(headerAR);
+                    // Left side header (A-Wing)
+                    const headerAL = new THREE.Mesh(headerAGeo, wallMaterialA);
+                    headerAL.position.set(SETTINGS.corridorWidth, floorY + SETTINGS.doorHeight + wallAboveDoorHeight / 2, totalCorridorLength / 2);
+                    headerAL.castShadow = true; headerAL.receiveShadow = true; scene.add(headerAL); worldObjects.push(headerAL);
+                }
+
+                // Create long header walls for B-Wing
+                if (wallAboveDoorHeight > 0.01) { // Only create if there's actual height
+                    const headerBGeo = new THREE.BoxGeometry(wallDepth, wallAboveDoorHeight, totalCorridorLength);
+                    // Right side header (B-Wing)
+                    const headerBR = new THREE.Mesh(headerBGeo, wallMaterialB);
+                    headerBR.position.set(0, floorY + SETTINGS.doorHeight + wallAboveDoorHeight / 2, -16 - totalCorridorLength / 2);
+                    headerBR.castShadow = true; headerBR.receiveShadow = true; scene.add(headerBR); worldObjects.push(headerBR);
+                    // Left side header (B-Wing)
+                    const headerBL = new THREE.Mesh(headerBGeo, wallMaterialB);
+                    headerBL.position.set(SETTINGS.corridorWidth, floorY + SETTINGS.doorHeight + wallAboveDoorHeight / 2, -16 - totalCorridorLength / 2);
+                    headerBL.castShadow = true; headerBL.receiveShadow = true; scene.add(headerBL); worldObjects.push(headerBL);
+                }
+
+                // Right Wall Segments (Positive X direction)
+                for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
+                    const segmentZ = (j + 0.5) * SETTINGS.corridorSegmentLength;
+                    // Wall segment next to door (door height)
+                    const wall1Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
+                    const wall1 = new THREE.Mesh(wall1Geo, wallMaterialA); // A-wing
+                    wall1.position.set(0, floorY + SETTINGS.doorHeight / 2, segmentZ - SETTINGS.corridorSegmentLength / 2 + doorOffset / 2);
+                    wall1.castShadow = true; wall1.receiveShadow = true; scene.add(wall1); worldObjects.push(wall1);
+
+                    const isRed = currentDoorIndex === redDoorIndex;
+                    const doorMaterialToUse = isRed ? redDoorMaterial : blackDoorMaterial;
+                    const doorGeo = new THREE.BoxGeometry(SETTINGS.doorDepth, SETTINGS.doorHeight, SETTINGS.doorWidth);
+                    doorGeo.translate(0, 0, SETTINGS.doorWidth / 2);
+                    const door = new THREE.Mesh(doorGeo, doorMaterialToUse);
+                    const doorXPosR = 0; // Right side doors are at X=0
+                    door.position.set(doorXPosR, floorY + SETTINGS.doorHeight / 2, segmentZ - SETTINGS.doorWidth / 2);
+                    door.castShadow = true; door.userData = { type: 'door', floor: i, isRed: isRed, locked: (Math.random() < 0.3), isOpen: false };
+                    const doorRoomIdR = `R_F${i}_D${j}`; // Associate with the correct room ID
+                    door.userData.roomId = doorRoomIdR;
+                    const roomDataR = allRoomsData.find(r => r.id === doorRoomIdR);
+                    if (roomDataR) roomDataR.door = door;
+                    door.name = `${i + 1}${String(currentDoorIndex + 1).padStart(2, '0')}`;
+                    scene.add(door); doors.push(door); worldObjects.push(door);
+
+                    const knobGeometry = new THREE.SphereGeometry(0.06, 8, 6);
+                    const knobMaterial = new THREE.MeshStandardMaterial({ color: 0xffaa11, metalness: 0.8, roughness: 0.1 });
+                    const knob = new THREE.Mesh(knobGeometry, knobMaterial);
+                    knob.position.set(SETTINGS.doorDepth / 2 + 0.05, 0, SETTINGS.doorWidth - 0.15);
+                    knob.userData.doorKnob = true; door.add(knob); door.userData.knob = knob;
+                    const knob2 = new THREE.Mesh(knobGeometry, knobMaterial);
+                    knob2.position.set(-SETTINGS.doorDepth / 2 - 0.05, 0, SETTINGS.doorWidth - 0.15);
+                    knob2.userData.doorKnob = true; door.add(knob2); door.userData.knob2 = knob2;
+
+                    const wall2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
+                    const wall2 = new THREE.Mesh(wall2Geo, wallMaterialA); // A-wing
+                    wall2.position.set(0, floorY + SETTINGS.doorHeight / 2, segmentZ + SETTINGS.doorWidth / 2 + doorOffset / 2);
+                    wall2.castShadow = true; wall2.receiveShadow = true; scene.add(wall2); worldObjects.push(wall2);
+                    currentDoorIndex++;
+                }
+                // Right Wall B Segments (Negative Z Direction) (Positive X direction)
+                for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
+                    const segmentBZ = ((j + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
+                    const wall1Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
+                    const wall1 = new THREE.Mesh(wall1Geo, wallMaterialB); // B-wing
+                    wall1.position.set(0, floorY + SETTINGS.doorHeight / 2, segmentBZ - SETTINGS.corridorSegmentLength / 2 + doorOffset / 2);
+                    wall1.castShadow = true; wall1.receiveShadow = true; scene.add(wall1); worldObjects.push(wall1);
+                    const isRed = currentDoorIndex === redDoorIndex;
+                    const doorMaterialToUse = isRed ? redDoorMaterial : navyDoorMaterial; // Use navy for B-Wing
+                    const doorGeo = new THREE.BoxGeometry(SETTINGS.doorDepth, SETTINGS.doorHeight, SETTINGS.doorWidth);
+                    doorGeo.translate(0, 0, SETTINGS.doorWidth / 2);
+                    const door = new THREE.Mesh(doorGeo, doorMaterialToUse);
+                    const doorXPosR = 0; // Right side doors are at X=0
+                    door.position.set(doorXPosR, floorY + SETTINGS.doorHeight / 2, segmentBZ - SETTINGS.doorWidth / 2);
+                    door.castShadow = true; door.userData = { type: 'door', floor: i, isRed: isRed, locked: (Math.random() < 0.3), isOpen: false };
+                    const doorRoomIdR = `R_F${i}_D${j}`; // Associate with the correct room ID
+                    door.userData.roomId = doorRoomIdR;
+                    const roomDataR = allRoomsData.find(r => r.id === doorRoomIdR);
+                    if (roomDataR) roomDataR.door = door;
+                    door.name = `${i + 1}${String(currentDoorIndex + 1).padStart(2, '0')}`;
+                    scene.add(door); doors.push(door); worldObjects.push(door);
+
+                    const knobGeometry = new THREE.SphereGeometry(0.06, 8, 6); // B-Wing knob material
+                    const knobMaterial = whiteMaterial.clone(); // Use white for B-Wing knobs
+                    const knob = new THREE.Mesh(knobGeometry, knobMaterial);
+                    knob.position.set(SETTINGS.doorDepth / 2 + 0.05, 0, SETTINGS.doorWidth - 0.15);
+                    knob.userData.doorKnob = true; door.add(knob); door.userData.knob = knob;
+                    const knob2 = new THREE.Mesh(knobGeometry, knobMaterial);
+                    knob2.position.set(-SETTINGS.doorDepth / 2 - 0.05, 0, SETTINGS.doorWidth - 0.15);
+                    knob2.userData.doorKnob = true; door.add(knob2); door.userData.knob2 = knob2;
+
+                    const wall2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
+                    const wall2 = new THREE.Mesh(wall2Geo, wallMaterialB); // B-wing
+                    wall2.position.set(0, floorY + SETTINGS.doorHeight / 2, segmentBZ + SETTINGS.doorWidth / 2 + doorOffset / 2);
+                    wall2.castShadow = true; wall2.receiveShadow = true; scene.add(wall2); worldObjects.push(wall2);
+                    currentDoorIndex++;
+                }
+                // Left Wall Segments
+                const LeftWallX = SETTINGS.corridorWidth;
+                for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
+                    const segmentZ = (j + 0.5) * SETTINGS.corridorSegmentLength;
+                    const wall1Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
+                    const wall1 = new THREE.Mesh(wall1Geo, wallMaterialA); // A-wing
+                    wall1.position.set(LeftWallX, floorY + SETTINGS.doorHeight / 2, segmentZ - SETTINGS.corridorSegmentLength / 2 + doorOffset / 2);
+                    wall1.castShadow = true; wall1.receiveShadow = true; scene.add(wall1); worldObjects.push(wall1);
+                    const isRed = currentDoorIndex === redDoorIndex;
+                    const doorMaterialToUse = isRed ? redDoorMaterial : blackDoorMaterial;
+                    const doorGeo = new THREE.BoxGeometry(SETTINGS.doorDepth, SETTINGS.doorHeight, SETTINGS.doorWidth);
+                    doorGeo.translate(0, 0, SETTINGS.doorWidth / 2);
+                    const door = new THREE.Mesh(doorGeo, doorMaterialToUse);
+                    const doorXPosL = LeftWallX; // Left side doors
+                    door.position.set(doorXPosL, floorY + SETTINGS.doorHeight / 2, segmentZ - SETTINGS.doorWidth / 2);
+                    door.castShadow = true; door.userData = { type: 'door', floor: i, isRed: isRed, locked: (Math.random() < 0.3), isOpen: false };
+                    const doorRoomIdL = `L_F${i}_D${j}`; // Associate with the correct room ID
+                    door.userData.roomId = doorRoomIdL;
+                    const roomDataL = allRoomsData.find(r => r.id === doorRoomIdL);
+                    if (roomDataL) roomDataL.door = door;
+                    door.name = `${i + 1}${String(currentDoorIndex + 1).padStart(2, '0')}`;
+                    scene.add(door); doors.push(door); worldObjects.push(door);
+
+                    const knobGeometry = new THREE.SphereGeometry(0.06, 8, 6);
+                    const knobMaterial = new THREE.MeshStandardMaterial({ color: 0xffaa11, metalness: 0.8, roughness: 0.1 });
+                    const knob = new THREE.Mesh(knobGeometry, knobMaterial);
+                    knob.position.set(SETTINGS.doorDepth / 2 + 0.05, 0, SETTINGS.doorWidth - 0.15);
+                    knob.userData.doorKnob = true; door.add(knob); door.userData.knob = knob;
+                    const knob2 = new THREE.Mesh(knobGeometry, knobMaterial);
+                    knob2.position.set(-SETTINGS.doorDepth / 2 - 0.05, 0, SETTINGS.doorWidth - 0.15);
+                    knob2.userData.doorKnob = true; door.add(knob2); door.userData.knob2 = knob2; // Corrected typo
+
+                    const wall2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
+                    const wall2 = new THREE.Mesh(wall2Geo, wallMaterialA); // A-wing
+                    wall2.position.set(LeftWallX, floorY + SETTINGS.doorHeight / 2, segmentZ + SETTINGS.doorWidth / 2 + doorOffset / 2);
+                    wall2.castShadow = true; wall2.receiveShadow = true; scene.add(wall2); worldObjects.push(wall2);
+                    currentDoorIndex++;
+                }
+                // Left Wall B Segments (Negative Z Direction) (Positive X direction)
+                const LeftWallBX = SETTINGS.corridorWidth;
+                for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
+                    const segmentBZ = ((j + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
+                    const wall1Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
+                    const wall1 = new THREE.Mesh(wall1Geo, wallMaterialB); // B-wing
+                    wall1.position.set(LeftWallX, floorY + SETTINGS.doorHeight / 2, segmentBZ - SETTINGS.corridorSegmentLength / 2 + doorOffset / 2);
+                    wall1.castShadow = true; wall1.receiveShadow = true; scene.add(wall1); worldObjects.push(wall1);
+                    const isRed = currentDoorIndex === redDoorIndex;
+                    const doorMaterialToUse = isRed ? redDoorMaterial : navyDoorMaterial; // Use navy for B-Wing
+                    const doorGeo = new THREE.BoxGeometry(SETTINGS.doorDepth, SETTINGS.doorHeight, SETTINGS.doorWidth);
+                    doorGeo.translate(0, 0, SETTINGS.doorWidth / 2);
+                    const door = new THREE.Mesh(doorGeo, doorMaterialToUse);
+                    const doorXPosL = LeftWallX; // Left side doors
+                    door.position.set(doorXPosL, floorY + SETTINGS.doorHeight / 2, segmentBZ - SETTINGS.doorWidth / 2);
+                    door.castShadow = true; door.userData = { type: 'door', floor: i, isRed: isRed, locked: (Math.random() < 0.3), isOpen: false };
+                    const doorRoomIdL = `L_F${i}_D${j}`; // Associate with the correct room ID
+                    door.userData.roomId = doorRoomIdL;
+                    const roomDataL = allRoomsData.find(r => r.id === doorRoomIdL);
+                    if (roomDataL) roomDataL.door = door;
+                    door.name = `${i + 1}${String(currentDoorIndex + 1).padStart(2, '0')}`;
+                    scene.add(door); doors.push(door); worldObjects.push(door);
+
+                    const knobGeometry = new THREE.SphereGeometry(0.06, 8, 6); // B-Wing knob material
+                    const knobMaterial = whiteMaterial.clone(); // Use white for B-Wing knobs
+                    const knob = new THREE.Mesh(knobGeometry, knobMaterial);
+                    knob.position.set(SETTINGS.doorDepth / 2 + 0.05, 0, SETTINGS.doorWidth - 0.15);
+                    knob.userData.doorKnob = true; door.add(knob); door.userData.knob = knob;
+                    const knob2 = new THREE.Mesh(knobGeometry, knobMaterial);
+                    knob2.position.set(-SETTINGS.doorDepth / 2 - 0.05, 0, SETTINGS.doorWidth - 0.15);
+                    knob2.userData.doorKnob = true; door.add(knob2); door.userData.knob2 = knob2; // Corrected typo
+
+                    const wall2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.doorHeight, doorOffset);
+                    const wall2 = new THREE.Mesh(wall2Geo, wallMaterialB); // B-wing
+                    wall2.position.set(LeftWallX, floorY + SETTINGS.doorHeight / 2, segmentBZ + SETTINGS.doorWidth / 2 + doorOffset / 2);
+                    wall2.castShadow = true; wall2.receiveShadow = true; scene.add(wall2); worldObjects.push(wall2);
+                    currentDoorIndex++;
+                }
+
+                // Corridor Ceiling Lights
+                for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
+                    const segmentZ = (j + 0.5) * SETTINGS.corridorSegmentLength;
+                    createStandardLamp(
+                        SETTINGS.corridorWidth / 2,
+                        floorY + SETTINGS.wallHeight - 0.5,
+                        segmentZ,
+                        i, // floorIndex
+                        `${i + 1}${String(j + 1).padStart(2, '0')}`, // lampIdSuffix, e.g., "101", "102"
+                        scene, lights, lightBulbMaterial
+                    );
+                }
+
+                // Corridor B Ceiling Lights
+                for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
+                    const segmentBZ = ((j + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
+                    createStandardLamp(
+                        SETTINGS.corridorWidth / 2,
+                        floorY + SETTINGS.wallHeight - 0.5,
+                        segmentBZ,
+                        i, // floorIndex
+                        `${i + 1}${String(j + 1).padStart(2, '0')}`, // lampIdSuffix, e.g., "101", "102"
+                        scene, lights, lightBulbMaterial
+                    );
+                }
+
+                // Escalator Bridge Ceiling Lights
+                const escLightPositions = [totalCorridorLength + 4, totalCorridorLength + 4 + (2 * escalatorLength / 3)];
+                escLightPositions.forEach((zPos, idx) => {
+                    // escalator bridge light creation logic
+                    const lightGeo = new THREE.ConeGeometry(0.3, 0.2, 8);
+                    createStandardLamp(
+                        SETTINGS.corridorWidth / 2,
+                        floorY + SETTINGS.wallHeight - 0.5,
+                        zPos,
+                        i, // floorIndex
+                        `EscBridge_F${i}_Idx${idx + 1}`, // lampIdSuffix
+                        scene, lights, lightBulbMaterial
+                    );
+                });
+
+                // Escalator Bridge B Ceiling Lights
+                // B wing bridge starts at Z = -16 - totalCorridorLength - 4
+                const escBBridgeStartRefZ = -16 - totalCorridorLength - 4;
+                const escBLightBPositions = [escBBridgeStartRefZ, escBBridgeStartRefZ - (2 * escalatorLength / 3)];
+                escBLightBPositions.forEach((zPos, idx) => {
+                    // escalator bridge light creation logic
+                    const lightBGeo = new THREE.ConeGeometry(0.3, 0.2, 8);
+                    createStandardLamp(
+                        SETTINGS.corridorWidth / 2,
+                        floorY + SETTINGS.wallHeight - 0.5,
+                        zPos,
+                        i, // floorIndex
+                        `EscBridge_B_F${i}_Idx${idx + 1}`, // lampIdSuffix
+                        scene, lights, lightBulbMaterial
+                    );
+                });
+
+                // Far end wall for office floors (at end of escalator area)
+                const endWallEscGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (2 * escalatorWidth), SETTINGS.floorHeight, wallDepth);
+                const endWallFar = new THREE.Mesh(endWallEscGeo, wallMaterialA); // A-wing
+                endWallFar.position.set(SETTINGS.corridorWidth / 2, floorY + SETTINGS.wallHeight / 2, totalCorridorLength + 4 + escalatorLength + 4);
+                endWallFar.name = `Escalator Back Wall ${i}`;
+                endWallFar.castShadow = true; endWallFar.receiveShadow = true;
+                scene.add(endWallFar);
+                worldObjects.push(endWallFar);
+
+                // Add Text "A" + floor number to endWallAFar
+                const textStringA = "A" + (i === 0 ? "G" : i.toString());
+                const textGeoA = new TextGeometry(textStringA, {
+                    font: loadedFont,
+                    size: 1.5, // Large letter size
+                    depth: 0.15, // Corrected: Use 'depth' for extrusion
+                    curveSegments: 12,
+                    bevelEnabled: false
+                });
+                textGeoA.center(); // Center the geometry vertices
+                const textMeshA = new THREE.Mesh(textGeoA, textMaterial);
+
+                textMeshA.position.set(
+                    endWallFar.position.x, // Now centered because geometry is centered
+                    endWallFar.position.y, // Now centered because geometry is centered
+                    endWallFar.position.z - (wallDepth / 2) - 0.02 // Slightly in front of the wall's inner surface
                 );
+                textMeshA.rotation.y = Math.PI; // Rotate to face the player
+                textMeshA.name = `Text_Wall_A_F${i}`;
+                scene.add(textMeshA);
+
+                // Far end wall for office B floors (at end of escalator area)
+                const endWallBEscGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (2 * escalatorWidth), SETTINGS.floorHeight, wallDepth);
+                const endWallBFar = new THREE.Mesh(endWallBEscGeo, wallMaterialB); // B-wing
+                endWallBFar.position.set(SETTINGS.corridorWidth / 2, floorY + SETTINGS.wallHeight / 2, - 16 - (totalCorridorLength + 4 + escalatorLength + 4));
+                endWallBFar.name = `Escalator B Back Wall B ${i}`;
+                endWallBFar.castShadow = true; endWallBFar.receiveShadow = true;
+                scene.add(endWallBFar);
+                worldObjects.push(endWallBFar);
+
+                // Add Text "B" + floor number to endWallBFar
+                const textStringB = "B" + (i === 0 ? "G" : i.toString());
+                const textGeoB = new TextGeometry(textStringB, {
+                    font: loadedFont,
+                    size: 1.5,
+                    depth: 0.15, // Corrected: Use 'depth' for extrusion
+                    curveSegments: 12,
+                    bevelEnabled: false
+                });
+                textGeoB.center();
+                const textMeshB = new THREE.Mesh(textGeoB, whiteMaterial.clone()); // Use white for B-Wing signage
+                textMeshB.position.set(
+                    endWallBFar.position.x, // Now centered because geometry is centered
+                    endWallBFar.position.y, // Now centered because geometry is centered
+                    endWallBFar.position.z + (wallDepth / 2) + 0.02 // Slightly in front of the wall's inner surface
+                );
+                textMeshB.name = `Text_Wall_B_F${i}`;
+                scene.add(textMeshB);
+
+                // --- Walls around Escalator Area for Office Floors ---
+                // Right Wall next to escalator (Positive Z direction)
+                const wallR2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, escalatorLength + 8);
+                const wallR2 = new THREE.Mesh(wallR2Geo, wallMaterialA); // A-wing
+                wallR2.name = `Escalator RHS Wall ${i}`;
+                wallR2.position.set(-escalatorWidth, floorY + SETTINGS.wallHeight / 2, totalCorridorLength + (escalatorLength / 2) + 4);
+                wallR2.castShadow = true; wallR2.receiveShadow = true;
+                scene.add(wallR2); worldObjects.push(wallR2);
+
+                // --- Walls around Escalator B Area for Office Floors ---
+                // Right Wall next to escalator B (Negative Z direction)
+                const wallBR2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, escalatorLength + 8);
+                const wallBR2 = new THREE.Mesh(wallBR2Geo, wallMaterialB); // B-wing
+                wallBR2.name = `Escalator B RHS Wall ${i}`;
+                wallBR2.position.set(-escalatorWidth, floorY + SETTINGS.wallHeight / 2, - 16 - (totalCorridorLength + (escalatorLength / 2) + 4));
+                wallBR2.castShadow = true; wallBR2.receiveShadow = true;
+                scene.add(wallBR2); worldObjects.push(wallBR2);
+
+
+                // Right Corner Wall next to escalator (Negative X direction)
+                const wallRCornerGeo = new THREE.BoxGeometry(escalatorWidth + wallDepth, SETTINGS.floorHeight, wallDepth);
+                const wallRCorner = new THREE.Mesh(wallRCornerGeo, wallMaterialA); // A-wing
+                wallRCorner.name = `Escalator RHS Corner Wall ${i}`;
+                wallRCorner.position.set(-escalatorWidth / 2, floorY + SETTINGS.wallHeight / 2, totalCorridorLength);
+                wallRCorner.castShadow = true; wallRCorner.receiveShadow = true;
+                scene.add(wallRCorner); worldObjects.push(wallRCorner);
+
+                // Right Corner Wall B next to escalator (Negative Z Direction) (Negative X direction)
+                const wallBRCornerGeo = new THREE.BoxGeometry(escalatorWidth + wallDepth, SETTINGS.floorHeight, wallDepth);
+                const wallBRCorner = new THREE.Mesh(wallBRCornerGeo, wallMaterialB); // B-wing
+                wallBRCorner.name = `Escalator B RHS Corner Wall ${i}`;
+                wallBRCorner.position.set(-escalatorWidth / 2, floorY + SETTINGS.wallHeight / 2, -16 - totalCorridorLength);
+                wallBRCorner.castShadow = true; wallBRCorner.receiveShadow = true;
+                scene.add(wallBRCorner); worldObjects.push(wallBRCorner);
+
+
+                // Left Wall next to escalator (Positive Z direction)
+                const LeftWallXEsc = SETTINGS.corridorWidth; // Re-scope for clarity if needed
+                const wallL3Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, escalatorLength + 8);
+                const wallL3 = new THREE.Mesh(wallL3Geo, wallMaterialA); // A-wing
+                wallL3.name = `Escalator Left Wall ${i}`;
+                wallL3.position.set(LeftWallXEsc + escalatorWidth, floorY + SETTINGS.wallHeight / 2, totalCorridorLength + (escalatorLength / 2) + 4);
+                wallL3.castShadow = true; wallL3.receiveShadow = true;
+                scene.add(wallL3); worldObjects.push(wallL3);
+
+                // Left Wall next to escalator B (Negative Z direction)
+                const LeftWallBXEsc = SETTINGS.corridorWidth; // Re-scope for clarity if needed
+                const wallBL3Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, escalatorLength + 8);
+                const wallBL3 = new THREE.Mesh(wallBL3Geo, wallMaterialB); // B-wing
+                wallBL3.name = `Escalator B Left Wall ${i}`;
+                wallBL3.position.set(LeftWallXEsc + escalatorWidth, floorY + SETTINGS.wallHeight / 2, -16 - (totalCorridorLength + (escalatorLength / 2) + 4));
+                wallBL3.castShadow = true; wallBL3.receiveShadow = true;
+                scene.add(wallBL3); worldObjects.push(wallBL3);
+
+
+                // Left Corner Wall next to escalator (Negative X direction)
+                const wallLCornerGeo = new THREE.BoxGeometry(escalatorWidth + wallDepth, SETTINGS.floorHeight, wallDepth);
+                const wallLCorner = new THREE.Mesh(wallLCornerGeo, wallMaterialA); // A-wing
+                wallLCorner.name = `Escalator LHS Corner Wall ${i}`; // Corrected name
+                wallLCorner.position.set(LeftWallXEsc + escalatorWidth / 2, floorY + SETTINGS.wallHeight / 2, totalCorridorLength);
+                wallLCorner.castShadow = true; wallLCorner.receiveShadow = true;
+                scene.add(wallLCorner); worldObjects.push(wallLCorner);
+
+                // Left Corner Wall B next to escalator (Negative Z Direction)(Negative X direction)
+                const wallBLCornerGeo = new THREE.BoxGeometry(escalatorWidth + wallDepth, SETTINGS.floorHeight, wallDepth);
+                const wallBLCorner = new THREE.Mesh(wallBLCornerGeo, wallMaterialB); // B-wing
+                wallBLCorner.name = `Escalator B LHS Corner Wall ${i}`; // Corrected name
+                wallBLCorner.position.set(LeftWallXEsc + escalatorWidth / 2, floorY + SETTINGS.wallHeight / 2, -16 - totalCorridorLength);
+                wallBLCorner.castShadow = true; wallBLCorner.receiveShadow = true;
+                scene.add(wallBLCorner); worldObjects.push(wallBLCorner);
+
+
+
+
+
+            } // End of Office Floor Generation (i >= 0)
+
+            // --- Common elements for ALL floors (basement and above-ground) ---
+            // Define the top surface Y for the current and lower floors (used by balustrades)
+            // const currentFloorTopY = floorY; // No longer needed here, use floorY directly
+            // const lowerFloorTopY = (i - 1) * SETTINGS.floorHeight; // No longer needed here, use direct calculation
+
+            // Escalator Area Floor Slabs & Lights (conditionally generated)
+            const needsEscalatorPlatformsThisFloor =
+                (i > 0 && i < SETTINGS.numFloors) || // Escalator starts/passes *down* from this floor i (e.g. floor 1 down to 0)
+                ((i + 1) > 0 && (i + 1) < SETTINGS.numFloors); // Escalator starts/passes *down* from floor i+1 (meaning it arrives at or passes floor i from above)
+
+            if (needsEscalatorPlatformsThisFloor) {
+                // Escalator Floor Start
+                const floorEsc1Geo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (escalatorWidth * 2), floorDepth, 4 - 1);
+                const floor1Esc = new THREE.Mesh(floorEsc1Geo, floorMaterial); // Use standard floorMaterial
+                floor1Esc.name = `Escalator Floor Start ${i}`;
+                floor1Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, totalCorridorLength + 1.5);
+                floor1Esc.receiveShadow = true; scene.add(floor1Esc); worldObjects.push(floor1Esc);
+
+                const escStartZ = floor1Esc.position.z;
+                const escLightY = floorY + SETTINGS.wallHeight - 0.5;
+                const escLightXs = [-escalatorWidth / 2, SETTINGS.corridorWidth + (escalatorWidth / 2)];
+                escLightXs.forEach((xPos, idx) => {
+                    createStandardLamp(
+                        xPos,
+                        escLightY,
+                        escStartZ,
+                        i, // floorIndex
+                        `EscStart_F${i}_Idx${idx + 1}`, // lampIdSuffix
+                        scene, lights, lightBulbMaterial
+                    );
+                });
+
+                // Escalator Floor B Start
+                const floorBEsc1Geo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (escalatorWidth * 2), floorDepth, 4 - 1);
+                const floorB1Esc = new THREE.Mesh(floorBEsc1Geo, floorMaterial); // Use standard floorMaterial
+                floorB1Esc.name = `Escalator Floor B Start ${i}`;
+                floorB1Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, -16 - (totalCorridorLength + 1.5));
+                floorB1Esc.receiveShadow = true; scene.add(floorB1Esc); worldObjects.push(floorB1Esc);
+
+                const escBStartZ = floorB1Esc.position.z;
+                const escBLightY = floorY + SETTINGS.wallHeight - 0.5;
+                const escBLightXs = [-escalatorWidth / 2, SETTINGS.corridorWidth + (escalatorWidth / 2)];
+                escBLightXs.forEach((xPos, idx) => {
+                    createStandardLamp(
+                        xPos,
+                        escBLightY,
+                        escBStartZ,
+                        i, // floorIndex
+                        `EscBStart_F${i}_Idx${idx + 1}`, // lampIdSuffix
+                        scene, lights, lightBulbMaterial
+                    );
+                });
+
+                // Escalator Floor bridge
+                const bridge2EscGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + 0.19, floorDepth, escalatorLength + 3);
+                const bridge2Esc = new THREE.Mesh(bridge2EscGeo, floorMaterial); // Use standard floorMaterial
+                bridge2Esc.name = `Escalator Floor Bridge ${i}`;
+                bridge2Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, totalCorridorLength + 4 + (escalatorLength / 2) + 0.5);
+                bridge2Esc.receiveShadow = true; scene.add(bridge2Esc); worldObjects.push(bridge2Esc);
+
+                // Escalator Floor B bridge
+                const bridgeB2EscGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + 0.19, floorDepth, escalatorLength + 3);
+                const bridgeB2Esc = new THREE.Mesh(bridgeB2EscGeo, floorMaterial); // Use standard floorMaterial
+                bridgeB2Esc.name = `Escalator Floor B Bridge ${i}`;
+                bridgeB2Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, -16 - (totalCorridorLength + 4 + (escalatorLength / 2) + 0.5));
+                bridgeB2Esc.receiveShadow = true; scene.add(bridgeB2Esc); worldObjects.push(bridgeB2Esc);
+
+
+                // Escalator Floor End
+                const floorEsc2Geo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (escalatorWidth * 2), floorDepth, 4 - 1);
+                const floor2Esc = new THREE.Mesh(floorEsc2Geo, floorMaterial); // Use standard floorMaterial
+                floor2Esc.name = `Escalator Floor End ${i}`;
+                floor2Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, totalCorridorLength + 4 + escalatorLength + 2.5);
+                floor2Esc.receiveShadow = true; scene.add(floor2Esc); worldObjects.push(floor2Esc);
+
+                const escEndZ = floor2Esc.position.z;
+                escLightXs.forEach((xPos, idx) => {
+                    createStandardLamp(
+                        xPos,
+                        escLightY,
+                        escEndZ,
+                        i, // floorIndex
+                        `EscEnd_F${i}_Idx${idx + 1}`, // lampIdSuffix
+                        scene, lights, lightBulbMaterial
+                    );
+                });
+
+                // Escalator Floor B End
+                const floorBEsc2Geo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (escalatorWidth * 2), floorDepth, 4 - 1);
+                const floorB2Esc = new THREE.Mesh(floorBEsc2Geo, floorMaterial); // Use standard floorMaterial
+                floorB2Esc.name = `Escalator Floor End ${i}`;
+                floorB2Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, -16 - (totalCorridorLength + 4 + escalatorLength + 2.5));
+                floorB2Esc.receiveShadow = true; scene.add(floorB2Esc); worldObjects.push(floorB2Esc);
+
+                const escBEndZ = floorB2Esc.position.z;
+                escBLightXs.forEach((xPos, idx) => {
+                    createStandardLamp(
+                        xPos,
+                        escBLightY,
+                        escBEndZ,
+                        i, // floorIndex
+                        `EscEnd_B_F${i}_Idx${idx + 1}`, // lampIdSuffix
+                        scene, lights, lightBulbMaterial
+                    );
+                });
             }
 
-            // Corridor B Ceiling Lights
-            for (let j = 0; j < SETTINGS.doorsPerSide; j++) {
-                const segmentBZ = ((j + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
-                createStandardLamp(
-                    SETTINGS.corridorWidth / 2,
-                    floorY + SETTINGS.wallHeight - 0.5,
-                    segmentBZ,
-                    i, // floorIndex
-                    `${i + 1}${String(j + 1).padStart(2, '0')}`, // lampIdSuffix, e.g., "101", "102"
-                    scene, lights, lightBulbMaterial
-                );
+            // --- Escalator Steps (replace ramps with steps) ---
+            // Only add steps if not on the ground floor
+            if (i > -SETTINGS.numBasementFloors && i <= SETTINGS.numFloors - 1) { // Allow escalators from ground to basement, and between above-ground floors
+                // Parameters for steps
+                const stepHeight = 0.4; // Height of each step
+                const stepDepth = 1;
+                const stepCount = Math.ceil(1 + (SETTINGS.floorHeight / stepHeight));
+                const stepWidth = SETTINGS.escalatorWidth;
+
+                // Balustrade settings
+                const balustradeHeight = 1.7; // Height of the balustrade
+                const balustradeThickness = 0.1;
+                const balustradeMaterial = new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 0.8, roughness: 0.2 }); // Gray material for balustrades
+
+                // Skip escalator generation if this is the absolute lowest basement floor (can't go further down)
+                if (i > 0 && i < SETTINGS.numFloors) { // Create escalators connecting floor i (e.g. 1) down to floor i-1 (e.g. 0)
+
+                    // A-Wing Escalators /////// AAAAAAAAAA
+                    // ---  A-Wing Left  side Escalator A down Starting Point (RED) ---
+                    const startEscDownGeo = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1); // <-- Add this line
+                    const startEscDown = new THREE.Mesh(startEscDownGeo, window.EscalatorEmbarkMaterial);
+                    startEscDown.name = `Left Escalator Down Start A ${i}`;
+                    //start1Esc.rotation.x = -Math.PI / 2;
+                    startEscDown.position.set(
+                        SETTINGS.corridorWidth + (escalatorWidth / 2) + 0.1,
+                        floorY - (floorDepth / 2), // So the top is at floorY
+                        totalCorridorLength + 3.5
+                    );
+                    startEscDown.receiveShadow = true;
+                    scene.add(startEscDown);
+                    worldObjects.push(startEscDown);
+
+                    // Track startEscDown for this floor
+                    escalatorStarts.down[i] = startEscDown;
+                    // Track stepDown for this floor
+                    escalatorSteps.down[i] = [];
+
+                    // ---  A-Wing Steps DOWN (LEFT side) ---
+                    for (let s = 0; s < stepCount; s++) {
+                        const y = floorY - .01 - (s + 1) * stepHeight + stepHeight / 2;
+                        const z = totalCorridorLength + 4.3 + (s / stepCount) * SETTINGS.escalatorLength;
+                        const stepGeo = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
+                        const stepDown = new THREE.Mesh(stepGeo, window.EscalatorMaterial);
+                        stepDown.position.set(
+                            SETTINGS.corridorWidth + (stepWidth / 2) + 0.1,
+                            y,
+                            z
+                        );
+                        stepDown.castShadow = true;
+                        stepDown.receiveShadow = true;
+                        stepDown.name = `Left Escalator Step Down A ${i}-${s}`;
+                        scene.add(stepDown);
+                        worldObjects.push(stepDown); // Track stepDown
+                        escalatorSteps.down[i].push(stepDown); // Track stepDown
+                    }
+
+                    //  A-Wing Escalator Down on lower floor Ending Point (Left side    )    
+                    const endEscDownGeo = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
+
+                    const endEscDown = new THREE.Mesh(endEscDownGeo, window.EscalatorMaterial);
+                    endEscDown.name = `Left Escalator Down End A ${i}`;
+                    //start1Esc.rotation.x = -Math.PI / 2;
+                    endEscDown.position.set(
+                        SETTINGS.corridorWidth + (escalatorWidth / 2) + 0.1,
+                        floorY - SETTINGS.floorHeight - (floorDepth / 2) + 0.01, // Lowered by 0.01 to match last step
+                        totalCorridorLength + escalatorLength + 4 + 0.5
+                    );
+                    endEscDown.receiveShadow = true;
+                    scene.add(endEscDown);
+                    worldObjects.push(endEscDown);
+                    // NEW: Store the end mesh for later reset
+                    escalatorEnds.down[i] = endEscDown;
+                    // ---  A-Wing End of Left side Escalator Down on lower floor Ending Point --- ///
+
+                    // ---  A-Wing  Right side Escalator going Up on Lower floor Starting Point (RED) ---
+                    const startEscUpGeo = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
+                    const startEscUp = new THREE.Mesh(startEscUpGeo, window.EscalatorEmbarkMaterial);
+                    startEscUp.name = `Right Escalator Up Start A ${i}`;
+                    //start1Esc.rotation.x = -Math.PI / 2;
+                    startEscUp.position.set(
+                        -0.1 - (escalatorWidth / 2),
+                        floorY - SETTINGS.floorHeight - (floorDepth / 2), // So the top is at floorY
+                        totalCorridorLength + escalatorLength + 4 + 0.5
+                    );
+                    startEscUp.receiveShadow = true;
+                    scene.add(startEscUp);
+                    worldObjects.push(startEscUp);
+
+                    // Track startEscUp for this floor
+                    escalatorStarts.up[i] = startEscUp;
+                    // Track stepUp for this floor
+                    escalatorSteps.up[i] = [];
+
+                    // --- Steps UP A-Wing (RIGHT side) ---
+                    for (let s = 0; s < stepCount; s++) {
+                        //const y = floorY - (stepCount - s) * stepHeight + stepHeight / 2;
+                        const y = floorY + 0.01 - (s + 1) * stepHeight + stepHeight / 2;
+                        const z = totalCorridorLength + 4.3 + (s / stepCount) * SETTINGS.escalatorLength;
+                        const stepGeo = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
+                        const stepUp = new THREE.Mesh(stepGeo, window.EscalatorMaterial);
+                        stepUp.position.set(
+                            -0.1 - (stepWidth / 2),
+                            y,
+                            z
+                        );
+                        stepUp.castShadow = true;
+                        stepUp.receiveShadow = true;
+                        stepUp.name = `Right Escalator Step Up A ${i}-${s}`;
+                        scene.add(stepUp);
+                        worldObjects.push(stepUp);
+                        escalatorSteps.up[i].push(stepUp); // Track stepUp
+                    }
+
+                    // Escalator A-Wing Up from lower floor Ending Point    
+                    const endEscUpGeo = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
+                    const endEscUp = new THREE.Mesh(endEscUpGeo, window.EscalatorMaterial);
+                    endEscUp.name = `Right Escalator Up End A ${i}`;
+                    //start1Esc.rotation.x = -Math.PI / 2;
+                    endEscUp.position.set(
+                        -0.1 - (escalatorWidth / 2),
+                        floorY - (floorDepth / 3) - 0.08, // So the top is at floorY
+                        totalCorridorLength + 3.5
+                    );
+                    endEscUp.receiveShadow = true;
+                    scene.add(endEscUp);
+                    worldObjects.push(endEscUp);
+                    // NEW: Store a translated clone of the end mesh for up steps A
+                    const translatedEndEscUp = endEscUp.clone();
+                    translatedEndEscUp.position.y += 0.2;
+                    translatedEndEscUp.position.z += 0.3;
+                    escalatorEnds.up[i] = translatedEndEscUp;
+                    // End of Right side escalator Ramp going up from lower floor////
+                    // --- End of A-Wing Escalators ---   AAAAAAAA
+
+                    // B-Wing Escalators /////// BBBBBBBBBBBBBB
+                    // ---  B-Wing RIGHT  side Escalator B down Starting Point (Orange) - (Was LEFT) ---
+                    const startEscDownGeoB = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1); // <-- Add this line
+                    const startEscDownB = new THREE.Mesh(startEscDownGeoB, window.EscalatorEmbarkMaterialB);
+                    startEscDownB.name = `Right Escalator Down Start B ${i}`;
+                    //start1Esc.rotation.x = -Math.PI / 2;
+                    startEscDownB.position.set(
+                        - (escalatorWidth / 2) - 0.1,
+                        floorY - (floorDepth / 2), // So the top is at floorY
+                        -16 - totalCorridorLength - 3.5
+                    );
+                    startEscDownB.receiveShadow = true;
+                    scene.add(startEscDownB);
+                    worldObjects.push(startEscDownB);
+
+                    // Track startEscDown for this floor
+                    escalatorStartsB.down[i] = startEscDownB;
+                    // Track stepDown for this floor
+                    escalatorStepsB.down[i] = [];
+
+                    // ---  B-Wing Steps DOWN  -Right side (Was Left) --- 
+                    for (let s = 0; s < stepCount; s++) {
+                        const y = floorY - .01 - ((s + 1) * stepHeight) + stepHeight / 2;
+                        const zB = -16 - totalCorridorLength - 4.3 - (s / stepCount) * SETTINGS.escalatorLength;
+                        const stepGeoB = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
+                        const stepDownB = new THREE.Mesh(stepGeoB, window.EscalatorMaterial);
+                        stepDownB.position.set(
+                            - (stepWidth / 2) - 0.1,
+                            y,
+                            zB
+                        );
+                        stepDownB.castShadow = true;
+                        stepDownB.receiveShadow = true;
+                        stepDownB.name = `Right Escalator Step Down B ${i}-${s}`;
+                        scene.add(stepDownB);
+                        worldObjects.push(stepDownB); // Track stepDown
+                        escalatorStepsB.down[i].push(stepDownB); // Track stepDown
+                    }
+
+                    //  B-Wing Escalator Down on lower floor Ending Point - Right side ( was Left side    )    
+                    const endEscDownGeoB = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
+
+                    const endEscDownB = new THREE.Mesh(endEscDownGeoB, window.EscalatorMaterial);
+                    endEscDownB.name = `Right Escalator Down End B ${i}`;
+                    //start1Esc.rotation.x = -Math.PI / 2;
+                    endEscDownB.position.set(
+                        - (escalatorWidth / 2) - 0.1,
+                        floorY - SETTINGS.floorHeight - (floorDepth / 2) + 0.01, // Lowered by 0.01 to match last step
+                        -16 - totalCorridorLength - escalatorLength - 4 - 0.5
+                    );
+                    endEscDownB.receiveShadow = true;
+                    scene.add(endEscDownB);
+                    worldObjects.push(endEscDownB);
+                    // NEW: Store the end mesh for later reset
+                    escalatorEndsB.down[i] = endEscDownB;
+                    // ---  B-Wing End of Left side Escalator Down on lower floor Ending Point --- ///
+
+                    // ---  B-Wing  LEFT side Escalator going Up on Lower floor Starting Point (Organge) (Was Right) ---
+                    const startEscUpGeoB = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
+                    const startEscUpB = new THREE.Mesh(startEscUpGeoB, window.EscalatorEmbarkMaterialB);
+                    startEscUpB.name = `Leftt Escalator Up Start B ${i}`;
+                    //start1Esc.rotation.x = -Math.PI / 2;
+                    startEscUpB.position.set(
+                        SETTINGS.corridorWidth + 0.1 + (escalatorWidth / 2),
+                        floorY - SETTINGS.floorHeight - (floorDepth / 2), // So the top is at floorY
+                        -16 - totalCorridorLength - escalatorLength - 4 - 0.5
+                    );
+                    startEscUpB.receiveShadow = true;
+                    scene.add(startEscUpB);
+                    worldObjects.push(startEscUpB);
+
+                    // Track startEscUp for this floor
+                    escalatorStartsB.up[i] = startEscUpB;
+                    // Track stepUp for this floor
+                    escalatorStepsB.up[i] = [];
+
+                    // --- Steps UP B-Wing - Left side (was rigg side) ---
+                    for (let s = 0; s < stepCount; s++) {
+                        //const y = floorY - (stepCount - s) * stepHeight + stepHeight / 2;
+                        const y = floorY + 0.01 - (s + 1) * stepHeight + stepHeight / 2;
+                        const zB = -16 - totalCorridorLength - 4.3 - (s / stepCount) * SETTINGS.escalatorLength;
+                        const stepGeoB = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
+                        const stepUpB = new THREE.Mesh(stepGeoB, window.EscalatorMaterial);
+                        stepUpB.position.set(
+                            SETTINGS.corridorWidth + 0.1 + (stepWidth / 2),
+                            y,
+                            zB
+                        );
+                        stepUpB.castShadow = true;
+                        stepUpB.receiveShadow = true;
+                        stepUpB.name = `Left Escalator Step Up B ${i}-${s}`;
+                        scene.add(stepUpB);
+                        worldObjects.push(stepUpB);
+                        escalatorStepsB.up[i].push(stepUpB); // Track stepUp
+                    }
+
+                    // Escalator B-Wing Up from lower floor Ending Point    
+                    const endEscUpGeoB = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
+                    const endEscUpB = new THREE.Mesh(endEscUpGeoB, window.EscalatorMaterial);
+                    endEscUpB.name = `Left Escalator Up End B ${i}`;
+                    //start1Esc.rotation.x = -Math.PI / 2;
+                    endEscUpB.position.set(
+                        SETTINGS.corridorWidth + 0.1 + (escalatorWidth / 2),
+                        floorY - (floorDepth / 3) - 0.08, // So the top is at floorY
+                        -16 - totalCorridorLength - 3.5
+                    );
+                    endEscUpB.receiveShadow = true;
+                    scene.add(endEscUpB);
+                    worldObjects.push(endEscUpB);
+                    // NEW: Store a translated clone of THE END MESH FOR UP STEPS B
+                    const translatedEndEscUpB = endEscUpB.clone();
+                    translatedEndEscUpB.position.y += 0.2;
+                    translatedEndEscUpB.position.z -= 0.3; // Corrected to make B-Wing UP behave like A-Wing UP (stop short)
+                    escalatorEndsB.up[i] = translatedEndEscUpB;
+                    // End of Right side escalator Ramp going up from lower floor////
+                    // --- End of B-Wing Escalators ---   BBBBBBBBBBB
+
+                    // --- Add Balustrades --- ///////////////////////////////////////////////////
+
+                    // Balustrades for Escalator Wing-A UP (Left side, X from -escalatorWidth to 0) /// AAAAAAAA
+                    const startUpBalustrade = new THREE.Vector3(-SETTINGS.escalatorWidth / 2, (i - 1) * SETTINGS.floorHeight - floorDepth, totalCorridorLength + SETTINGS.escalatorLength + 4);
+                    const endUpBalustrade = new THREE.Vector3(-SETTINGS.escalatorWidth / 2, floorY - floorDepth / 2, totalCorridorLength + 3.5);
+                    const dirUpBalustrade = new THREE.Vector3().subVectors(endUpBalustrade, startUpBalustrade);
+                    const lengthUpBalustrade = dirUpBalustrade.length();
+                    const centerPosUpBalustrade = new THREE.Vector3().addVectors(startUpBalustrade, endUpBalustrade).multiplyScalar(0.5);
+
+                    // Calculate the Y position of the ramp surface at the center Z for UP escalator A
+                    const centerZ_UpBalustrade = centerPosUpBalustrade.z;
+                    const rampSurfaceY_at_centerZ_Up = startUpBalustrade.y + (centerZ_UpBalustrade - startUpBalustrade.z) / (endUpBalustrade.z - startUpBalustrade.z) * (endUpBalustrade.y - startUpBalustrade.y);
+                    const balustradeCenterY_Up = rampSurfaceY_at_centerZ_Up + balustradeHeight / 2;
+
+                    // Inner balustrade A (closer to corridor, X=0)
+                    const innerBalustradeUpGeo = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthUpBalustrade);
+                    const innerBalustradeUp = new THREE.Mesh(innerBalustradeUpGeo, balustradeMaterial);
+                    innerBalustradeUp.name = `Balustrade_Up_Inner_F${i - 1}-F${i}`;
+                    innerBalustradeUp.position.set(0 - balustradeThickness / 2, balustradeCenterY_Up, centerPosUpBalustrade.z);
+                    innerBalustradeUp.lookAt(innerBalustradeUp.position.clone().add(dirUpBalustrade));
+                    scene.add(innerBalustradeUp);
+                    worldObjects.push(innerBalustradeUp);
+
+                    // Outer balustrade A (X=-escalatorWidth)
+                    const outerBalustradeUpGeo = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthUpBalustrade);
+                    const outerBalustradeUp = new THREE.Mesh(outerBalustradeUpGeo, balustradeMaterial);
+                    outerBalustradeUp.name = `Balustrade_Up_Outer_F${i - 1}-F${i}`;
+                    outerBalustradeUp.position.set(-SETTINGS.escalatorWidth + balustradeThickness / 2, balustradeCenterY_Up, centerPosUpBalustrade.z);
+                    outerBalustradeUp.lookAt(outerBalustradeUp.position.clone().add(dirUpBalustrade));
+                    scene.add(outerBalustradeUp);
+                    worldObjects.push(outerBalustradeUp);
+
+                    // Add cylinders for escalator UP balustrades A (posts at end sides)
+                    {
+                        // Create a cylinder with diameter = balustradeHeight and height = balustradeThickness.
+                        const cylinderGeo = new THREE.CylinderGeometry(balustradeHeight / 2, balustradeHeight / 2, balustradeThickness, 16);
+                        cylinderGeo.rotateZ(Math.PI / 2);
+                        // up direction along the balustrade (use already computed startUpBalustrade and endUpBalustrade)
+                        const upDir = new THREE.Vector3().subVectors(endUpBalustrade, startUpBalustrade).normalize();
+                        const halfLengthUp = lengthUpBalustrade / 2;
+                        // For inner balustrade UP: compute endpoint centers from innerBalustradeUp.position (which is center of the box)
+                        const innerCenter = innerBalustradeUp.position.clone();
+                        const innerEnd1 = innerCenter.clone().sub(upDir.clone().multiplyScalar(halfLengthUp));
+                        const innerEnd2 = innerCenter.clone().add(upDir.clone().multiplyScalar(halfLengthUp));
+                        const cylinderInner1 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
+                        cylinderInner1.position.copy(innerEnd1);
+                        const cylinderInner2 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
+                        cylinderInner2.position.copy(innerEnd2);
+                        // For outer balustrade UP:
+                        const outerCenter = outerBalustradeUp.position.clone();
+                        const outerEnd1 = outerCenter.clone().sub(upDir.clone().multiplyScalar(halfLengthUp));
+                        const outerEnd2 = outerCenter.clone().add(upDir.clone().multiplyScalar(halfLengthUp));
+                        const cylinderOuter1 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
+                        cylinderOuter1.position.copy(outerEnd1);
+                        const cylinderOuter2 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
+                        cylinderOuter2.position.copy(outerEnd2);
+                        scene.add(cylinderInner1, cylinderInner2, cylinderOuter1, cylinderOuter2);
+                    }
+
+                    // Balustrades for Escalator DOWN A (Right side, X from SETTINGS.corridorWidth to SETTINGS.corridorWidth + escalatorWidth)
+                    const startDownBalustrade = new THREE.Vector3(SETTINGS.corridorWidth + SETTINGS.escalatorWidth / 2, floorY - floorDepth / 2, totalCorridorLength + 3.5);
+                    const endDownBalustrade = new THREE.Vector3(SETTINGS.corridorWidth + SETTINGS.escalatorWidth / 2, (i - 1) * SETTINGS.floorHeight - floorDepth, totalCorridorLength + SETTINGS.escalatorLength + 4);
+                    const dirDownBalustrade = new THREE.Vector3().subVectors(endDownBalustrade, startDownBalustrade);
+                    const lengthDownBalustrade = dirDownBalustrade.length();
+                    const centerPosDownBalustrade = new THREE.Vector3().addVectors(startDownBalustrade, endDownBalustrade).multiplyScalar(0.5);
+
+                    // Calculate the Y position of the ramp surface at the center Z for DOWN escalator A
+                    const centerZ_DownBalustrade = centerPosDownBalustrade.z;
+                    const rampSurfaceY_at_centerZ_Down = startDownBalustrade.y + (centerZ_DownBalustrade - startDownBalustrade.z) / (endDownBalustrade.z - startDownBalustrade.z) * (endDownBalustrade.y - startDownBalustrade.y);
+                    const balustradeCenterY_Down = rampSurfaceY_at_centerZ_Down + balustradeHeight / 2;
+
+                    // Inner balustrade A (closer to corridor, X=SETTINGS.corridorWidth)
+                    const innerBalustradeDownGeo = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthDownBalustrade);
+                    const innerBalustradeDown = new THREE.Mesh(innerBalustradeDownGeo, balustradeMaterial);
+                    innerBalustradeDown.name = `Balustrade_Down_Inner_F${i}-F${i - 1}`;
+                    innerBalustradeDown.position.set(SETTINGS.corridorWidth + balustradeThickness / 2, balustradeCenterY_Down, centerPosDownBalustrade.z);
+                    innerBalustradeDown.lookAt(innerBalustradeDown.position.clone().add(dirDownBalustrade));
+                    scene.add(innerBalustradeDown);
+                    worldObjects.push(innerBalustradeDown);
+
+                    // Outer balustrade A (X=SETTINGS.corridorWidth + escalatorWidth)
+                    const outerBalustradeDownGeo = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthDownBalustrade);
+                    const outerBalustradeDown = new THREE.Mesh(outerBalustradeDownGeo, balustradeMaterial);
+                    outerBalustradeDown.name = `Balustrade_Down_Outer_F${i}-F${i - 1}`;
+                    outerBalustradeDown.position.set(SETTINGS.corridorWidth + SETTINGS.escalatorWidth - balustradeThickness / 2, balustradeCenterY_Down, centerPosDownBalustrade.z);
+                    outerBalustradeDown.lookAt(outerBalustradeDown.position.clone().add(dirDownBalustrade));
+                    scene.add(outerBalustradeDown);
+                    worldObjects.push(outerBalustradeDown);
+
+                    // Add cylinders for escalator DOWN balustrades A (posts at end sides)
+                    {
+                        const cylinderGeo = new THREE.CylinderGeometry(balustradeHeight / 2, balustradeHeight / 2, balustradeThickness, 16);
+                        cylinderGeo.rotateZ(Math.PI / 2);
+                        // For down balustrade A, use startDownBalustrade and endDownBalustrade
+                        const downDir = new THREE.Vector3().subVectors(endDownBalustrade, startDownBalustrade).normalize();
+                        const halfLengthDown = lengthDownBalustrade / 2;
+                        // For inner balustrade DOWN:
+                        const innerCenterDown = innerBalustradeDown.position.clone();
+                        const innerDownEnd1 = innerCenterDown.clone().sub(downDir.clone().multiplyScalar(halfLengthDown));
+                        const innerDownEnd2 = innerCenterDown.clone().add(downDir.clone().multiplyScalar(halfLengthDown));
+                        const cylinderInnerDown1 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
+                        cylinderInnerDown1.position.copy(innerDownEnd1);
+                        const cylinderInnerDown2 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
+                        cylinderInnerDown2.position.copy(innerDownEnd2);
+                        // For outer balustrade DOWN:
+                        const outerCenterDown = outerBalustradeDown.position.clone();
+                        const outerDownEnd1 = outerCenterDown.clone().sub(downDir.clone().multiplyScalar(halfLengthDown));
+                        const outerDownEnd2 = outerCenterDown.clone().add(downDir.clone().multiplyScalar(halfLengthDown));
+                        const cylinderOuterDown1 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
+                        cylinderOuterDown1.position.copy(outerDownEnd1);
+                        const cylinderOuterDown2 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
+                        cylinderOuterDown2.position.copy(outerDownEnd2);
+                        scene.add(cylinderInnerDown1, cylinderInnerDown2, cylinderOuterDown1, cylinderOuterDown2);
+                    }
+                    // --- End of Balustrades Wing A --- /////////////
+
+                    // Balustrades for Escalators in Wing-B ////////////////////// BBBBBBB
+                    // Balustrades for Escalator B UP (Left side, X from -escalatorWidth to 0)
+                    const startUpBalustradeB = new THREE.Vector3(
+                        - (SETTINGS.escalatorWidth / 2),
+                        (i - 1) * SETTINGS.floorHeight - floorDepth,
+                        -16 - totalCorridorLength - SETTINGS.escalatorLength - 4
+                    );
+                    const endUpBalustradeB = new THREE.Vector3(- (SETTINGS.escalatorWidth / 2),
+                        floorY - floorDepth / 2,
+                        -16 - totalCorridorLength - 3.5);
+                    const dirUpBalustradeB = new THREE.Vector3().subVectors(endUpBalustradeB, startUpBalustradeB);
+                    const lengthUpBalustradeB = dirUpBalustradeB.length();
+                    const centerPosUpBalustradeB = new THREE.Vector3().addVectors(startUpBalustradeB, endUpBalustradeB).multiplyScalar(0.5);
+
+                    // Calculate the Y position of the ramp surface at the center Z for UP escalator B
+                    const centerZ_UpBalustradeB = centerPosUpBalustradeB.z;
+                    const rampSurfaceY_at_centerZ_UpB = startUpBalustradeB.y + (centerZ_UpBalustradeB - startUpBalustradeB.z) / (endUpBalustradeB.z - startUpBalustradeB.z) * (endUpBalustradeB.y - startUpBalustradeB.y);
+                    const balustradeCenterY_UpB = rampSurfaceY_at_centerZ_UpB + balustradeHeight / 2;
+
+                    // Inner balustrade B (closer to corridor, X=0)
+                    const innerBalustradeUpGeoB = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthUpBalustradeB);
+                    const innerBalustradeUpB = new THREE.Mesh(innerBalustradeUpGeoB, balustradeMaterial);
+                    innerBalustradeUpB.name = `Balustrade_B_Up_Inner_F${i - 1}-F${i}`;
+                    innerBalustradeUpB.position.set(0 - balustradeThickness / 2, balustradeCenterY_UpB, centerPosUpBalustradeB.z);
+                    innerBalustradeUpB.lookAt(innerBalustradeUpB.position.clone().add(dirUpBalustradeB));
+                    scene.add(innerBalustradeUpB);
+                    worldObjects.push(innerBalustradeUpB);
+
+                    // Outer balustrade B (X=-escalatorWidth)
+                    const outerBalustradeUpGeoB = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthUpBalustradeB);
+                    const outerBalustradeUpB = new THREE.Mesh(outerBalustradeUpGeoB, balustradeMaterial);
+                    outerBalustradeUpB.name = `Balustrade_B_Up_Outer_F${i - 1}-F${i}`;
+                    outerBalustradeUpB.position.set(-SETTINGS.escalatorWidth + balustradeThickness / 2, balustradeCenterY_UpB, centerPosUpBalustradeB.z);
+                    outerBalustradeUpB.lookAt(outerBalustradeUpB.position.clone().add(dirUpBalustradeB));
+                    scene.add(outerBalustradeUpB);
+                    worldObjects.push(outerBalustradeUpB);
+
+                    // Add cylinders for escalator UP balustrades B (posts at end sides)
+                    {
+                        // Create a cylinder with diameter = balustradeHeight and height = balustradeThickness.
+                        const cylinderGeoB = new THREE.CylinderGeometry(balustradeHeight / 2, balustradeHeight / 2, balustradeThickness, 16);
+                        cylinderGeoB.rotateZ(Math.PI / 2);
+                        // up direction along the balustrade (use already computed startUpBalustrade and endUpBalustrade)
+                        const upDirB = new THREE.Vector3().subVectors(endUpBalustradeB, startUpBalustradeB).normalize();
+                        const halfLengthUpB = lengthUpBalustradeB / 2;
+                        // For inner balustrade UP: compute endpoint centers from innerBalustradeUp.position (which is center of the box)
+                        const innerCenterB = innerBalustradeUpB.position.clone();
+                        const innerEnd1B = innerCenterB.clone().sub(upDirB.clone().multiplyScalar(halfLengthUpB));
+                        const innerEnd2B = innerCenterB.clone().add(upDirB.clone().multiplyScalar(halfLengthUpB));
+                        const cylinderInner1B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
+                        cylinderInner1B.position.copy(innerEnd1B);
+                        const cylinderInner2B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
+                        cylinderInner2B.position.copy(innerEnd2B);
+                        // For outer balustrade UP:
+                        const outerCenterB = outerBalustradeUpB.position.clone();
+                        const outerEnd1B = outerCenterB.clone().sub(upDirB.clone().multiplyScalar(halfLengthUpB));
+                        const outerEnd2 = outerCenterB.clone().add(upDirB.clone().multiplyScalar(halfLengthUpB));
+                        const cylinderOuter1B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
+                        cylinderOuter1B.position.copy(outerEnd1B);
+                        const cylinderOuter2B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
+                        cylinderOuter2B.position.copy(outerEnd2);
+                        scene.add(cylinderInner1B, cylinderInner2B, cylinderOuter1B, cylinderOuter2B);
+                    }
+
+                    // Balustrades for Escalator DOWN B (Right side, X from SETTINGS.corridorWidth to SETTINGS.corridorWidth + escalatorWidth)
+                    const startDownBalustradeB = new THREE.Vector3(
+                        SETTINGS.corridorWidth + SETTINGS.escalatorWidth / 2,
+                        floorY - floorDepth / 2,
+                        -16 - totalCorridorLength - 3.5);
+                    const endDownBalustradeB = new THREE.Vector3(
+                        SETTINGS.corridorWidth + (SETTINGS.escalatorWidth / 2),
+                        (i - 1) * SETTINGS.floorHeight - floorDepth,
+                        -16 - totalCorridorLength - SETTINGS.escalatorLength - 4);
+                    const dirDownBalustradeB = new THREE.Vector3().subVectors(endDownBalustradeB, startDownBalustradeB);
+                    const lengthDownBalustradeB = dirDownBalustradeB.length();
+                    const centerPosDownBalustradeB = new THREE.Vector3().addVectors(startDownBalustradeB, endDownBalustradeB).multiplyScalar(0.5);
+
+                    // Calculate the Y position of the ramp surface at the center Z for DOWN escalator B
+                    const centerZ_DownBalustradeB = centerPosDownBalustradeB.z;
+                    const rampSurfaceY_at_centerZ_DownB = startDownBalustradeB.y + (centerZ_DownBalustradeB - startDownBalustradeB.z) / (endDownBalustradeB.z - startDownBalustradeB.z) * (endDownBalustradeB.y - startDownBalustradeB.y);
+                    const balustradeCenterY_DownB = rampSurfaceY_at_centerZ_DownB + balustradeHeight / 2;
+
+                    // Inner balustrade B (closer to corridor, X=SETTINGS.corridorWidth)
+                    const innerBalustradeDownGeoB = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthDownBalustradeB);
+                    const innerBalustradeDownB = new THREE.Mesh(innerBalustradeDownGeoB, balustradeMaterial);
+                    innerBalustradeDownB.name = `Balustrade_B_Down_Inner_F${i}-F${i - 1}`;
+                    innerBalustradeDownB.position.set(SETTINGS.corridorWidth + balustradeThickness / 2, balustradeCenterY_DownB, centerPosDownBalustradeB.z);
+                    innerBalustradeDownB.lookAt(innerBalustradeDownB.position.clone().add(dirDownBalustradeB));
+                    scene.add(innerBalustradeDownB);
+                    worldObjects.push(innerBalustradeDownB);
+
+                    // Outer balustrade B (X=SETTINGS.corridorWidth + escalatorWidth)
+                    const outerBalustradeDownGeoB = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthDownBalustradeB);
+                    const outerBalustradeDownB = new THREE.Mesh(outerBalustradeDownGeoB, balustradeMaterial);
+                    outerBalustradeDownB.name = `Balustrade_B_Down_Outer_F${i}-F${i - 1}`;
+                    outerBalustradeDownB.position.set(SETTINGS.corridorWidth + SETTINGS.escalatorWidth - balustradeThickness / 2, balustradeCenterY_DownB, centerPosDownBalustradeB.z);
+                    outerBalustradeDownB.lookAt(outerBalustradeDownB.position.clone().add(dirDownBalustradeB));
+                    scene.add(outerBalustradeDownB);
+                    worldObjects.push(outerBalustradeDownB);
+
+                    // Add cylinders for escalator DOWN balustrades B (posts at end sides)
+                    {
+                        const cylinderGeoB = new THREE.CylinderGeometry(balustradeHeight / 2, balustradeHeight / 2, balustradeThickness, 16);
+                        cylinderGeoB.rotateZ(Math.PI / 2);
+                        // For down balustrade, use startDownBalustrade and endDownBalustrade
+                        const downDirB = new THREE.Vector3().subVectors(endDownBalustradeB, startDownBalustradeB).normalize();
+                        const halfLengthDownB = lengthDownBalustradeB / 2;
+                        // For inner balustrade DOWN:
+                        const innerCenterDownB = innerBalustradeDownB.position.clone();
+                        const innerDownEnd1B = innerCenterDownB.clone().sub(downDirB.clone().multiplyScalar(halfLengthDownB));
+                        const innerDownEnd2B = innerCenterDownB.clone().add(downDirB.clone().multiplyScalar(halfLengthDownB));
+                        const cylinderInnerDown1B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
+                        cylinderInnerDown1B.position.copy(innerDownEnd1B);
+                        const cylinderInnerDown2B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
+                        cylinderInnerDown2B.position.copy(innerDownEnd2B);
+                        // For outer balustrade DOWN:
+                        const outerCenterDownB = outerBalustradeDownB.position.clone();
+                        const outerDownEnd1B = outerCenterDownB.clone().sub(downDirB.clone().multiplyScalar(halfLengthDownB));
+                        const outerDownEnd2B = outerCenterDownB.clone().add(downDirB.clone().multiplyScalar(halfLengthDownB));
+                        const cylinderOuterDown1B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
+                        cylinderOuterDown1B.position.copy(outerDownEnd1B);
+                        const cylinderOuterDown2B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
+                        cylinderOuterDown2B.position.copy(outerDownEnd2B);
+                        scene.add(cylinderInnerDown1B, cylinderInnerDown2B, cylinderOuterDown1B, cylinderOuterDown2B);
+                    }
+                    // --- End of Balustrades Wing B --- /////////////
+
+
+                } // END OF ESCALATORS ////////////////////////////////////////
+
+
             }
 
-            // Escalator Bridge Ceiling Lights
-            const escLightPositions = [totalCorridorLength + 4, totalCorridorLength + 4 + (2*escalatorLength/3)];
-            escLightPositions.forEach((zPos, idx) => {
-                // escalator bridge light creation logic
-                const lightGeo = new THREE.ConeGeometry(0.3, 0.2, 8);
-                createStandardLamp(
-                    SETTINGS.corridorWidth / 2,
-                    floorY + SETTINGS.wallHeight - 0.5,
-                    zPos,
-                    i, // floorIndex
-                    `EscBridge_F${i}_Idx${idx + 1}`, // lampIdSuffix
-                    scene, lights, lightBulbMaterial
-                );
-            });
 
-            // Escalator Bridge B Ceiling Lights
-            // B wing bridge starts at Z = -16 - totalCorridorLength - 4
-            const escBBridgeStartRefZ = -16 - totalCorridorLength - 4;
-            const escBLightBPositions = [escBBridgeStartRefZ, escBBridgeStartRefZ - (2*escalatorLength/3)];
-            escBLightBPositions.forEach((zPos, idx) => {
-                // escalator bridge light creation logic
-                const lightBGeo = new THREE.ConeGeometry(0.3, 0.2, 8);
-                createStandardLamp(
-                    SETTINGS.corridorWidth / 2,
-                    floorY + SETTINGS.wallHeight - 0.5,
-                    zPos,
-                    i, // floorIndex
-                    `EscBridge_B_F${i}_Idx${idx + 1}`, // lampIdSuffix
-                    scene, lights, lightBulbMaterial
-                );
-            });
+            // Walls & Doors
 
-            // Far end wall for office floors (at end of escalator area)
-            const endWallEscGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (2 * escalatorWidth), SETTINGS.floorHeight, wallDepth);
-            const endWallFar = new THREE.Mesh(endWallEscGeo, wallMaterialA); // A-wing
-            endWallFar.position.set(SETTINGS.corridorWidth / 2, floorY + SETTINGS.wallHeight / 2, totalCorridorLength + 4 + escalatorLength + 4);
-            endWallFar.name = `Escalator Back Wall ${i}`;
-            endWallFar.castShadow = true; endWallFar.receiveShadow = true;
-            scene.add(endWallFar);
-            worldObjects.push(endWallFar);
+            // Right Wall next to elevator shaft (Negative Z direction)
+            // These are the walls that form the elevator shaft on each floor.
+            // They use currentElevatorConfig for positioning.
 
-// Add Text "A" + floor number to endWallAFar
-            const textStringA = "A" + (i === 0 ? "G" : i.toString());
-            const textGeoA = new TextGeometry(textStringA, {
-                font: loadedFont,
-                size: 1.5, // Large letter size
-                depth: 0.15, // Corrected: Use 'depth' for extrusion
-                curveSegments: 12,
-                bevelEnabled: false
-            });
-            textGeoA.center(); // Center the geometry vertices
-            const textMeshA = new THREE.Mesh(textGeoA, textMaterial);
-
-            textMeshA.position.set(
-                endWallFar.position.x, // Now centered because geometry is centered
-                endWallFar.position.y, // Now centered because geometry is centered
-                endWallFar.position.z - (wallDepth / 2) - 0.02 // Slightly in front of the wall's inner surface
+            // Shaft Wall Left (Player's Right when facing +Z into shaft)
+            const shaftWallLeftGeo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, (2 * overallShaftActualDepth) + 8);
+            const shaftWallLeft = new THREE.Mesh(shaftWallLeftGeo, wallMaterial);
+            shaftWallLeft.name = `ShaftWall_Left_F${i}`;
+            shaftWallLeft.position.set(
+                overallShaftMinX - wallDepth / 2, // Adjusted
+                floorY + SETTINGS.floorHeight / 2,
+                overallShaftActualCenterZ - 2 // Adjusted
             );
-            textMeshA.rotation.y = Math.PI; // Rotate to face the player
-            textMeshA.name = `Text_Wall_A_F${i}`;
-            scene.add(textMeshA);
+            shaftWallLeft.castShadow = true; shaftWallLeft.receiveShadow = true;
+            scene.add(shaftWallLeft); worldObjects.push(shaftWallLeft);
 
-             // Far end wall for office B floors (at end of escalator area)
-            const endWallBEscGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (2 * escalatorWidth), SETTINGS.floorHeight, wallDepth);
-            const endWallBFar = new THREE.Mesh(endWallBEscGeo, wallMaterialB); // B-wing
-            endWallBFar.position.set(SETTINGS.corridorWidth / 2, floorY + SETTINGS.wallHeight / 2, - 16 -(totalCorridorLength + 4 + escalatorLength + 4));
-            endWallBFar.name = `Escalator B Back Wall B ${i}`;
-            endWallBFar.castShadow = true; endWallBFar.receiveShadow = true;
-            scene.add(endWallBFar);
-            worldObjects.push(endWallBFar);
-
-            // Add Text "B" + floor number to endWallBFar
-            const textStringB = "B" + (i === 0 ? "G" : i.toString());
-            const textGeoB = new TextGeometry(textStringB, {
-                font: loadedFont,
-                size: 1.5,
-                depth: 0.15, // Corrected: Use 'depth' for extrusion
-                curveSegments: 12,
-                bevelEnabled: false });
-            textGeoB.center(); 
-            const textMeshB = new THREE.Mesh(textGeoB, whiteMaterial.clone()); // Use white for B-Wing signage
-            textMeshB.position.set(
-                endWallBFar.position.x, // Now centered because geometry is centered
-                endWallBFar.position.y, // Now centered because geometry is centered
-                endWallBFar.position.z + (wallDepth / 2) + 0.02 // Slightly in front of the wall's inner surface
+            // Shaft Wall Right (Player's Left when facing +Z into shaft)
+            const shaftWallRightGeo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, (2 * overallShaftActualDepth) + 8);
+            const shaftWallRight = new THREE.Mesh(shaftWallRightGeo, wallMaterial);
+            shaftWallRight.name = `ShaftWall_Right_F${i}`;
+            shaftWallRight.position.set(
+                overallShaftMaxX + wallDepth / 2, // Adjusted
+                floorY + SETTINGS.floorHeight / 2,
+                overallShaftActualCenterZ - 2
             );
-            textMeshB.name = `Text_Wall_B_F${i}`;
-            scene.add(textMeshB);
-
-            // --- Walls around Escalator Area for Office Floors ---
-            // Right Wall next to escalator (Positive Z direction)
-            const wallR2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, escalatorLength + 8);
-            const wallR2 = new THREE.Mesh(wallR2Geo, wallMaterialA); // A-wing
-            wallR2.name = `Escalator RHS Wall ${i}`;
-            wallR2.position.set(-escalatorWidth, floorY + SETTINGS.wallHeight / 2, totalCorridorLength + (escalatorLength/2) + 4);
-            wallR2.castShadow = true; wallR2.receiveShadow = true;
-            scene.add(wallR2); worldObjects.push(wallR2);
-
-            // --- Walls around Escalator B Area for Office Floors ---
-            // Right Wall next to escalator B (Negative Z direction)
-            const wallBR2Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, escalatorLength + 8);
-            const wallBR2 = new THREE.Mesh(wallBR2Geo, wallMaterialB); // B-wing
-            wallBR2.name = `Escalator B RHS Wall ${i}`;
-            wallBR2.position.set(-escalatorWidth, floorY + SETTINGS.wallHeight / 2, - 16 -(totalCorridorLength + (escalatorLength/2) + 4));
-            wallBR2.castShadow = true; wallBR2.receiveShadow = true;
-            scene.add(wallBR2); worldObjects.push(wallBR2);
-
-
-            // Right Corner Wall next to escalator (Negative X direction)
-            const wallRCornerGeo = new THREE.BoxGeometry(escalatorWidth + wallDepth, SETTINGS.floorHeight, wallDepth);
-            const wallRCorner = new THREE.Mesh(wallRCornerGeo, wallMaterialA); // A-wing
-            wallRCorner.name = `Escalator RHS Corner Wall ${i}`;
-            wallRCorner.position.set(-escalatorWidth/2, floorY + SETTINGS.wallHeight / 2, totalCorridorLength);
-            wallRCorner.castShadow = true; wallRCorner.receiveShadow = true;
-            scene.add(wallRCorner); worldObjects.push(wallRCorner);
-
-             // Right Corner Wall B next to escalator (Negative Z Direction) (Negative X direction)
-            const wallBRCornerGeo = new THREE.BoxGeometry(escalatorWidth + wallDepth, SETTINGS.floorHeight, wallDepth);
-            const wallBRCorner = new THREE.Mesh(wallBRCornerGeo, wallMaterialB); // B-wing
-            wallBRCorner.name = `Escalator B RHS Corner Wall ${i}`;
-            wallBRCorner.position.set(-escalatorWidth/2, floorY + SETTINGS.wallHeight / 2, -16 - totalCorridorLength);
-            wallBRCorner.castShadow = true; wallBRCorner.receiveShadow = true;
-            scene.add(wallBRCorner); worldObjects.push(wallBRCorner);
-
-
-            // Left Wall next to escalator (Positive Z direction)
-            const LeftWallXEsc = SETTINGS.corridorWidth; // Re-scope for clarity if needed
-            const wallL3Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, escalatorLength + 8);
-            const wallL3 = new THREE.Mesh(wallL3Geo, wallMaterialA); // A-wing
-            wallL3.name = `Escalator Left Wall ${i}`;
-            wallL3.position.set(LeftWallXEsc + escalatorWidth, floorY + SETTINGS.wallHeight / 2, totalCorridorLength + (escalatorLength/2) + 4);
-            wallL3.castShadow = true; wallL3.receiveShadow = true;
-            scene.add(wallL3); worldObjects.push(wallL3);
-
-            // Left Wall next to escalator B (Negative Z direction)
-            const LeftWallBXEsc = SETTINGS.corridorWidth; // Re-scope for clarity if needed
-            const wallBL3Geo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, escalatorLength + 8);
-            const wallBL3 = new THREE.Mesh(wallBL3Geo, wallMaterialB); // B-wing
-            wallBL3.name = `Escalator B Left Wall ${i}`;
-            wallBL3.position.set(LeftWallXEsc + escalatorWidth, floorY + SETTINGS.wallHeight / 2, -16 - (totalCorridorLength + (escalatorLength/2) + 4));
-            wallBL3.castShadow = true; wallBL3.receiveShadow = true;
-            scene.add(wallBL3); worldObjects.push(wallBL3);
-            
-            
-            // Left Corner Wall next to escalator (Negative X direction)
-            const wallLCornerGeo = new THREE.BoxGeometry(escalatorWidth + wallDepth, SETTINGS.floorHeight, wallDepth);
-            const wallLCorner = new THREE.Mesh(wallLCornerGeo, wallMaterialA); // A-wing
-            wallLCorner.name = `Escalator LHS Corner Wall ${i}`; // Corrected name
-            wallLCorner.position.set(LeftWallXEsc + escalatorWidth/2, floorY + SETTINGS.wallHeight / 2, totalCorridorLength);
-            wallLCorner.castShadow = true; wallLCorner.receiveShadow = true;
-            scene.add(wallLCorner); worldObjects.push(wallLCorner);
-
-            // Left Corner Wall B next to escalator (Negative Z Direction)(Negative X direction)
-            const wallBLCornerGeo = new THREE.BoxGeometry(escalatorWidth + wallDepth, SETTINGS.floorHeight, wallDepth);
-            const wallBLCorner = new THREE.Mesh(wallBLCornerGeo, wallMaterialB); // B-wing
-            wallBLCorner.name = `Escalator B LHS Corner Wall ${i}`; // Corrected name
-            wallBLCorner.position.set(LeftWallXEsc + escalatorWidth/2, floorY + SETTINGS.wallHeight / 2, -16 - totalCorridorLength);
-            wallBLCorner.castShadow = true; wallBLCorner.receiveShadow = true;
-            scene.add(wallBLCorner); worldObjects.push(wallBLCorner);
+            shaftWallRight.castShadow = true; shaftWallRight.receiveShadow = true;
+            scene.add(shaftWallRight); worldObjects.push(shaftWallRight);
 
 
 
+            // The old "capWallNear" that filled the floorDepth thickness above wallHeight:
+            const floorCapGeo = new THREE.BoxGeometry(overallShaftActualWidth, SETTINGS.floorHeight - SETTINGS.wallHeight, wallDepth);
+            const capWallNear = new THREE.Mesh(floorCapGeo, floorMaterial); // This is part of the floor/ceiling structure
+            capWallNear.name = `ShaftFloorCap_F${i}`;
+            capWallNear.position.set(
+                overallShaftActualCenterX, // Adjusted
+                floorY + SETTINGS.wallHeight + (SETTINGS.floorHeight - SETTINGS.wallHeight) / 2,
+                overallShaftMaxZ + wallDepth / 2 // Front of shaft
+            );
+            capWallNear.castShadow = true;
+            capWallNear.receiveShadow = true;
+            scene.add(capWallNear);
+            worldObjects.push(capWallNear);
 
+            // Place enemies on office floors (Moved here to be within the 'i' loop scope)
+            if (i >= 0) { // Office Floors
+                // floorY is defined at the start of this loop
 
-        } // End of Office Floor Generation (i >= 0)
+                // Wing A Enemies
+                // 1. Corridor Enemy (random Z)
+                const randomCorridorZ_A = Math.random() * totalCorridorLength;
+                createEnemy(SETTINGS.corridorWidth / 2, floorY, randomCorridorZ_A, i);
 
-        // --- Common elements for ALL floors (basement and above-ground) ---
-        // Define the top surface Y for the current and lower floors (used by balustrades)
-        // const currentFloorTopY = floorY; // No longer needed here, use floorY directly
-        // const lowerFloorTopY = (i - 1) * SETTINGS.floorHeight; // No longer needed here, use direct calculation
+                // 2. Left Room Enemy (random room)
+                const randomLeftRoomIndex_A = Math.floor(Math.random() * SETTINGS.doorsPerSide);
+                const leftRoomCenterZ_A = (randomLeftRoomIndex_A + 0.5) * SETTINGS.corridorSegmentLength;
+                const leftRoomCenterX_A = SETTINGS.corridorWidth + SETTINGS.roomSize / 2;
+                createEnemy(leftRoomCenterX_A, floorY, leftRoomCenterZ_A, i);
 
-        // Escalator Area Floor Slabs & Lights (conditionally generated)
-        const needsEscalatorPlatformsThisFloor =
-            (i > 0 && i < SETTINGS.numFloors) || // Escalator starts/passes *down* from this floor i (e.g. floor 1 down to 0)
-            ((i + 1) > 0 && (i + 1) < SETTINGS.numFloors); // Escalator starts/passes *down* from floor i+1 (meaning it arrives at or passes floor i from above)
+                // 3. Right Room Enemy (random room)
+                const randomRightRoomIndex_A = Math.floor(Math.random() * SETTINGS.doorsPerSide);
+                const rightRoomCenterZ_A = (randomRightRoomIndex_A + 0.5) * SETTINGS.corridorSegmentLength;
+                const rightRoomCenterX_A = -SETTINGS.roomSize / 2;
+                createEnemy(rightRoomCenterX_A, floorY, rightRoomCenterZ_A, i);
 
-        if (needsEscalatorPlatformsThisFloor) {
-            // Escalator Floor Start
-            const floorEsc1Geo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (escalatorWidth * 2), floorDepth, 4 - 1);
-            const floor1Esc = new THREE.Mesh(floorEsc1Geo, floorMaterial); // Use standard floorMaterial
-            floor1Esc.name = `Escalator Floor Start ${i}`;
-            floor1Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, totalCorridorLength  + 1.5);
-            floor1Esc.receiveShadow = true; scene.add(floor1Esc); worldObjects.push(floor1Esc);
+                // Wing B Enemies
+                // 1. Corridor Enemy (random Z)
+                // B-wing corridor Z ranges from -16 - totalCorridorLength (far end) to -16 (near end)
+                const randomCorridorZ_B = -16 - (Math.random() * totalCorridorLength);
+                createEnemy(SETTINGS.corridorWidth / 2, floorY, randomCorridorZ_B, i);
 
-            const escStartZ = floor1Esc.position.z;
-            const escLightY = floorY + SETTINGS.wallHeight - 0.5;
-            const escLightXs = [-escalatorWidth/2, SETTINGS.corridorWidth + (escalatorWidth/2)];
-            escLightXs.forEach((xPos, idx) => {
-                createStandardLamp(
-                    xPos,
-                    escLightY,
-                    escStartZ,
-                    i, // floorIndex
-                    `EscStart_F${i}_Idx${idx + 1}`, // lampIdSuffix
-                    scene, lights, lightBulbMaterial
-                );
-            });
+                // 2. Left Room Enemy (random room)
+                const randomLeftRoomIndex_B = Math.floor(Math.random() * SETTINGS.doorsPerSide);
+                const leftRoomCenterZ_B = ((randomLeftRoomIndex_B + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
+                const leftRoomCenterX_B = SETTINGS.corridorWidth + SETTINGS.roomSize / 2; // Same X as A-wing left rooms
+                createEnemy(leftRoomCenterX_B, floorY, leftRoomCenterZ_B, i);
 
-            // Escalator Floor B Start
-            const floorBEsc1Geo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (escalatorWidth * 2), floorDepth, 4 - 1);
-            const floorB1Esc = new THREE.Mesh(floorBEsc1Geo, floorMaterial); // Use standard floorMaterial
-            floorB1Esc.name = `Escalator Floor B Start ${i}`;
-            floorB1Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, -16 - (totalCorridorLength  + 1.5));
-            floorB1Esc.receiveShadow = true; scene.add(floorB1Esc); worldObjects.push(floorB1Esc);
+                // 3. Right Room Enemy (random room)
+                const randomRightRoomIndex_B = Math.floor(Math.random() * SETTINGS.doorsPerSide);
+                const rightRoomCenterZ_B = ((randomRightRoomIndex_B + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
+                const rightRoomCenterX_B = -SETTINGS.roomSize / 2; // Same X as A-wing right rooms
+                createEnemy(rightRoomCenterX_B, floorY, rightRoomCenterZ_B, i);
+            }
 
-            const escBStartZ = floorB1Esc.position.z;
-            const escBLightY = floorY + SETTINGS.wallHeight - 0.5;
-            const escBLightXs = [-escalatorWidth/2, SETTINGS.corridorWidth + (escalatorWidth/2)];
-            escBLightXs.forEach((xPos, idx) => {
-                createStandardLamp(
-                    xPos,
-                    escBLightY,
-                    escBStartZ,
-                    i, // floorIndex
-                    `EscBStart_F${i}_Idx${idx + 1}`, // lampIdSuffix
-                    scene, lights, lightBulbMaterial
-                );
-            });
-
-            // Escalator Floor bridge
-            const bridge2EscGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + 0.19, floorDepth, escalatorLength + 3);
-            const bridge2Esc = new THREE.Mesh(bridge2EscGeo, floorMaterial); // Use standard floorMaterial
-            bridge2Esc.name = `Escalator Floor Bridge ${i}`;
-            bridge2Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, totalCorridorLength + 4 +(escalatorLength / 2) + 0.5);
-            bridge2Esc.receiveShadow = true; scene.add(bridge2Esc); worldObjects.push(bridge2Esc);
-
-            // Escalator Floor B bridge
-            const bridgeB2EscGeo = new THREE.BoxGeometry(SETTINGS.corridorWidth + 0.19, floorDepth, escalatorLength + 3);
-            const bridgeB2Esc = new THREE.Mesh(bridgeB2EscGeo, floorMaterial); // Use standard floorMaterial
-            bridgeB2Esc.name = `Escalator Floor B Bridge ${i}`;
-            bridgeB2Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, -16 - (totalCorridorLength + 4 +(escalatorLength / 2) + 0.5));
-            bridgeB2Esc.receiveShadow = true; scene.add(bridgeB2Esc); worldObjects.push(bridgeB2Esc);
-
-
-            // Escalator Floor End
-            const floorEsc2Geo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (escalatorWidth * 2), floorDepth, 4-1);
-            const floor2Esc = new THREE.Mesh(floorEsc2Geo, floorMaterial); // Use standard floorMaterial
-            floor2Esc.name = `Escalator Floor End ${i}`;
-            floor2Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, totalCorridorLength + 4 + escalatorLength + 2.5);
-            floor2Esc.receiveShadow = true; scene.add(floor2Esc); worldObjects.push(floor2Esc);
-
-            const escEndZ = floor2Esc.position.z;
-            escLightXs.forEach((xPos, idx) => {
-                createStandardLamp(
-                    xPos,
-                    escLightY,
-                    escEndZ,
-                    i, // floorIndex
-                    `EscEnd_F${i}_Idx${idx + 1}`, // lampIdSuffix
-                    scene, lights, lightBulbMaterial
-                );
-            });
-
-            // Escalator Floor B End
-            const floorBEsc2Geo = new THREE.BoxGeometry(SETTINGS.corridorWidth + (escalatorWidth * 2), floorDepth, 4-1);
-            const floorB2Esc = new THREE.Mesh(floorBEsc2Geo, floorMaterial); // Use standard floorMaterial
-            floorB2Esc.name = `Escalator Floor End ${i}`;
-            floorB2Esc.position.set(SETTINGS.corridorWidth / 2, floorY - floorDepth / 2, -16 -( totalCorridorLength + 4 + escalatorLength + 2.5));
-            floorB2Esc.receiveShadow = true; scene.add(floorB2Esc); worldObjects.push(floorB2Esc);
-
-            const escBEndZ = floorB2Esc.position.z;
-            escBLightXs.forEach((xPos, idx) => {
-                createStandardLamp(
-                    xPos,
-                    escBLightY,
-                    escBEndZ,
-                    i, // floorIndex
-                    `EscEnd_B_F${i}_Idx${idx + 1}`, // lampIdSuffix
-                    scene, lights, lightBulbMaterial
-                );
-            });
         }
 
-        // --- Escalator Steps (replace ramps with steps) ---
-        // Only add steps if not on the ground floor
-        if (i > -SETTINGS.numBasementFloors && i <= SETTINGS.numFloors -1 ) { // Allow escalators from ground to basement, and between above-ground floors
-            // Parameters for steps
-            const stepHeight = 0.4; // Height of each step
-            const stepDepth = 1;
-            const stepCount = Math.ceil(1 + (SETTINGS.floorHeight / stepHeight));
-            const stepWidth = SETTINGS.escalatorWidth;
-
-            // Balustrade settings
-            const balustradeHeight = 1.7; // Height of the balustrade
-            const balustradeThickness = 0.1;
-            const balustradeMaterial = new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 0.8, roughness: 0.2 }); // Gray material for balustrades
-            
-            // Skip escalator generation if this is the absolute lowest basement floor (can't go further down)
-            if (i > 0 && i < SETTINGS.numFloors) { // Create escalators connecting floor i (e.g. 1) down to floor i-1 (e.g. 0)
-
-            // A-Wing Escalators /////// AAAAAAAAAA
-                // ---  A-Wing Left  side Escalator A down Starting Point (RED) ---
-            const startEscDownGeo = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1); // <-- Add this line
-            const startEscDown = new THREE.Mesh(startEscDownGeo, window.EscalatorEmbarkMaterial);
-            startEscDown.name = `Left Escalator Down Start A ${i}`;
-            //start1Esc.rotation.x = -Math.PI / 2;
-            startEscDown.position.set(
-                SETTINGS.corridorWidth + (escalatorWidth / 2) + 0.1,
-                floorY -(floorDepth/2), // So the top is at floorY
-                totalCorridorLength  + 3.5
-            );
-            startEscDown.receiveShadow = true;
-            scene.add(startEscDown);
-            worldObjects.push(startEscDown);
-            
-            // Track startEscDown for this floor
-            escalatorStarts.down[i] = startEscDown;
-            // Track stepDown for this floor
-            escalatorSteps.down[i] = [];
-
-            // ---  A-Wing Steps DOWN (LEFT side) ---
-            for (let s = 0; s < stepCount; s++) {
-                const y = floorY -.01 - (s + 1) * stepHeight + stepHeight / 2;
-                const z = totalCorridorLength + 4.3 + (s / stepCount) * SETTINGS.escalatorLength;
-                const stepGeo = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
-                const stepDown = new THREE.Mesh(stepGeo, window.EscalatorMaterial);
-                stepDown.position.set(
-                    SETTINGS.corridorWidth + (stepWidth / 2) + 0.1,
-                    y,
-                    z
-                );
-                stepDown.castShadow = true;
-                stepDown.receiveShadow = true;
-                stepDown.name = `Left Escalator Step Down A ${i}-${s}`;
-                scene.add(stepDown);
-                worldObjects.push(stepDown); // Track stepDown
-                escalatorSteps.down[i].push(stepDown); // Track stepDown
-            }
-
-            //  A-Wing Escalator Down on lower floor Ending Point (Left side    )    
-            const endEscDownGeo = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
-            
-            const endEscDown = new THREE.Mesh(endEscDownGeo, window.EscalatorMaterial);
-            endEscDown.name = `Left Escalator Down End A ${i}`;
-            //start1Esc.rotation.x = -Math.PI / 2;
-            endEscDown.position.set(
-                SETTINGS.corridorWidth + (escalatorWidth / 2) + 0.1,
-                floorY - SETTINGS.floorHeight -(floorDepth/2) + 0.01, // Lowered by 0.01 to match last step
-                totalCorridorLength + escalatorLength + 4 + 0.5
-            );
-            endEscDown.receiveShadow = true;
-            scene.add(endEscDown);
-            worldObjects.push(endEscDown);
-            // NEW: Store the end mesh for later reset
-            escalatorEnds.down[i] = endEscDown;
-            // ---  A-Wing End of Left side Escalator Down on lower floor Ending Point --- ///
-
-            // ---  A-Wing  Right side Escalator going Up on Lower floor Starting Point (RED) ---
-            const startEscUpGeo = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
-            const startEscUp = new THREE.Mesh(startEscUpGeo, window.EscalatorEmbarkMaterial);
-            startEscUp.name = `Right Escalator Up Start A ${i}`;
-            //start1Esc.rotation.x = -Math.PI / 2;
-            startEscUp.position.set(
-                -0.1 - (escalatorWidth / 2),
-                floorY - SETTINGS.floorHeight -(floorDepth/2), // So the top is at floorY
-                totalCorridorLength + escalatorLength + 4 + 0.5
-            );
-            startEscUp.receiveShadow = true;
-            scene.add(startEscUp);
-            worldObjects.push(startEscUp);
-        
-            // Track startEscUp for this floor
-            escalatorStarts.up[i] = startEscUp;
-            // Track stepUp for this floor
-            escalatorSteps.up[i] = [];
-
-            // --- Steps UP A-Wing (RIGHT side) ---
-            for (let s = 0; s < stepCount; s++) {
-                //const y = floorY - (stepCount - s) * stepHeight + stepHeight / 2;
-                const y = floorY + 0.01 - (s + 1) * stepHeight + stepHeight / 2;
-                const z = totalCorridorLength + 4.3 + (s / stepCount) * SETTINGS.escalatorLength;
-                const stepGeo = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
-                const stepUp = new THREE.Mesh(stepGeo, window.EscalatorMaterial);
-                stepUp.position.set(
-                    -0.1 - (stepWidth / 2),
-                    y,
-                    z
-                );
-                stepUp.castShadow = true;
-                stepUp.receiveShadow = true;
-                stepUp.name = `Right Escalator Step Up A ${i}-${s}`;
-                scene.add(stepUp);
-                worldObjects.push(stepUp);
-                escalatorSteps.up[i].push(stepUp); // Track stepUp
-            }
-
-            // Escalator A-Wing Up from lower floor Ending Point    
-            const endEscUpGeo = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
-            const endEscUp = new THREE.Mesh(endEscUpGeo, window.EscalatorMaterial);
-            endEscUp.name = `Right Escalator Up End A ${i}`;
-            //start1Esc.rotation.x = -Math.PI / 2;
-            endEscUp.position.set(
-                -0.1 - (escalatorWidth / 2),
-                floorY -(floorDepth/3) -0.08 , // So the top is at floorY
-                totalCorridorLength  + 3.5
-            );
-            endEscUp.receiveShadow = true;
-            scene.add(endEscUp);
-            worldObjects.push(endEscUp);
-            // NEW: Store a translated clone of the end mesh for up steps A
-            const translatedEndEscUp = endEscUp.clone();
-            translatedEndEscUp.position.y += 0.2;
-            translatedEndEscUp.position.z += 0.3;
-            escalatorEnds.up[i] = translatedEndEscUp;
-            // End of Right side escalator Ramp going up from lower floor////
-            // --- End of A-Wing Escalators ---   AAAAAAAA
-
-            // B-Wing Escalators /////// BBBBBBBBBBBBBB
-            // ---  B-Wing RIGHT  side Escalator B down Starting Point (Orange) - (Was LEFT) ---
-            const startEscDownGeoB = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1); // <-- Add this line
-            const startEscDownB = new THREE.Mesh(startEscDownGeoB, window.EscalatorEmbarkMaterialB);
-            startEscDownB.name = `Right Escalator Down Start B ${i}`;
-            //start1Esc.rotation.x = -Math.PI / 2;
-            startEscDownB.position.set(
-                - (escalatorWidth / 2) - 0.1,
-                floorY -(floorDepth/2), // So the top is at floorY
-                -16 - totalCorridorLength  - 3.5
-            );
-            startEscDownB.receiveShadow = true;
-            scene.add(startEscDownB);
-            worldObjects.push(startEscDownB);
-            
-            // Track startEscDown for this floor
-            escalatorStartsB.down[i] = startEscDownB;
-            // Track stepDown for this floor
-            escalatorStepsB.down[i] = [];
-
-            // ---  B-Wing Steps DOWN  -Right side (Was Left) --- 
-            for (let s = 0; s < stepCount; s++) {
-                const y = floorY -.01 - ((s + 1) * stepHeight ) + stepHeight / 2;
-                const zB = -16 - totalCorridorLength - 4.3 - (s / stepCount) * SETTINGS.escalatorLength;
-                const stepGeoB = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
-                const stepDownB = new THREE.Mesh(stepGeoB, window.EscalatorMaterial);
-                stepDownB.position.set(
-                    - (stepWidth / 2) - 0.1,
-                    y,
-                    zB
-                );
-                stepDownB.castShadow = true;
-                stepDownB.receiveShadow = true;
-                stepDownB.name = `Right Escalator Step Down B ${i}-${s}`;
-                scene.add(stepDownB);
-                worldObjects.push(stepDownB); // Track stepDown
-                escalatorStepsB.down[i].push(stepDownB); // Track stepDown
-            }
-
-            //  B-Wing Escalator Down on lower floor Ending Point - Right side ( was Left side    )    
-            const endEscDownGeoB = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
-            
-            const endEscDownB = new THREE.Mesh(endEscDownGeoB, window.EscalatorMaterial);
-            endEscDownB.name = `Right Escalator Down End B ${i}`;
-            //start1Esc.rotation.x = -Math.PI / 2;
-            endEscDownB.position.set(
-                - (escalatorWidth / 2) - 0.1,
-                floorY - SETTINGS.floorHeight -(floorDepth/2) + 0.01, // Lowered by 0.01 to match last step
-                -16 - totalCorridorLength - escalatorLength - 4 - 0.5
-            );
-            endEscDownB.receiveShadow = true;
-            scene.add(endEscDownB);
-            worldObjects.push(endEscDownB);
-            // NEW: Store the end mesh for later reset
-            escalatorEndsB.down[i] = endEscDownB;
-            // ---  B-Wing End of Left side Escalator Down on lower floor Ending Point --- ///
-
-            // ---  B-Wing  LEFT side Escalator going Up on Lower floor Starting Point (Organge) (Was Right) ---
-            const startEscUpGeoB = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
-            const startEscUpB = new THREE.Mesh(startEscUpGeoB, window.EscalatorEmbarkMaterialB);
-            startEscUpB.name = `Leftt Escalator Up Start B ${i}`;
-            //start1Esc.rotation.x = -Math.PI / 2;
-            startEscUpB.position.set(
-                SETTINGS.corridorWidth + 0.1 + (escalatorWidth / 2),
-                floorY - SETTINGS.floorHeight -(floorDepth/2), // So the top is at floorY
-                -16 - totalCorridorLength - escalatorLength - 4 - 0.5
-            );
-            startEscUpB.receiveShadow = true;
-            scene.add(startEscUpB);
-            worldObjects.push(startEscUpB);
-        
-            // Track startEscUp for this floor
-            escalatorStartsB.up[i] = startEscUpB;
-            // Track stepUp for this floor
-            escalatorStepsB.up[i] = [];
-
-            // --- Steps UP B-Wing - Left side (was rigg side) ---
-            for (let s = 0; s < stepCount; s++) {
-                //const y = floorY - (stepCount - s) * stepHeight + stepHeight / 2;
-                const y = floorY + 0.01 - (s + 1) * stepHeight + stepHeight / 2;
-                const zB = -16 - totalCorridorLength - 4.3 - (s / stepCount) * SETTINGS.escalatorLength;
-                const stepGeoB = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
-                const stepUpB = new THREE.Mesh(stepGeoB, window.EscalatorMaterial);
-                stepUpB.position.set(
-                    SETTINGS.corridorWidth + 0.1 + (stepWidth / 2),
-                    y,
-                    zB
-                );
-                stepUpB.castShadow = true;
-                stepUpB.receiveShadow = true;
-                stepUpB.name = `Left Escalator Step Up B ${i}-${s}`;
-                scene.add(stepUpB);
-                worldObjects.push(stepUpB);
-                escalatorStepsB.up[i].push(stepUpB); // Track stepUp
-            }
-
-            // Escalator B-Wing Up from lower floor Ending Point    
-            const endEscUpGeoB = new THREE.BoxGeometry(escalatorWidth, floorDepth, 1);
-            const endEscUpB = new THREE.Mesh(endEscUpGeoB, window.EscalatorMaterial);
-            endEscUpB.name = `Left Escalator Up End B ${i}`;
-            //start1Esc.rotation.x = -Math.PI / 2;
-            endEscUpB.position.set(
-                SETTINGS.corridorWidth + 0.1 + (escalatorWidth / 2),
-                floorY -(floorDepth/3) -0.08 , // So the top is at floorY
-                -16 - totalCorridorLength  - 3.5
-            );
-            endEscUpB.receiveShadow = true;
-            scene.add(endEscUpB);
-            worldObjects.push(endEscUpB);
-            // NEW: Store a translated clone of THE END MESH FOR UP STEPS B
-            const translatedEndEscUpB = endEscUpB.clone();
-            translatedEndEscUpB.position.y += 0.2;
-            translatedEndEscUpB.position.z -= 0.3; // Corrected to make B-Wing UP behave like A-Wing UP (stop short)
-            escalatorEndsB.up[i] = translatedEndEscUpB;
-            // End of Right side escalator Ramp going up from lower floor////
-            // --- End of B-Wing Escalators ---   BBBBBBBBBBB
-
-            // --- Add Balustrades --- ///////////////////////////////////////////////////
-
-            // Balustrades for Escalator Wing-A UP (Left side, X from -escalatorWidth to 0) /// AAAAAAAA
-            const startUpBalustrade = new THREE.Vector3(-SETTINGS.escalatorWidth / 2, (i - 1) * SETTINGS.floorHeight - floorDepth, totalCorridorLength + SETTINGS.escalatorLength + 4 );
-            const endUpBalustrade = new THREE.Vector3(-SETTINGS.escalatorWidth / 2, floorY - floorDepth/2, totalCorridorLength + 3.5);
-            const dirUpBalustrade = new THREE.Vector3().subVectors(endUpBalustrade, startUpBalustrade);
-            const lengthUpBalustrade = dirUpBalustrade.length();
-            const centerPosUpBalustrade = new THREE.Vector3().addVectors(startUpBalustrade, endUpBalustrade).multiplyScalar(0.5);
-
-            // Calculate the Y position of the ramp surface at the center Z for UP escalator A
-            const centerZ_UpBalustrade = centerPosUpBalustrade.z;
-            const rampSurfaceY_at_centerZ_Up = startUpBalustrade.y + (centerZ_UpBalustrade - startUpBalustrade.z) / (endUpBalustrade.z - startUpBalustrade.z) * (endUpBalustrade.y - startUpBalustrade.y);
-            const balustradeCenterY_Up = rampSurfaceY_at_centerZ_Up + balustradeHeight / 2;
-
-            // Inner balustrade A (closer to corridor, X=0)
-            const innerBalustradeUpGeo = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthUpBalustrade);
-            const innerBalustradeUp = new THREE.Mesh(innerBalustradeUpGeo, balustradeMaterial);
-            innerBalustradeUp.name = `Balustrade_Up_Inner_F${i-1}-F${i}`;
-            innerBalustradeUp.position.set(0 - balustradeThickness / 2, balustradeCenterY_Up, centerPosUpBalustrade.z);
-            innerBalustradeUp.lookAt(innerBalustradeUp.position.clone().add(dirUpBalustrade));
-            scene.add(innerBalustradeUp);
-            worldObjects.push(innerBalustradeUp);
-
-            // Outer balustrade A (X=-escalatorWidth)
-            const outerBalustradeUpGeo = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthUpBalustrade);
-            const outerBalustradeUp = new THREE.Mesh(outerBalustradeUpGeo, balustradeMaterial);
-            outerBalustradeUp.name = `Balustrade_Up_Outer_F${i-1}-F${i}`;
-            outerBalustradeUp.position.set(-SETTINGS.escalatorWidth + balustradeThickness / 2, balustradeCenterY_Up, centerPosUpBalustrade.z);
-            outerBalustradeUp.lookAt(outerBalustradeUp.position.clone().add(dirUpBalustrade));
-            scene.add(outerBalustradeUp);
-            worldObjects.push(outerBalustradeUp);
-
-            // Add cylinders for escalator UP balustrades A (posts at end sides)
-            {
-                // Create a cylinder with diameter = balustradeHeight and height = balustradeThickness.
-                const cylinderGeo = new THREE.CylinderGeometry(balustradeHeight/2, balustradeHeight/2, balustradeThickness, 16);
-                cylinderGeo.rotateZ(Math.PI/2);
-                // up direction along the balustrade (use already computed startUpBalustrade and endUpBalustrade)
-                const upDir = new THREE.Vector3().subVectors(endUpBalustrade, startUpBalustrade).normalize();
-                const halfLengthUp = lengthUpBalustrade / 2;
-                // For inner balustrade UP: compute endpoint centers from innerBalustradeUp.position (which is center of the box)
-                const innerCenter = innerBalustradeUp.position.clone();
-                const innerEnd1 = innerCenter.clone().sub(upDir.clone().multiplyScalar(halfLengthUp));
-                const innerEnd2 = innerCenter.clone().add(upDir.clone().multiplyScalar(halfLengthUp));
-                const cylinderInner1 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
-                cylinderInner1.position.copy(innerEnd1);
-                const cylinderInner2 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
-                cylinderInner2.position.copy(innerEnd2);
-                // For outer balustrade UP:
-                const outerCenter = outerBalustradeUp.position.clone();
-                const outerEnd1 = outerCenter.clone().sub(upDir.clone().multiplyScalar(halfLengthUp));
-                const outerEnd2 = outerCenter.clone().add(upDir.clone().multiplyScalar(halfLengthUp));
-                const cylinderOuter1 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
-                cylinderOuter1.position.copy(outerEnd1);
-                const cylinderOuter2 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
-                cylinderOuter2.position.copy(outerEnd2);
-                scene.add(cylinderInner1, cylinderInner2, cylinderOuter1, cylinderOuter2);
-            }
-
-            // Balustrades for Escalator DOWN A (Right side, X from SETTINGS.corridorWidth to SETTINGS.corridorWidth + escalatorWidth)
-            const startDownBalustrade = new THREE.Vector3(SETTINGS.corridorWidth + SETTINGS.escalatorWidth / 2, floorY - floorDepth/2, totalCorridorLength + 3.5);
-            const endDownBalustrade = new THREE.Vector3(SETTINGS.corridorWidth + SETTINGS.escalatorWidth / 2, (i - 1) * SETTINGS.floorHeight - floorDepth, totalCorridorLength + SETTINGS.escalatorLength + 4 );
-            const dirDownBalustrade = new THREE.Vector3().subVectors(endDownBalustrade, startDownBalustrade);
-            const lengthDownBalustrade = dirDownBalustrade.length();
-            const centerPosDownBalustrade = new THREE.Vector3().addVectors(startDownBalustrade, endDownBalustrade).multiplyScalar(0.5);
-
-            // Calculate the Y position of the ramp surface at the center Z for DOWN escalator A
-            const centerZ_DownBalustrade = centerPosDownBalustrade.z;
-            const rampSurfaceY_at_centerZ_Down = startDownBalustrade.y + (centerZ_DownBalustrade - startDownBalustrade.z) / (endDownBalustrade.z - startDownBalustrade.z) * (endDownBalustrade.y - startDownBalustrade.y);
-            const balustradeCenterY_Down = rampSurfaceY_at_centerZ_Down + balustradeHeight / 2;
-
-            // Inner balustrade A (closer to corridor, X=SETTINGS.corridorWidth)
-            const innerBalustradeDownGeo = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthDownBalustrade);
-            const innerBalustradeDown = new THREE.Mesh(innerBalustradeDownGeo, balustradeMaterial);
-            innerBalustradeDown.name = `Balustrade_Down_Inner_F${i}-F${i-1}`;
-            innerBalustradeDown.position.set(SETTINGS.corridorWidth + balustradeThickness / 2, balustradeCenterY_Down, centerPosDownBalustrade.z);
-            innerBalustradeDown.lookAt(innerBalustradeDown.position.clone().add(dirDownBalustrade));
-            scene.add(innerBalustradeDown);
-            worldObjects.push(innerBalustradeDown);
-
-            // Outer balustrade A (X=SETTINGS.corridorWidth + escalatorWidth)
-            const outerBalustradeDownGeo = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthDownBalustrade);
-            const outerBalustradeDown = new THREE.Mesh(outerBalustradeDownGeo, balustradeMaterial);
-            outerBalustradeDown.name = `Balustrade_Down_Outer_F${i}-F${i-1}`;
-            outerBalustradeDown.position.set(SETTINGS.corridorWidth + SETTINGS.escalatorWidth - balustradeThickness / 2, balustradeCenterY_Down, centerPosDownBalustrade.z);
-            outerBalustradeDown.lookAt(outerBalustradeDown.position.clone().add(dirDownBalustrade));
-            scene.add(outerBalustradeDown);
-            worldObjects.push(outerBalustradeDown);
-
-            // Add cylinders for escalator DOWN balustrades A (posts at end sides)
-            {
-                const cylinderGeo = new THREE.CylinderGeometry(balustradeHeight/2, balustradeHeight/2, balustradeThickness, 16);
-                cylinderGeo.rotateZ(Math.PI/2);
-                // For down balustrade A, use startDownBalustrade and endDownBalustrade
-                const downDir = new THREE.Vector3().subVectors(endDownBalustrade, startDownBalustrade).normalize();
-                const halfLengthDown = lengthDownBalustrade / 2;
-                // For inner balustrade DOWN:
-                const innerCenterDown = innerBalustradeDown.position.clone();
-                const innerDownEnd1 = innerCenterDown.clone().sub(downDir.clone().multiplyScalar(halfLengthDown));
-                const innerDownEnd2 = innerCenterDown.clone().add(downDir.clone().multiplyScalar(halfLengthDown));
-                const cylinderInnerDown1 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
-                cylinderInnerDown1.position.copy(innerDownEnd1);
-                const cylinderInnerDown2 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
-                cylinderInnerDown2.position.copy(innerDownEnd2);
-                // For outer balustrade DOWN:
-                const outerCenterDown = outerBalustradeDown.position.clone();
-                const outerDownEnd1 = outerCenterDown.clone().sub(downDir.clone().multiplyScalar(halfLengthDown));
-                const outerDownEnd2 = outerCenterDown.clone().add(downDir.clone().multiplyScalar(halfLengthDown));
-                const cylinderOuterDown1 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
-                cylinderOuterDown1.position.copy(outerDownEnd1);
-                const cylinderOuterDown2 = new THREE.Mesh(cylinderGeo, balustradeMaterial);
-                cylinderOuterDown2.position.copy(outerDownEnd2);
-                scene.add(cylinderInnerDown1, cylinderInnerDown2, cylinderOuterDown1, cylinderOuterDown2);
-            }
-            // --- End of Balustrades Wing A --- /////////////
-
-            // Balustrades for Escalators in Wing-B ////////////////////// BBBBBBB
-            // Balustrades for Escalator B UP (Left side, X from -escalatorWidth to 0)
-            const startUpBalustradeB = new THREE.Vector3(
-                - (SETTINGS.escalatorWidth / 2),
-                (i - 1) * SETTINGS.floorHeight - floorDepth,
-                -16 - totalCorridorLength - SETTINGS.escalatorLength - 4 
-            );
-            const endUpBalustradeB = new THREE.Vector3(- (SETTINGS.escalatorWidth / 2), 
-                floorY - floorDepth/2,
-                -16 -totalCorridorLength - 3.5);
-            const dirUpBalustradeB = new THREE.Vector3().subVectors(endUpBalustradeB, startUpBalustradeB);
-            const lengthUpBalustradeB = dirUpBalustradeB.length();
-            const centerPosUpBalustradeB = new THREE.Vector3().addVectors(startUpBalustradeB, endUpBalustradeB).multiplyScalar(0.5);
-
-            // Calculate the Y position of the ramp surface at the center Z for UP escalator B
-            const centerZ_UpBalustradeB = centerPosUpBalustradeB.z;
-            const rampSurfaceY_at_centerZ_UpB = startUpBalustradeB.y + (centerZ_UpBalustradeB - startUpBalustradeB.z) / (endUpBalustradeB.z - startUpBalustradeB.z) * (endUpBalustradeB.y - startUpBalustradeB.y);
-            const balustradeCenterY_UpB = rampSurfaceY_at_centerZ_UpB + balustradeHeight / 2;
-
-            // Inner balustrade B (closer to corridor, X=0)
-            const innerBalustradeUpGeoB = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthUpBalustradeB);
-            const innerBalustradeUpB = new THREE.Mesh(innerBalustradeUpGeoB, balustradeMaterial);
-            innerBalustradeUpB.name = `Balustrade_B_Up_Inner_F${i-1}-F${i}`;
-            innerBalustradeUpB.position.set(0 - balustradeThickness / 2, balustradeCenterY_UpB, centerPosUpBalustradeB.z);
-            innerBalustradeUpB.lookAt(innerBalustradeUpB.position.clone().add(dirUpBalustradeB));
-            scene.add(innerBalustradeUpB);
-            worldObjects.push(innerBalustradeUpB);
-
-            // Outer balustrade B (X=-escalatorWidth)
-            const outerBalustradeUpGeoB = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthUpBalustradeB);
-            const outerBalustradeUpB = new THREE.Mesh(outerBalustradeUpGeoB, balustradeMaterial);
-            outerBalustradeUpB.name = `Balustrade_B_Up_Outer_F${i-1}-F${i}`;
-            outerBalustradeUpB.position.set(-SETTINGS.escalatorWidth + balustradeThickness / 2, balustradeCenterY_UpB, centerPosUpBalustradeB.z);
-            outerBalustradeUpB.lookAt(outerBalustradeUpB.position.clone().add(dirUpBalustradeB));
-            scene.add(outerBalustradeUpB);
-            worldObjects.push(outerBalustradeUpB);
-
-            // Add cylinders for escalator UP balustrades B (posts at end sides)
-            {
-                // Create a cylinder with diameter = balustradeHeight and height = balustradeThickness.
-                const cylinderGeoB = new THREE.CylinderGeometry(balustradeHeight/2, balustradeHeight/2, balustradeThickness, 16);
-                cylinderGeoB.rotateZ(Math.PI/2);
-                // up direction along the balustrade (use already computed startUpBalustrade and endUpBalustrade)
-                const upDirB = new THREE.Vector3().subVectors(endUpBalustradeB, startUpBalustradeB).normalize();
-                const halfLengthUpB = lengthUpBalustradeB / 2;
-                // For inner balustrade UP: compute endpoint centers from innerBalustradeUp.position (which is center of the box)
-                const innerCenterB = innerBalustradeUpB.position.clone();
-                const innerEnd1B = innerCenterB.clone().sub(upDirB.clone().multiplyScalar(halfLengthUpB));
-                const innerEnd2B = innerCenterB.clone().add(upDirB.clone().multiplyScalar(halfLengthUpB));
-                const cylinderInner1B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
-                cylinderInner1B.position.copy(innerEnd1B);
-                const cylinderInner2B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
-                cylinderInner2B.position.copy(innerEnd2B);
-                // For outer balustrade UP:
-                const outerCenterB = outerBalustradeUpB.position.clone();
-                const outerEnd1B = outerCenterB.clone().sub(upDirB.clone().multiplyScalar(halfLengthUpB));
-                const outerEnd2 = outerCenterB.clone().add(upDirB.clone().multiplyScalar(halfLengthUpB));
-                const cylinderOuter1B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
-                cylinderOuter1B.position.copy(outerEnd1B);
-                const cylinderOuter2B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
-                cylinderOuter2B.position.copy(outerEnd2);
-                scene.add(cylinderInner1B, cylinderInner2B, cylinderOuter1B, cylinderOuter2B);
-            }
-
-            // Balustrades for Escalator DOWN B (Right side, X from SETTINGS.corridorWidth to SETTINGS.corridorWidth + escalatorWidth)
-            const startDownBalustradeB = new THREE.Vector3(
-                SETTINGS.corridorWidth + SETTINGS.escalatorWidth / 2,
-                floorY - floorDepth/2,
-                -16 - totalCorridorLength - 3.5);
-            const endDownBalustradeB = new THREE.Vector3(
-                SETTINGS.corridorWidth + (SETTINGS.escalatorWidth / 2),
-                (i - 1) * SETTINGS.floorHeight - floorDepth,
-                -16 - totalCorridorLength - SETTINGS.escalatorLength - 4 );
-            const dirDownBalustradeB = new THREE.Vector3().subVectors(endDownBalustradeB, startDownBalustradeB);
-            const lengthDownBalustradeB = dirDownBalustradeB.length();
-            const centerPosDownBalustradeB = new THREE.Vector3().addVectors(startDownBalustradeB, endDownBalustradeB).multiplyScalar(0.5);
-
-            // Calculate the Y position of the ramp surface at the center Z for DOWN escalator B
-            const centerZ_DownBalustradeB = centerPosDownBalustradeB.z;
-            const rampSurfaceY_at_centerZ_DownB = startDownBalustradeB.y + (centerZ_DownBalustradeB - startDownBalustradeB.z) / (endDownBalustradeB.z - startDownBalustradeB.z) * (endDownBalustradeB.y - startDownBalustradeB.y);
-            const balustradeCenterY_DownB = rampSurfaceY_at_centerZ_DownB + balustradeHeight / 2;
-
-            // Inner balustrade B (closer to corridor, X=SETTINGS.corridorWidth)
-            const innerBalustradeDownGeoB = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthDownBalustradeB);
-            const innerBalustradeDownB = new THREE.Mesh(innerBalustradeDownGeoB, balustradeMaterial);
-            innerBalustradeDownB.name = `Balustrade_B_Down_Inner_F${i}-F${i-1}`;
-            innerBalustradeDownB.position.set(SETTINGS.corridorWidth + balustradeThickness / 2, balustradeCenterY_DownB, centerPosDownBalustradeB.z);
-            innerBalustradeDownB.lookAt(innerBalustradeDownB.position.clone().add(dirDownBalustradeB));
-            scene.add(innerBalustradeDownB);
-            worldObjects.push(innerBalustradeDownB);
-
-            // Outer balustrade B (X=SETTINGS.corridorWidth + escalatorWidth)
-            const outerBalustradeDownGeoB = new THREE.BoxGeometry(balustradeThickness, balustradeHeight, lengthDownBalustradeB);
-            const outerBalustradeDownB = new THREE.Mesh(outerBalustradeDownGeoB, balustradeMaterial);
-            outerBalustradeDownB.name = `Balustrade_B_Down_Outer_F${i}-F${i-1}`;
-            outerBalustradeDownB.position.set(SETTINGS.corridorWidth + SETTINGS.escalatorWidth - balustradeThickness / 2, balustradeCenterY_DownB, centerPosDownBalustradeB.z);
-            outerBalustradeDownB.lookAt(outerBalustradeDownB.position.clone().add(dirDownBalustradeB));
-            scene.add(outerBalustradeDownB);
-            worldObjects.push(outerBalustradeDownB);
-
-            // Add cylinders for escalator DOWN balustrades B (posts at end sides)
-            {
-                const cylinderGeoB = new THREE.CylinderGeometry(balustradeHeight/2, balustradeHeight/2, balustradeThickness, 16);
-                cylinderGeoB.rotateZ(Math.PI/2);
-                // For down balustrade, use startDownBalustrade and endDownBalustrade
-                const downDirB = new THREE.Vector3().subVectors(endDownBalustradeB, startDownBalustradeB).normalize();
-                const halfLengthDownB = lengthDownBalustradeB / 2;
-                // For inner balustrade DOWN:
-                const innerCenterDownB = innerBalustradeDownB.position.clone();
-                const innerDownEnd1B = innerCenterDownB.clone().sub(downDirB.clone().multiplyScalar(halfLengthDownB));
-                const innerDownEnd2B = innerCenterDownB.clone().add(downDirB.clone().multiplyScalar(halfLengthDownB));
-                const cylinderInnerDown1B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
-                cylinderInnerDown1B.position.copy(innerDownEnd1B);
-                const cylinderInnerDown2B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
-                cylinderInnerDown2B.position.copy(innerDownEnd2B);
-                // For outer balustrade DOWN:
-                const outerCenterDownB = outerBalustradeDownB.position.clone();
-                const outerDownEnd1B = outerCenterDownB.clone().sub(downDirB.clone().multiplyScalar(halfLengthDownB));
-                const outerDownEnd2B = outerCenterDownB.clone().add(downDirB.clone().multiplyScalar(halfLengthDownB));
-                const cylinderOuterDown1B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
-                cylinderOuterDown1B.position.copy(outerDownEnd1B);
-                const cylinderOuterDown2B = new THREE.Mesh(cylinderGeoB, balustradeMaterial);
-                cylinderOuterDown2B.position.copy(outerDownEnd2B);
-                scene.add(cylinderInnerDown1B, cylinderInnerDown2B, cylinderOuterDown1B, cylinderOuterDown2B);
-            }
-            // --- End of Balustrades Wing B --- /////////////
-
-
-           } // END OF ESCALATORS ////////////////////////////////////////
-            
-            
-        }
-
-
-        // Walls & Doors
-
-        // Right Wall next to elevator shaft (Negative Z direction)
-        // These are the walls that form the elevator shaft on each floor.
-        // They use currentElevatorConfig for positioning.
-
-        // Shaft Wall Left (Player's Right when facing +Z into shaft)
-        const shaftWallLeftGeo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, (2*overallShaftActualDepth) +8);
-        const shaftWallLeft = new THREE.Mesh(shaftWallLeftGeo, wallMaterial);
-        shaftWallLeft.name = `ShaftWall_Left_F${i}`;
-        shaftWallLeft.position.set(
-            overallShaftMinX - wallDepth / 2, // Adjusted
-            floorY + SETTINGS.floorHeight / 2,
-            overallShaftActualCenterZ - 2 // Adjusted
-        );
-        shaftWallLeft.castShadow = true; shaftWallLeft.receiveShadow = true;
-        scene.add(shaftWallLeft); worldObjects.push(shaftWallLeft);
-
-        // Shaft Wall Right (Player's Left when facing +Z into shaft)
-        const shaftWallRightGeo = new THREE.BoxGeometry(wallDepth, SETTINGS.floorHeight, (2*overallShaftActualDepth) +8);
-        const shaftWallRight = new THREE.Mesh(shaftWallRightGeo, wallMaterial);
-        shaftWallRight.name = `ShaftWall_Right_F${i}`;
-        shaftWallRight.position.set(
-            overallShaftMaxX + wallDepth / 2, // Adjusted
-            floorY + SETTINGS.floorHeight / 2,
-            overallShaftActualCenterZ - 2
-        );
-        shaftWallRight.castShadow = true; shaftWallRight.receiveShadow = true;
-        scene.add(shaftWallRight); worldObjects.push(shaftWallRight);
-
-        
-
-        // The old "capWallNear" that filled the floorDepth thickness above wallHeight:
-        const floorCapGeo = new THREE.BoxGeometry(overallShaftActualWidth, SETTINGS.floorHeight - SETTINGS.wallHeight, wallDepth);
-        const capWallNear = new THREE.Mesh(floorCapGeo, floorMaterial); // This is part of the floor/ceiling structure
-        capWallNear.name = `ShaftFloorCap_F${i}`;
-        capWallNear.position.set(
-            overallShaftActualCenterX, // Adjusted
-            floorY + SETTINGS.wallHeight + (SETTINGS.floorHeight - SETTINGS.wallHeight) / 2,
-            overallShaftMaxZ + wallDepth / 2 // Front of shaft
-        );
-        capWallNear.castShadow = true;
-        capWallNear.receiveShadow = true;
-        scene.add(capWallNear);
-        worldObjects.push(capWallNear);
-
-        // Place enemies on office floors (Moved here to be within the 'i' loop scope)
-        if (i >= 0) { // Office Floors
-            // floorY is defined at the start of this loop
-
-            // Wing A Enemies
-            // 1. Corridor Enemy (random Z)
-            const randomCorridorZ_A = Math.random() * totalCorridorLength;
-            createEnemy(SETTINGS.corridorWidth / 2, floorY, randomCorridorZ_A, i);
-
-            // 2. Left Room Enemy (random room)
-            const randomLeftRoomIndex_A = Math.floor(Math.random() * SETTINGS.doorsPerSide);
-            const leftRoomCenterZ_A = (randomLeftRoomIndex_A + 0.5) * SETTINGS.corridorSegmentLength;
-            const leftRoomCenterX_A = SETTINGS.corridorWidth + SETTINGS.roomSize / 2;
-            createEnemy(leftRoomCenterX_A, floorY, leftRoomCenterZ_A, i);
-
-            // 3. Right Room Enemy (random room)
-            const randomRightRoomIndex_A = Math.floor(Math.random() * SETTINGS.doorsPerSide);
-            const rightRoomCenterZ_A = (randomRightRoomIndex_A + 0.5) * SETTINGS.corridorSegmentLength;
-            const rightRoomCenterX_A = -SETTINGS.roomSize / 2;
-            createEnemy(rightRoomCenterX_A, floorY, rightRoomCenterZ_A, i);
-
-            // Wing B Enemies
-            // 1. Corridor Enemy (random Z)
-            // B-wing corridor Z ranges from -16 - totalCorridorLength (far end) to -16 (near end)
-            const randomCorridorZ_B = -16 - (Math.random() * totalCorridorLength);
-            createEnemy(SETTINGS.corridorWidth / 2, floorY, randomCorridorZ_B, i);
-
-            // 2. Left Room Enemy (random room)
-            const randomLeftRoomIndex_B = Math.floor(Math.random() * SETTINGS.doorsPerSide);
-            const leftRoomCenterZ_B = ((randomLeftRoomIndex_B + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
-            const leftRoomCenterX_B = SETTINGS.corridorWidth + SETTINGS.roomSize / 2; // Same X as A-wing left rooms
-            createEnemy(leftRoomCenterX_B, floorY, leftRoomCenterZ_B, i);
-
-            // 3. Right Room Enemy (random room)
-            const randomRightRoomIndex_B = Math.floor(Math.random() * SETTINGS.doorsPerSide);
-            const rightRoomCenterZ_B = ((randomRightRoomIndex_B + 0.5) * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength;
-            const rightRoomCenterX_B = -SETTINGS.roomSize / 2; // Same X as A-wing right rooms
-            createEnemy(rightRoomCenterX_B, floorY, rightRoomCenterZ_B, i);
-        }
-
-    }
-
-    // Initial camera position relative to the active elevator
-    // if (activeElevator) { // OLD LOGIC
-    //     camera.position.set(
-    //         activeElevator.platform.position.x,
-    //         activeElevator.platform.position.y + playerHeight + 0.2, // Start slightly above the elevator platform
-    //         activeElevator.platform.position.z + 0.1 // Start slightly inside the corridor from elevator
-    //     );
-    // } else { // Fallback if no elevators created (should not happen with current setup)
-    //     camera.position.set(SETTINGS.corridorWidth / 2, playerHeight, 0);
-    // }
-    // NEW: Set player start position explicitly on the roof level, at X=corridorWidth/2, Z=0, facing -Z
-    const startRoofY = SETTINGS.numFloors * SETTINGS.floorHeight;
-    camera.position.set(SETTINGS.corridorWidth / 2, startRoofY + playerHeight, -16);
-    controls.getObject().rotation.y = Math.PI; // Rotate 180 degrees (facing opposite direction
-}); // End of fontLoader.load callback
+        // Initial camera position relative to the active elevator
+        // if (activeElevator) { // OLD LOGIC
+        //     camera.position.set(
+        //         activeElevator.platform.position.x,
+        //         activeElevator.platform.position.y + playerHeight + 0.2, // Start slightly above the elevator platform
+        //         activeElevator.platform.position.z + 0.1 // Start slightly inside the corridor from elevator
+        //     );
+        // } else { // Fallback if no elevators created (should not happen with current setup)
+        //     camera.position.set(SETTINGS.corridorWidth / 2, playerHeight, 0);
+        // }
+        // NEW: Set player start position explicitly on the roof level, at X=corridorWidth/2, Z=0, facing -Z
+        const startRoofY = SETTINGS.numFloors * SETTINGS.floorHeight;
+        camera.position.set(SETTINGS.corridorWidth / 2, startRoofY + playerHeight, -16);
+        controls.getObject().rotation.y = Math.PI; // Rotate 180 degrees (facing opposite direction
+    }); // End of fontLoader.load callback
 } // End of generateWorld function
 
 function createElevatorPistonMesh(elevatorObj, material) {
@@ -3263,29 +3275,29 @@ function createDynamicChainMesh(elevatorObj, material) {
 }
 
 function updateChainLength(elevatorInstance) {
-  const chain = elevatorInstance.chain;
-  const internalRoof = elevatorInstance.roof; // Elevator's own internal roof
-  const shaftCeiling = elevatorInstance.shaftCeiling; // Topmost ceiling of the shaft
+    const chain = elevatorInstance.chain;
+    const internalRoof = elevatorInstance.roof; // Elevator's own internal roof
+    const shaftCeiling = elevatorInstance.shaftCeiling; // Topmost ceiling of the shaft
 
-  if (chain && internalRoof && shaftCeiling && chain.userData.initialGeomHeight) {
-    const initialGeomHeight = chain.userData.initialGeomHeight;
-    const internalRoofThickness = internalRoof.geometry.parameters.height;
+    if (chain && internalRoof && shaftCeiling && chain.userData.initialGeomHeight) {
+        const initialGeomHeight = chain.userData.initialGeomHeight;
+        const internalRoofThickness = internalRoof.geometry.parameters.height;
 
-    // World Y of the top surface of the elevator's internal roof
-    const internalRoofTopWorldY = internalRoof.position.y + internalRoofThickness / 2;
+        // World Y of the top surface of the elevator's internal roof
+        const internalRoofTopWorldY = internalRoof.position.y + internalRoofThickness / 2;
 
-    // World Y of the bottom surface of the shaft's main ceiling
-    const shaftCeilingBottomWorldY = shaftCeiling.position.y - shaftCeiling.geometry.parameters.height / 2;
+        // World Y of the bottom surface of the shaft's main ceiling
+        const shaftCeilingBottomWorldY = shaftCeiling.position.y - shaftCeiling.geometry.parameters.height / 2;
 
-    const currentVisibleChainLength = Math.max(0.01, shaftCeilingBottomWorldY - internalRoofTopWorldY);
+        const currentVisibleChainLength = Math.max(0.01, shaftCeilingBottomWorldY - internalRoofTopWorldY);
 
-    chain.scale.y = currentVisibleChainLength / initialGeomHeight;
+        chain.scale.y = currentVisibleChainLength / initialGeomHeight;
 
-    // Chain's position is local to its parent (the platform).
-    // Its bottom is on the internal roof's top surface.
-    const internalRoofTopLocalY = (0.1 + SETTINGS.wallHeight - internalRoofThickness / 2) + internalRoofThickness;
-    chain.position.y = internalRoofTopLocalY + currentVisibleChainLength / 2;
-  }
+        // Chain's position is local to its parent (the platform).
+        // Its bottom is on the internal roof's top surface.
+        const internalRoofTopLocalY = (0.1 + SETTINGS.wallHeight - internalRoofThickness / 2) + internalRoofThickness;
+        chain.position.y = internalRoofTopLocalY + currentVisibleChainLength / 2;
+    }
 }
 
 // --- Helper function to create a room lamp ---
@@ -3343,10 +3355,10 @@ function createRoomLamp(x, y, z, floorIndex, roomId, baseBulbMaterial) {
     pointLight.position.set(x, y - 0.3, z);
     scene.add(pointLight);
 
-    lightGroup.userData = { 
+    lightGroup.userData = {
         pointLight, bulbMesh, bottomLightDisk, floorIndex, roomId,
         animationState: { isAnimating: false, startTime: 0, duration: 500, startLightIntensity: 0, targetLightIntensity: 0, startBulbEmissive: 0, targetBulbEmissive: 0, startDiskEmissive: 0, targetDiskEmissive: 0 },
-        isDestroyed: false, isRoomLight: true, isOn: false 
+        isDestroyed: false, isRoomLight: true, isOn: false
     }; // The return lightGroup was added in the previous step, ensure it's still here.
     return lightGroup;
 }
@@ -3398,7 +3410,7 @@ function createOuterWall_SegmentFeatures(wallPlaneX, segmentCenterZ, segmentLeng
         const roomDataForWindow = allRoomsData.find(r => r.id === roomId);
         if (roomDataForWindow) {
             roomDataForWindow.windowGlass = glass;
-            roomDataForWindow.opaqueMaterial =  initialWindowMat; // Store the opaque material
+            roomDataForWindow.opaqueMaterial = initialWindowMat; // Store the opaque material
             roomDataForWindow.transparentMaterial = transparentWindowMat; // Store reference to the transparent material
         }
     }
@@ -3413,7 +3425,7 @@ function onKeyDown(event) {
         case 'KeyD': moveRight = true; break;
         case 'ShiftLeft':
         case 'ShiftRight': isSprinting = true; break;
-        case 'Space': 
+        case 'Space':
             if (isPlayerInCar) {
                 const garageCar = getLastGarageCar();
                 if (garageCar && garageCar.parent === controls.getObject()) {
@@ -3619,18 +3631,18 @@ function updateElevators(deltaTime) {
             upButtonMaterial.emissiveIntensity = upButtonMaterial.originalEmissiveIntensity; // Dim
             downButtonMaterial.emissiveIntensity = downButtonMaterial.originalEmissiveIntensity; // Dim
         }
-            console.log(`Elevator ${elev.id} arrived at floor ${elev.currentFloorIndexVal}`);
+        console.log(`Elevator ${elev.id} arrived at floor ${elev.currentFloorIndexVal}`);
 
-            if (playerIsOnThisPlatform) {
-                playerVelocity.y = 2.0; // Slight jump effect
-                playerOnGround = false;
-            }
+        if (playerIsOnThisPlatform) {
+            playerVelocity.y = 2.0; // Slight jump effect
+            playerOnGround = false;
+        }
 
-            if (isPlayerRespawning && elev === activeElevator) { // Check if this is the active elevator for respawn
-                respawnPlayer();
-            }
-        })
-    };
+        if (isPlayerRespawning && elev === activeElevator) { // Check if this is the active elevator for respawn
+            respawnPlayer();
+        }
+    })
+};
 
 function handlePlayerCrush(elevatorInstance, currentPlatformY, nextPlatformY) {
     const playerPos = controls.getObject().position;
@@ -3842,7 +3854,7 @@ function interact() {
                     animationState.targetDiskEmissive = 1.0; // Desired "on" disk emissive
                     console.log(`Room light ${lightGroup.userData.roomId} turned ON`);
                 } else {
-                     // Start fade out animation
+                    // Start fade out animation
                     animationState.isAnimating = true;
                     animationState.startTime = performance.now();
                     animationState.duration = 500; // milliseconds
@@ -3866,7 +3878,7 @@ function interact() {
                 }
                 console.log(`Garage door on floor ${garageDoor.userData.floor} is now ${garageDoor.userData.isOpen ? 'opening' : 'closing'}.`);
             }
-        } 
+        }
         // Check if the intersected object or its parent is part of an elevator
         else if (intersected.userData.elevatorId || (intersected.parent && intersected.parent.userData.elevatorId)) {
             // Check if the intersected object or its parent is part of an elevator
@@ -3903,7 +3915,7 @@ function callSpecificElevatorToFloor(elevatorInstance, targetFloorIndex) {
         elevatorInstance.targetY = newTargetY;
         elevatorInstance.direction = Math.sign(elevatorInstance.targetY - elevatorInstance.platform.position.y);
         if (elevatorInstance.platform.position.y !== newTargetY) { // Only set isMoving if not already at the target
-             elevatorInstance.isMoving = true;
+            elevatorInstance.isMoving = true;
         }
         console.log(`Elevator ${elevatorInstance.id} called to floor ${effectiveTargetFloor}. Moving ${elevatorInstance.direction > 0 ? 'UP' : (elevatorInstance.direction < 0 ? 'DOWN' : 'STATIONARY')}.`);
         activeElevator = elevatorInstance; // Make this the active elevator
@@ -3920,7 +3932,7 @@ function shoot() {
 
     const projectileStartPosition = new THREE.Vector3();
     camera.getWorldPosition(projectileStartPosition); // Get camera's world position
-    
+
     // Offset the start position along the direction vector
     projectileStartPosition.addScaledVector(projectileDirection, projectileStartOffset);
     // Adjust Y to be closer to a gun barrel height if desired, relative to camera
@@ -3945,9 +3957,9 @@ function shoot() {
             if (door.userData.locked) { // Check if the door is actually locked
                 // Create a decal that remains with the door.
                 const decalTexture = new THREE.TextureLoader().load('textures/bulletHole.png'); // Ensure this texture exists
-                const decalMaterial = new THREE.MeshBasicMaterial({ 
-                    map: decalTexture, 
-                    transparent: true 
+                const decalMaterial = new THREE.MeshBasicMaterial({
+                    map: decalTexture,
+                    transparent: true
                 });
                 const decalGeometry = new THREE.PlaneGeometry(0.2, 0.2);
                 const decal = new THREE.Mesh(decalGeometry, decalMaterial);
@@ -3962,7 +3974,7 @@ function shoot() {
 
                 door.userData.locked = false;
                 door.userData.isOpen = true;
-                
+
                 // Open door away from the player
                 const playerX = controls.getObject().position.x;
                 const doorX = door.position.x;
@@ -4007,7 +4019,7 @@ function shoot() {
             createBulletHole(hit.point, hit.face.normal);
             const directLightHit = lights.includes(hitObject) ? hitObject : (lights.includes(hitObject.parent) ? hitObject.parent : null);
             if (directLightHit && directLightHit.userData && !directLightHit.userData.isDestroyed) {
-                 destroyLight(directLightHit);
+                destroyLight(directLightHit);
             }
         }
     }
@@ -4079,16 +4091,16 @@ function createBulletHole(position, normal) {
 }
 
 function destroyLight(lightGroup) {
-        if (lightGroup.userData.isDestroyed) return;
+    if (lightGroup.userData.isDestroyed) return;
 
     lightGroup.userData.isDestroyed = true;
-    playerScore += 10; 
+    playerScore += 10;
     updateUI();
 
     if (lightGroup.userData.pointLight) {
-        lightGroup.userData.pointLight.intensity *= 10; 
+        lightGroup.userData.pointLight.intensity *= 10;
         setTimeout(() => {
-            lightGroup.userData.pointLight.intensity = 0; 
+            lightGroup.userData.pointLight.intensity = 0;
             if (!lightGroup.userData.isRoomLight) { // Only disable corridor lights if it was a corridor light
                 disableCorridorLights(lightGroup.userData.floorIndex);
             } else {
@@ -4128,7 +4140,7 @@ function destroyLight(lightGroup) {
         // Store necessary info before detaching
         lampshade.userData.floorIndex = lightGroup.userData.floorIndex; // Pass floor index
         lampshade.userData.originalLightId = lightGroup.id; // Optional: for debugging
-        
+
         dropLampshade(lampshade); // Call the modified dropLampshade
     }
 }
@@ -4155,7 +4167,7 @@ function disableCorridorLights(floorIndex) {
                 lightGroup.remove(bulb);
             }
 
-            
+
         }
     });
 }
@@ -4232,7 +4244,7 @@ function dropLampshade(lampshade) {
 
     if (hitPlayerTarget) {
         // Place lampshade on player and apply damage
-        lampshade.position.set(hitPlayerTarget.object.position.x, hitPlayerTarget.hitY - playerHeight + lampshadeHeight/2 , hitPlayerTarget.object.position.z); // Position on player's actual head
+        lampshade.position.set(hitPlayerTarget.object.position.x, hitPlayerTarget.hitY - playerHeight + lampshadeHeight / 2, hitPlayerTarget.object.position.z); // Position on player's actual head
         applyDamageToPlayer(25); // Damage amount for player
         console.log("Lampshade hit player directly.");
         // Player wears it as a hat, make it non-pickable to avoid immediate re-pickup
@@ -4264,7 +4276,7 @@ function dropLampshade(lampshade) {
                 scene.remove(lampshade);
                 return;
             }
-        } catch(e) {
+        } catch (e) {
             // console.error("Error creating lampshadeBox during fall, removing lampshade.", e);
             clearInterval(fallInterval);
             scene.remove(lampshade);
@@ -4278,7 +4290,7 @@ function dropLampshade(lampshade) {
             try {
                 enemyBox = new THREE.Box3().setFromObject(enemy);
                 if (!enemyBox.min || !enemyBox.max || enemyBox.isEmpty()) continue;
-            } catch(e) { continue; }
+            } catch (e) { continue; }
 
             if (lampshadeBox.intersectsBox(enemyBox)) {
                 const enemyTopY = enemy.position.y + ENEMY_SETTINGS.height / 2;
@@ -4455,7 +4467,7 @@ function resetGame() {
     });
     projectiles.length = 0;
 
-    
+
     fallenLampshades.length = 0; // Clear fallen lampshades
     lights.forEach(light => { // Reset collection state for all lights
         if (light.userData) {
@@ -4463,8 +4475,8 @@ function resetGame() {
         }
     });
     playerInventory.lampshades = 0; // Reset inventory
-    
-    
+
+
     document.getElementById('gameOver').style.display = 'none';
     updateUI();
 
@@ -4510,7 +4522,7 @@ function updatePlayer(deltaTime) {
             const carWorldQuat = new THREE.Quaternion();
             garageCar.getWorldQuaternion(carWorldQuat);
 
-            let carDims = new THREE.Vector3(2,1.2,4.556); // Default fallback
+            let carDims = new THREE.Vector3(2, 1.2, 4.556); // Default fallback
             if (garageCar.geometry && garageCar.geometry.boundingBox) {
                 carDims = garageCar.geometry.boundingBox.getSize(new THREE.Vector3());
             } else {
@@ -4520,9 +4532,9 @@ function updatePlayer(deltaTime) {
 
             // 1. Calculate where the player's camera should be in world space
             // Player's XZ offset relative to car's center, rotated by car's orientation
-            const playerLocalOffsetXZ = new THREE.Vector3(-carDims.x/4, 0, 0); // Left-center XZ
+            const playerLocalOffsetXZ = new THREE.Vector3(-carDims.x / 4, 0, 0); // Left-center XZ
             const playerWorldOffsetXZ = playerLocalOffsetXZ.applyQuaternion(carWorldQuat); // Use clone to avoid modifying original
-            
+
             const newCameraPos = carWorldPos.clone().add(playerWorldOffsetXZ);
             newCameraPos.y = carWorldPos.y + playerEyeLevelInCar; // Player's Y is car's base Y + eye level
 
@@ -4569,9 +4581,9 @@ function updatePlayer(deltaTime) {
     const isPlayerTryingToJumpThisFrame = playerVelocity.y === SETTINGS.jumpVelocity; // This is a simplification
 
     const escalatorResult = calculateEscalatorBoost(
-        cameraObject, 
-        escalatorSteps, escalatorStarts, escalatorEnds, 
-        escalatorStepsB, escalatorStartsB, escalatorEndsB, 
+        cameraObject,
+        escalatorSteps, escalatorStarts, escalatorEnds,
+        escalatorStepsB, escalatorStartsB, escalatorEndsB,
         SETTINGS, deltaTime, playerHeight,
         playerIntentHorizontalDisplacement,
         isPlayerTryingToJumpThisFrame // True if jump key was pressed and player was on ground
@@ -4696,7 +4708,7 @@ function updatePlayer(deltaTime) {
             // If player attempted a jump on escalator (shouldInitiateJump was true from escalatorResult)
             // and they immediately landed (playerOnGround is true, velocity.y is 0)
             if (escalatorResult.shouldInitiateJump && escalatorResult.onEscalator && !previousPlayerOnGround) {
-                 // And they were considered on the escalator when the jump was initiated
+                // And they were considered on the escalator when the jump was initiated
                 console.log("Player jump on escalator potentially stuck, nudging.");
                 cameraObject.position.y += 0.15; // Small lift
                 playerVelocity.y = 1.0;      // Tiny residual upward velocity
@@ -4704,9 +4716,9 @@ function updatePlayer(deltaTime) {
             }
 
         } else {
-             // Collided while moving up (hit ceiling)
-             playerVelocity.y = 0;
-             cameraObject.position.y = originalPositionY;
+            // Collided while moving up (hit ceiling)
+            playerVelocity.y = 0;
+            cameraObject.position.y = originalPositionY;
         }
     }
 
@@ -4718,7 +4730,7 @@ function updatePlayer(deltaTime) {
     if (cameraObject.position.y < lowestPlayerEyeLevel) {
         cameraObject.position.y = lowestPlayerEyeLevel;
         playerVelocity.y = 0;
-        playerOnGround = true; 
+        playerOnGround = true;
     }
 
     // --- Escalator Area Color Logic ---
@@ -4768,10 +4780,10 @@ function updatePlayer(deltaTime) {
         playerOnEscalator.wing !== wingThisFrame
     ) {
         // Reset all steps to EscalatorMaterial
-        for (const steps of Object.values(escalatorSteps.up))   { steps.forEach(step => { step.material = window.EscalatorMaterial; }); }
+        for (const steps of Object.values(escalatorSteps.up)) { steps.forEach(step => { step.material = window.EscalatorMaterial; }); }
         for (const steps of Object.values(escalatorSteps.down)) { steps.forEach(step => { step.material = window.EscalatorMaterial; }); }
-        for (const steps of Object.values(escalatorStepsB.up))  { steps.forEach(step => { step.material = window.EscalatorMaterial; }); }
-        for (const steps of Object.values(escalatorStepsB.down)){ steps.forEach(step => { step.material = window.EscalatorMaterial; }); }
+        for (const steps of Object.values(escalatorStepsB.up)) { steps.forEach(step => { step.material = window.EscalatorMaterial; }); }
+        for (const steps of Object.values(escalatorStepsB.down)) { steps.forEach(step => { step.material = window.EscalatorMaterial; }); }
 
         // If on an escalator, set its steps to EscalatorEmbarkMaterial
         if (escalatorFoundThisFrame && typeThisFrame && floorThisFrame !== null && wingThisFrame) {
@@ -4789,9 +4801,9 @@ function updatePlayer(deltaTime) {
         playerOnEscalator.floor = floorThisFrame;
         playerOnEscalator.wing = wingThisFrame;
     }
-    
-        // --- Check if player walks under chain of a destroyed light ---
-  
+
+    // --- Check if player walks under chain of a destroyed light ---
+
     // --- Player walks under chain of a destroyed light to collect item ---
     const playerWorldPos = controls.getObject().position;
     const playerXZ = new THREE.Vector2(playerWorldPos.x, playerWorldPos.z);
@@ -4827,7 +4839,7 @@ function updatePlayer(deltaTime) {
                             if (worldObjShadeIndex > -1) worldObjects.splice(worldObjShadeIndex, 1);
                             fallenLampshades.splice(k, 1);
                             console.log(`Removed fallen lampshade for light ${originalLightId} from scene.`);
-                            break; 
+                            break;
                         }
                     }
                     updateUI();
@@ -4835,17 +4847,17 @@ function updatePlayer(deltaTime) {
             }
         }
     }
-    
-    
+
+
     // --- Corridor Escalator Animation Override Logic ---
     const playerIsInCorridorX = (playerPos.x >= 0 && playerPos.x <= SETTINGS.corridorWidth);
 
     if (playerIsInCorridorX) {
         const allEscalatorSystems = [
-            { name: "A-Up",   wing: 'A', type: 'up',   starts: escalatorStarts.up,   steps: escalatorSteps.up,   embarkMat: window.EscalatorEmbarkMaterial },
+            { name: "A-Up", wing: 'A', type: 'up', starts: escalatorStarts.up, steps: escalatorSteps.up, embarkMat: window.EscalatorEmbarkMaterial },
             { name: "A-Down", wing: 'A', type: 'down', starts: escalatorStarts.down, steps: escalatorSteps.down, embarkMat: window.EscalatorEmbarkMaterial },
-            { name: "B-Up",   wing: 'B', type: 'up',   starts: escalatorStartsB.up,  steps: escalatorStepsB.up,  embarkMat: window.EscalatorEmbarkMaterialB },
-            { name: "B-Down", wing: 'B', type: 'down', starts: escalatorStartsB.down,steps: escalatorStepsB.down,embarkMat: window.EscalatorEmbarkMaterialB }
+            { name: "B-Up", wing: 'B', type: 'up', starts: escalatorStartsB.up, steps: escalatorStepsB.up, embarkMat: window.EscalatorEmbarkMaterialB },
+            { name: "B-Down", wing: 'B', type: 'down', starts: escalatorStartsB.down, steps: escalatorStepsB.down, embarkMat: window.EscalatorEmbarkMaterialB }
         ];
 
         allEscalatorSystems.forEach(escSystem => {
@@ -4876,7 +4888,7 @@ function updatePlayer(deltaTime) {
                         escalatorResult.floor === floor) {
                         playerIsActivelyUsingThisEscalator = true;
                     }
-                    
+
                     if (!playerIsActivelyUsingThisEscalator) {
                         if (stepsOrInstancedMesh instanceof THREE.InstancedMesh) {
                             if (stepsOrInstancedMesh.material !== window.EscalatorMaterial) {
@@ -5092,62 +5104,63 @@ function handleCollisions() {
     }
 }
 
-        function toggleGameMenuOverlay() { const menuOverlayContainer = document.getElementById('menuOverlayContainer'); const menuFrame = document.getElementById('menuFrame');
+function toggleGameMenuOverlay() {
+    const menuOverlayContainer = document.getElementById('menuOverlayContainer'); const menuFrame = document.getElementById('menuFrame');
 
-              if (menuOverlayContainer.style.display === 'block') {
-          // Hide menu, resume game
-          menuOverlayContainer.style.display = 'none';
-          menuFrame.src = 'about:blank'; // Clear iframe content
-          isGamePaused = false;
-          if (document.pointerLockElement) { // If pointer was locked
-              // Attempt to re-lock pointer, specific to how your game handles it
-              // e.g., renderer.domElement.requestPointerLock(); or controls.lock();
-          }
-          // If you cancelAnimationFrame, you need to restart it here.
-          // If animate checks isGamePaused, it will resume automatically.
-          // For games like PacSnake or Paint that are event-driven, isGamePaused
-          // might be checked before processing input events.
+    if (menuOverlayContainer.style.display === 'block') {
+        // Hide menu, resume game
+        menuOverlayContainer.style.display = 'none';
+        menuFrame.src = 'about:blank'; // Clear iframe content
+        isGamePaused = false;
+        if (document.pointerLockElement) { // If pointer was locked
+            // Attempt to re-lock pointer, specific to how your game handles it
+            // e.g., renderer.domElement.requestPointerLock(); or controls.lock();
+        }
+        // If you cancelAnimationFrame, you need to restart it here.
+        // If animate checks isGamePaused, it will resume automatically.
+        // For games like PacSnake or Paint that are event-driven, isGamePaused
+        // might be checked before processing input events.
 
-      } else {
-          // Show menu, pause game
-          isGamePaused = true;
-          if (document.pointerLockElement) {
-              document.exitPointerLock();
-          }
-          // Adjust path to Menu.html based on current file's location
-          // Example for a game in Arcade/GameName/Game.html:
-          let pathToMenu = '../../Menu.html';
-          // Example for Arcade.html:
-          // let pathToMenu = '../Menu.html';
+    } else {
+        // Show menu, pause game
+        isGamePaused = true;
+        if (document.pointerLockElement) {
+            document.exitPointerLock();
+        }
+        // Adjust path to Menu.html based on current file's location
+        // Example for a game in Arcade/GameName/Game.html:
+        let pathToMenu = '../../Menu.html';
+        // Example for Arcade.html:
+        // let pathToMenu = '../Menu.html';
 
-          // Dynamically calculate path (more robust)
-          const currentPath = window.location.pathname;
-          const pathSegments = currentPath.split('/');
-          let relativePath = '';
-          // Find 'Arcade' and go up one level from there for Menu.html in SHOP
-          // Or, if Menu.html is at the root of SHOP, and games are in SHOP/Arcade/...
-          const shopIndex = pathSegments.indexOf('SHOP'); // Assuming SHOP is in the path
-          if (shopIndex > -1) {
-              const depth = pathSegments.length - shopIndex - 1; // -1 because SHOP itself is one level
-              for(let i=0; i < depth; i++) {
-                  relativePath += '../';
-              }
-              pathToMenu = relativePath + 'Menu.html';
-          } else { // Fallback if SHOP isn't in path (e.g. running from a different structure)
-              const depth = currentPath.includes('/Arcade/') ? (currentPath.split('/Arcade/')[1].split('/').length) : 1;
-              pathToMenu = '../'.repeat(depth) + 'Menu.html';
-          }
+        // Dynamically calculate path (more robust)
+        const currentPath = window.location.pathname;
+        const pathSegments = currentPath.split('/');
+        let relativePath = '';
+        // Find 'Arcade' and go up one level from there for Menu.html in SHOP
+        // Or, if Menu.html is at the root of SHOP, and games are in SHOP/Arcade/...
+        const shopIndex = pathSegments.indexOf('SHOP'); // Assuming SHOP is in the path
+        if (shopIndex > -1) {
+            const depth = pathSegments.length - shopIndex - 1; // -1 because SHOP itself is one level
+            for (let i = 0; i < depth; i++) {
+                relativePath += '../';
+            }
+            pathToMenu = relativePath + 'Menu.html';
+        } else { // Fallback if SHOP isn't in path (e.g. running from a different structure)
+            const depth = currentPath.includes('/Arcade/') ? (currentPath.split('/Arcade/')[1].split('/').length) : 1;
+            pathToMenu = '../'.repeat(depth) + 'Menu.html';
+        }
 
 
-          menuFrame.src = pathToMenu + '?isOverlay=true&returnLabel=Resume';
-          menuOverlayContainer.style.display = 'block';
-      }
-  }
-  
+        menuFrame.src = pathToMenu + '?isOverlay=true&returnLabel=Resume';
+        menuOverlayContainer.style.display = 'block';
+    }
+}
+
 
 // --- Animation Loop ---
 function animate() {
-     // animationFrameIdGame = requestAnimationFrame(animate); // If you re-assign it here if (isGamePaused) { // Optional: If you want to completely stop rAF and restart, you'd cancel it here. // But for a simple pause, just returning is often enough if rAF is called once outside. // If animate calls itself, you must ensure it doesn't get called when paused. return; } // ... rest of your game's animate function } // Ensure requestAnimationFrame(animate) is called to start the loop initially. // If animate calls itself (e.g. requestAnimationFrame(animate) is inside animate), // then the `if (isGamePaused) return;` is sufficient.
+    // animationFrameIdGame = requestAnimationFrame(animate); // If you re-assign it here if (isGamePaused) { // Optional: If you want to completely stop rAF and restart, you'd cancel it here. // But for a simple pause, just returning is often enough if rAF is called once outside. // If animate calls itself, you must ensure it doesn't get called when paused. return; } // ... rest of your game's animate function } // Ensure requestAnimationFrame(animate) is called to start the loop initially. // If animate calls itself (e.g. requestAnimationFrame(animate) is inside animate), // then the `if (isGamePaused) return;` is sufficient.
     if (isGameOver) return; // Stop animation loop if game is over
 
     requestAnimationFrame(animate);
@@ -5185,7 +5198,7 @@ function animate() {
                     animationState.targetBulbEmissive,
                     progress
                 );
-                 lightGroup.userData.bottomLightDisk.material.emissiveIntensity = THREE.MathUtils.lerp(
+                lightGroup.userData.bottomLightDisk.material.emissiveIntensity = THREE.MathUtils.lerp(
                     animationState.startDiskEmissive,
                     animationState.targetDiskEmissive,
                     progress
@@ -5259,22 +5272,22 @@ function animate() {
 
             // Construct the output string - Added Name
             pointedObjectInfo = `Looking at: Name: ${objectName} | ID: ${objectId} | ` +
-                                `Type: ${objectType} | ` +
-                                `Dims: ${dimensions} | ` +
-                                `World: (${worldPosition.x.toFixed(2)}, ${worldPosition.y.toFixed(2)}, ${worldPosition.z.toFixed(2)})`;
+                `Type: ${objectType} | ` +
+                `Dims: ${dimensions} | ` +
+                `World: (${worldPosition.x.toFixed(2)}, ${worldPosition.y.toFixed(2)}, ${worldPosition.z.toFixed(2)})`;
 
-             // You could still add specific checks, e.g., if it's a door or part of a light
-             if (doors.includes(hitObject)) {
-                 pointedObjectInfo += ` (Door - Red: ${hitObject.userData.isRed})`;
-             } else if (lights.some(lg => lg.children.includes(hitObject))) {
-                 pointedObjectInfo += ` (Part of Light)`;
-             } else { // Check for elevator parts among other objects
+            // You could still add specific checks, e.g., if it's a door or part of a light
+            if (doors.includes(hitObject)) {
+                pointedObjectInfo += ` (Door - Red: ${hitObject.userData.isRed})`;
+            } else if (lights.some(lg => lg.children.includes(hitObject))) {
+                pointedObjectInfo += ` (Part of Light)`;
+            } else { // Check for elevator parts among other objects
                 const hitElevator = elevators.find(e => e.platform === hitObject || e.roof === hitObject);
                 if (hitElevator) {
                     pointedObjectInfo += ` (Elevator ${hitElevator.id} ${hitObject === hitElevator.platform ? 'Platform' : 'Roof'})`;
                 }
-             }
-             // Add more specific checks if needed
+            }
+            // Add more specific checks if needed
 
         }
 
@@ -5379,7 +5392,7 @@ function animate() {
         if (fpsElem) {
             fpsElem.innerText = fpsText;
         }
-        
+
         // --- Find object directly beneath the player using a downward ray ---
         const maxDistance = 2; // Adjust as needed
         const downDirection = new THREE.Vector3(0, -1, 0);
@@ -5413,8 +5426,8 @@ function animate() {
 
             // Reset step materials if above "Left Escalator Down End...", "Right Escalator Up End...", or any floor object
             if (
-                objName.includes("Escalator Down End") || 
-                objName.includes("Escalator Up End") || 
+                objName.includes("Escalator Down End") ||
+                objName.includes("Escalator Up End") ||
                 objName.includes("Floor") // Check if "Floor" is anywhere in the name
             ) {
                 for (const steps of Object.values(escalatorSteps.up)) {
@@ -5437,9 +5450,9 @@ function animate() {
         }
 
         // Update the output elements with the collision info:
-        document.getElementById('playerCoords').innerText = 
+        document.getElementById('playerCoords').innerText =
             `Player: (${controls.getObject().position.x.toFixed(2)}, ${controls.getObject().position.y.toFixed(2)}, ${controls.getObject().position.z.toFixed(2)}) | Below: ${belowCollisionInfo}`;
-        document.getElementById('pointedObject').innerText = 
+        document.getElementById('pointedObject').innerText =
             pointedObjectInfo + ` | Below: ${belowCollisionInfo}`;
     }
 
@@ -5557,7 +5570,7 @@ function updateLODSystem() {
     camera.getWorldDirection(playerDirection);
 
     // Check if player is generally outside the main building's corridor/room area
-    const isOutsideBuilding = playerPos.x < -SETTINGS.roomSize + 1 || playerPos.x > SETTINGS.corridorWidth + SETTINGS.roomSize -1 ;
+    const isOutsideBuilding = playerPos.x < -SETTINGS.roomSize + 1 || playerPos.x > SETTINGS.corridorWidth + SETTINGS.roomSize - 1;
 
     allRoomsData.forEach(roomData => {
         let isVisibleByWindowThisFrame = false;
@@ -5572,11 +5585,11 @@ function updateLODSystem() {
             // Replace this with your more detailed dotProduct/distance check
             const windowPos = new THREE.Vector3(); roomData.windowGlass.getWorldPosition(windowPos);
             if (playerPos.distanceTo(windowPos) < 35) { // Simplified check
-                 const vectorToWindow = new THREE.Vector3().subVectors(windowPos, playerPos).normalize();
-                 const dotProduct = playerDirection.dot(vectorToWindow);
-                 if (dotProduct > 0.25) {
+                const vectorToWindow = new THREE.Vector3().subVectors(windowPos, playerPos).normalize();
+                const dotProduct = playerDirection.dot(vectorToWindow);
+                if (dotProduct > 0.25) {
                     isVisibleByWindowThisFrame = true;
-                 }
+                }
             }
 
             // Now, manage the window material based on this
