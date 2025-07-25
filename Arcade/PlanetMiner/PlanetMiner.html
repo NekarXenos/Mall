@@ -257,7 +257,7 @@
             ROCK:      { id: 'rock',      color: new THREE.Color(0x222222), buildable: true },
             // Underwater
             SEAWEED:   { id: 'seaweed',   color: new THREE.Color(0x2E8B57) }, // Still defined, but won't be used for generation
-            ANEMONE:   { id: 'anemone',   color: new THREE.Color(0x4169E1) },
+            ANEMONE:   { id: 'anemone',   color: new THREE.Color(0x4169E1), buildable: true },
             // Subsurface
             LAVA:      { id: 'lava',      color: new THREE.Color(0xFF4500), emissive: new THREE.Color(0xdd3300) },
             // Moon
@@ -628,7 +628,7 @@
                 messageBox.textContent = "Tap joystick to move, drag right side to look, tap buttons to interact!";
             } else {
                 mobileControls.style.display = 'none';
-                messageBox.textContent = "WASD: Move, Space: Jump, Mouse: Look, Click: Interact, Arrow Keys: Switch Material, L: Teleport to Moon, T: Toggle Torch"; // Updated message
+                messageBox.textContent = "WASD: Move, Space: Jump, Mouse: Look, Click: Interact, Arrow Keys or 1-9: Switch Material, L: Teleport, T: Toggle Torch";
             }
         }
         
@@ -813,6 +813,17 @@
 
         // --- CORE GAME LOGIC ---
         function onKeyDown(event) {
+            // Handle number keys for inventory selection
+            if (event.code.startsWith('Digit')) {
+                const index = parseInt(event.key) - 1;
+                if (index >= 0 && index < 9) {
+                    if (index < buildableMaterials.length) {
+                        selectMaterial(index);
+                    }
+                    return; // Early exit for number keys
+                }
+            }
+
             switch (event.code) {
                 case 'KeyW': keys.w = true; break;
                 case 'KeyA': keys.a = true; break;
