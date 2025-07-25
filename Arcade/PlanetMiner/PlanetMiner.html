@@ -619,6 +619,8 @@
                 }
             }
 
+            setupFoliage(); // New function call for foliage
+
             generatePlanet();
             generateMoon();
             createWaterLayer();
@@ -630,7 +632,6 @@
 
             setupEventListeners();
             setupInventoryUI();
-            setupFoliage(); // New function call for foliage
 
             // Mobile device detection and control setup
             if (isMobileDevice()) {
@@ -1650,10 +1651,12 @@
                 type.lods.forEach(lod => lod.count = 0);
 
                 type.map.forEach((instanceId, mapKey) => {
+                    // Get the master matrix from the highest LOD mesh
                     type.lods[0].getMatrixAt(instanceId, tempMatrix);
                     instancePos.setFromMatrixPosition(tempMatrix);
 
-                    if (tempMatrix.elements[0] === 0) return;
+                    // Check if the instance has been mined (scaled to zero)
+                    if (tempMatrix.elements[0] === 0 && tempMatrix.elements[5] === 0) return;
 
                     const dist = playerPos.distanceTo(instancePos);
 
@@ -1667,11 +1670,13 @@
 
                     if (lodIndex !== -1) {
                         const targetLOD = type.lods[lodIndex];
+                        // Copy the matrix to the correct LOD at the correct index
                         targetLOD.setMatrixAt(targetLOD.count, tempMatrix);
                         targetLOD.count++;
                     }
                 });
 
+                // Tell Three.js to update the instance matrices for all LODs of this type
                 type.lods.forEach(lod => {
                     lod.instanceMatrix.needsUpdate = true;
                 });
