@@ -373,9 +373,6 @@
         const MAX_GRASS_PER_LOD = 20000; // Max instances per LOD mesh
         let voxelToGrassMap = new Map(); // Maps voxel coords to instance index
 
-        let anemoneLODs = [];
-        let voxelToAnemoneMap = new Map();
-
         // --- Player, Camera, and Controls ---
         let player;
         const clock = new THREE.Clock();
@@ -630,7 +627,7 @@
 
             setupEventListeners();
             setupInventoryUI();
-            setupFoliage(); // New function call for foliage
+            setupGrass(); // New function call for grass
 
             // Mobile device detection and control setup
             if (isMobileDevice()) {
@@ -720,66 +717,6 @@
             if (!isLocked) return;
             if (event.button === 0) mineBlockAtCrosshair();
             else if (event.button === 2) placeBlockAtCrosshair();
-        }
-
-        // --- GRASS FUNCTIONS ---
-        /**
-         * Creates geometry for a single grass patch with a variable number of blades.
-         * @param {number} bladeCount - The number of triangular blades to generate.
-         * @returns {THREE.BufferGeometry}
-         */
-        function createGrassPatchGeometry(bladeCount) {
-            const patchGeometry = new THREE.BufferGeometry();
-            const vertices = [];
-
-            for (let i = 0; i < bladeCount; i++) {
-                const baseWidth = 0.01;
-                const height = THREE.MathUtils.randFloat(0.1, 0.5);
-                const horizontalOffset = THREE.MathUtils.randFloat(0.05, 0.1);
-
-                const angle = Math.random() * Math.PI * 2;
-                const offsetX = Math.cos(angle) * horizontalOffset;
-                const offsetZ = Math.sin(angle) * horizontalOffset;
-
-                const v1 = new THREE.Vector3(offsetX - baseWidth / 2, 0, offsetZ);
-                const v2 = new THREE.Vector3(offsetX + baseWidth / 2, 0, offsetZ);
-                const v3 = new THREE.Vector3(offsetX, height, offsetZ);
-
-                vertices.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, v3.x, v3.y, v3.z);
-            }
-
-            patchGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            patchGeometry.computeVertexNormals();
-            return patchGeometry;
-        }
-
-        /**
-         * Initializes the InstancedMesh objects for all foliage types (grass, anemones).
-         */
-        function setupFoliage() {
-            // Setup for Grass
-            const grassMaterial = new THREE.MeshStandardMaterial({ color: 0x00cc44, side: THREE.DoubleSide });
-            for (let i = 0; i < GRASS_LOD_DISTANCES.length; i++) {
-                const bladeCount = GRASS_LOD_BLADES[i];
-                const grassPatchGeometry = createGrassPatchGeometry(bladeCount);
-                const lodMesh = new THREE.InstancedMesh(grassPatchGeometry, grassMaterial, MAX_GRASS_PER_LOD);
-                lodMesh.name = `Grass_LOD_${i}`;
-                lodMesh.count = 0;
-                scene.add(lodMesh);
-                grassLODs.push(lodMesh);
-            }
-
-            // Setup for Sea Anemones
-            const anemoneMaterial = new THREE.MeshStandardMaterial({ color: 0x4169E1, side: THREE.DoubleSide }); // Blue color
-            for (let i = 0; i < GRASS_LOD_DISTANCES.length; i++) {
-                const bladeCount = GRASS_LOD_BLADES[i]; // Using same blade count for simplicity
-                const anemonePatchGeometry = createGrassPatchGeometry(bladeCount);
-                const lodMesh = new THREE.InstancedMesh(anemonePatchGeometry, anemoneMaterial, MAX_GRASS_PER_LOD); // Re-use max count
-                lodMesh.name = `Anemone_LOD_${i}`;
-                lodMesh.count = 0;
-                scene.add(lodMesh);
-                anemoneLODs.push(lodMesh);
-            }
         }
         
         // --- MOBILE CONTROL FUNCTIONS ---
@@ -1084,30 +1021,6 @@
                             updateInventoryUI();
                         }
                         createMiningEffect(intersectionPoint, minedMaterial);
-
-                        // If a foliage block was mined, remove the corresponding instance
-                        const mapKey = `${gridX},${gridY},${gridZ}`;
-                        if (minedMaterial.id === 'grass') {
-                            const instanceId = voxelToGrassMap.get(mapKey);
-                            if (instanceId !== undefined) {
-                                const zeroScaleMatrix = new THREE.Matrix4().scale(new THREE.Vector3(0, 0, 0));
-                                grassLODs.forEach(lod => {
-                                    lod.setMatrixAt(instanceId, zeroScaleMatrix);
-                                    lod.instanceMatrix.needsUpdate = true;
-                                });
-                                voxelToGrassMap.delete(mapKey);
-                            }
-                        } else if (minedMaterial.id === 'anemone') {
-                            const instanceId = voxelToAnemoneMap.get(mapKey);
-                            if (instanceId !== undefined) {
-                                const zeroScaleMatrix = new THREE.Matrix4().scale(new THREE.Vector3(0, 0, 0));
-                                anemoneLODs.forEach(lod => {
-                                    lod.setMatrixAt(instanceId, zeroScaleMatrix);
-                                    lod.instanceMatrix.needsUpdate = true;
-                                });
-                                voxelToAnemoneMap.delete(mapKey);
-                            }
-                        }
                     }
                 } else if (cubes.includes(intersectedObject)) {
                     // This is a manually placed cube
@@ -1278,78 +1191,6 @@
             const material = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.2, side: THREE.DoubleSide, vertexColors: true }); // Added DoubleSide
             marchingCubesMesh = new THREE.Mesh(geometry, material);
             scene.add(marchingCubesMesh);
-
-            // After creating the planet mesh, populate it with grass
-            populateFoliage();
-        }
-
-        function populateFoliage() {
-            // Reset existing foliage
-            grassLODs.forEach(lod => lod.count = 0);
-            anemoneLODs.forEach(lod => lod.count = 0);
-            voxelToGrassMap.clear();
-            voxelToAnemoneMap.clear();
-
-            const dummy = new THREE.Object3D();
-            let grassInstanceIndex = 0;
-            let anemoneInstanceIndex = 0;
-
-            const positions = marchingCubesMesh.geometry.attributes.position;
-            const normals = marchingCubesMesh.geometry.attributes.normal;
-            const colors = marchingCubesMesh.geometry.attributes.color;
-            const grassColor = MATERIALS.GRASS.color;
-            const anemoneColor = MATERIALS.ANEMONE.color;
-
-            const halfGrid = GRID_SIZE / 2;
-            const waterRadius = PLANET_RADIUS + WATER_LEVEL_OFFSET;
-
-            for (let i = 0; i < positions.count; i++) {
-                const r = colors.getX(i);
-                const g = colors.getY(i);
-                const b = colors.getZ(i);
-
-                const isGrassColor = Math.abs(r - grassColor.r) < 0.1 && Math.abs(g - grassColor.g) < 0.1;
-                const isAnemoneColor = Math.abs(r - anemoneColor.r) < 0.1 && Math.abs(g - anemoneColor.g) < 0.1 && Math.abs(b - anemoneColor.b) < 0.1;
-
-                if ((isGrassColor || isAnemoneColor) && Math.random() > 0.9) {
-                    const pos = new THREE.Vector3().fromBufferAttribute(positions, i);
-                    const isUnderwater = pos.distanceTo(planetCenter) < waterRadius;
-                    const normal = new THREE.Vector3().fromBufferAttribute(normals, i);
-
-                    const gridX = Math.floor(pos.x / BLOCK_SIZE + halfGrid);
-                    const gridY = Math.floor(pos.y / BLOCK_SIZE + halfGrid);
-                    const gridZ = Math.floor(pos.z / BLOCK_SIZE + halfGrid);
-                    const mapKey = `${gridX},${gridY},${gridZ}`;
-
-                    dummy.position.copy(pos);
-                    dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), normal);
-                    dummy.updateMatrix();
-
-                    if (isUnderwater) {
-                        if (anemoneInstanceIndex < MAX_GRASS_PER_LOD && !voxelToAnemoneMap.has(mapKey)) {
-                            anemoneLODs.forEach(lod => lod.setMatrixAt(anemoneInstanceIndex, dummy.matrix));
-                            voxelToAnemoneMap.set(mapKey, anemoneInstanceIndex);
-                            anemoneInstanceIndex++;
-                        }
-                    } else {
-                        if (grassInstanceIndex < MAX_GRASS_PER_LOD && !voxelToGrassMap.has(mapKey)) {
-                            grassLODs.forEach(lod => lod.setMatrixAt(grassInstanceIndex, dummy.matrix));
-                            voxelToGrassMap.set(mapKey, grassInstanceIndex);
-                            grassInstanceIndex++;
-                        }
-                    }
-                }
-            }
-
-            // Set initial counts and update matrices
-            if (grassLODs.length > 0) {
-                grassLODs[0].count = grassInstanceIndex;
-                grassLODs.forEach(lod => lod.instanceMatrix.needsUpdate = true);
-            }
-            if (anemoneLODs.length > 0) {
-                anemoneLODs[0].count = anemoneInstanceIndex;
-                anemoneLODs.forEach(lod => lod.instanceMatrix.needsUpdate = true);
-            }
         }
 
         function updateMarchingCubesMoonMesh() {
@@ -1628,54 +1469,7 @@
             }
 
             updateCamera();
-            updateFoliageLODs(); // New call for foliage LOD logic
             renderer.render(scene, camera);
-        }
-
-        function updateFoliageLODs() {
-            if (!player) return;
-
-            const foliageTypes = [
-                { lods: grassLODs, map: voxelToGrassMap },
-                { lods: anemoneLODs, map: voxelToAnemoneMap }
-            ];
-
-            const playerPos = player.position;
-            const tempMatrix = new THREE.Matrix4();
-            const instancePos = new THREE.Vector3();
-
-            foliageTypes.forEach(type => {
-                if (type.lods.length === 0 || type.map.size === 0) return;
-
-                type.lods.forEach(lod => lod.count = 0);
-
-                type.map.forEach((instanceId, mapKey) => {
-                    type.lods[0].getMatrixAt(instanceId, tempMatrix);
-                    instancePos.setFromMatrixPosition(tempMatrix);
-
-                    if (tempMatrix.elements[0] === 0) return;
-
-                    const dist = playerPos.distanceTo(instancePos);
-
-                    let lodIndex = -1;
-                    for (let j = 0; j < GRASS_LOD_DISTANCES.length; j++) {
-                        if (dist < GRASS_LOD_DISTANCES[j]) {
-                            lodIndex = j;
-                            break;
-                        }
-                    }
-
-                    if (lodIndex !== -1) {
-                        const targetLOD = type.lods[lodIndex];
-                        targetLOD.setMatrixAt(targetLOD.count, tempMatrix);
-                        targetLOD.count++;
-                    }
-                });
-
-                type.lods.forEach(lod => {
-                    lod.instanceMatrix.needsUpdate = true;
-                });
-            });
         }
 
         window.onload = function() {
