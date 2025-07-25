@@ -579,7 +579,7 @@
                 fragmentShader: sunGlowFragmentShader,
                 blending: THREE.AdditiveBlending,
                 transparent: true,
-                depthTest: false
+                depthTest: true
             });
 
             const sunGlow = new THREE.Points(glowGeometry, glowMaterial);
@@ -768,35 +768,44 @@
 
         // --- INVENTORY UI FUNCTIONS ---
         function setupInventoryUI() {
-            const slotsContainer = document.getElementById('inventory-slots');
-            slotsContainer.innerHTML = '';
-            buildableMaterials.forEach(matId => {
-                const mat = Object.values(MATERIALS).find(m => m.id === matId);
-                const slot = document.createElement('div');
-                slot.className = 'inventory-slot';
-                slot.id = `slot-${matId}`;
-                slot.innerHTML = `
-                    <div class="slot-color-preview" style="background-color: #${mat.color.getHexString()}"></div>
-                    <div class="slot-info">
-                        <div class="slot-name">${mat.id.replace('_', ' ')}</div>
-                        <div class="slot-count" id="count-${matId}">0</div>
-                    </div>
-                `;
-                slot.onclick = () => selectMaterialById(matId);
-                slotsContainer.appendChild(slot);
-            });
+            // updateInventoryUI will now handle the full render, including initial setup.
             updateInventoryUI();
         }
 
         function updateInventoryUI() {
+            // Store the ID of the currently selected material to maintain selection after sorting
+            const selectedId = buildableMaterials[selectedMaterialIndex];
+
+            // Sort the buildable materials array based on inventory count, descending
+            buildableMaterials.sort((a, b) => inventory[b] - inventory[a]);
+
+            // Find the new index of the selected material
+            selectedMaterialIndex = buildableMaterials.findIndex(id => id === selectedId);
+
+            const slotsContainer = document.getElementById('inventory-slots');
+            slotsContainer.innerHTML = ''; // Clear existing slots to re-render in new order
+
+            // Re-create all slots in the new sorted order
             buildableMaterials.forEach((matId, index) => {
-                const countSpan = document.getElementById(`count-${matId}`);
-                if (countSpan) countSpan.textContent = inventory[matId];
+                const mat = Object.values(MATERIALS).find(m => m.id === matId);
+                const slot = document.createElement('div');
+                slot.className = 'inventory-slot';
+                slot.id = `slot-${matId}`;
                 
-                const slotDiv = document.getElementById(`slot-${matId}`);
-                if (slotDiv) {
-                    slotDiv.classList.toggle('selected', index === selectedMaterialIndex);
+                slot.innerHTML = `
+                    <div class="slot-color-preview" style="background-color: #${mat.color.getHexString()}"></div>
+                    <div class="slot-info">
+                        <div class="slot-name">${mat.id.replace('_', ' ')}</div>
+                        <div class="slot-count" id="count-${matId}">${inventory[matId]}</div>
+                    </div>
+                `;
+
+                if (index === selectedMaterialIndex) {
+                    slot.classList.add('selected');
                 }
+
+                slot.onclick = () => selectMaterialById(matId);
+                slotsContainer.appendChild(slot);
             });
         }
 
