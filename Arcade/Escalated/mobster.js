@@ -48,6 +48,7 @@ export class Mobster {
         this.rightCalf = null;
 
         this.health = 100; // Add health property
+        this.isFalling = false; // State to prevent multiple death animations
 
         this._createCharacter();
         this.characterGroup.position.copy(initialPosition);
@@ -235,7 +236,8 @@ export class Mobster {
         const desiredHeight = 1.7;
         const scaleFactor = desiredHeight / currentHeight;
         this.characterGroup.scale.set(scaleFactor, scaleFactor, scaleFactor);
-        
+        this.characterGroup.userData.isEnemy = true;
+
 
         this.characterGroup.traverse(object => {
             if (object.isMesh) {
@@ -259,9 +261,28 @@ export class Mobster {
     /**
      * Call this method in your main animation loop.
      * @param {number} deltaTime Time since last frame.
+     * @param {THREE.Vector3} playerPosition The player's current position.
+     * @param {boolean} hasLineOfSight Whether the mobster can see the player.
+     * @param {boolean} isAimedAtByPlayer Whether the player is aiming at this mobster.
+     * @param {function} createProjectileFunc The function to create a projectile.
      */
-    update(deltaTime) {
+    update(deltaTime, playerPosition, hasLineOfSight, isAimedAtByPlayer, createProjectileFunc) {
         const elapsedTime = this.clock.getElapsedTime();
+
+        if (hasLineOfSight) {
+            // If mobster sees player, it should aim.
+            this.aimAt(playerPosition);
+
+            if (isAimedAtByPlayer) {
+                // If player is also aiming, fire back.
+                this.fireProjectile(playerPosition, createProjectileFunc);
+            }
+        } else {
+            // If mobster loses sight, go back to standing.
+            if (this.characterState === 'aiming') {
+                this.stand();
+            }
+        }
 
         switch (this.characterState) {
             case 'walking':
@@ -274,6 +295,42 @@ export class Mobster {
             case 'aiming':
                 this._animateAiming(elapsedTime);
                 break;
+        }
+    }
+
+    fireProjectile(targetPosition, createProjectileFunc) {
+        if (this.characterState !== 'aiming') return;
+
+        const now = this.clock.getElapsedTime();
+        if (now - this.lastShotTime < 2.0) { // Fire rate of 2 seconds
+            return;
+        }
+
+        this.lastShotTime = now;
+        this._createMuzzleFlash();
+
+        const projectileStartPosition = new THREE.Vector3();
+        const barrelTip = new THREE.Vector3(0.5, 0, 2.0); // Position relative to gunGroup, might need adjustment
+        this.gunGroup.localToWorld(barrelTip);
+        projectileStartPosition.copy(barrelTip);
+
+        const direction = new THREE.Vector3().subVectors(targetPosition, projectileStartPosition).normalize();
+
+        // Add random spread based on floor level
+        const baseSpread = 0.02; // Ground floor is accurate
+        const spreadPerFloor = 0.08; // Spread increases significantly per floor
+        const floorSpread = Math.max(0, this.floorIndex) * spreadPerFloor;
+        const totalSpread = baseSpread + floorSpread;
+
+        if (totalSpread > 0) {
+            direction.x += (Math.random() - 0.5) * totalSpread;
+            direction.y += (Math.random() - 0.5) * totalSpread;
+            direction.z += (Math.random() - 0.5) * totalSpread;
+            direction.normalize();
+        }
+
+        if (createProjectileFunc) {
+            createProjectileFunc(projectileStartPosition, direction, false, this.characterGroup);
         }
     }
 
@@ -301,7 +358,7 @@ export class Mobster {
         if (this.characterState !== 'aiming') {
             this.characterState = 'aiming';
             this.aimStartTime = this.clock.getElapsedTime();
-            
+
             // Store current rotations for smooth transition
             this.startAimRotations = {
                 leftArm: this.leftArm.rotation.clone(),
@@ -359,7 +416,8 @@ export class Mobster {
         const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(
             new THREE.Matrix4().lookAt(this.aimTarget, this.characterGroup.position, this.characterGroup.up)
         );
-        THREE.Quaternion.slerp(this.startAimRotations.character, targetQuaternion, this.characterGroup.quaternion, aimProgress);
+        const startQuaternion = this.startAimRotations.character.clone();
+        this.characterGroup.quaternion.copy(startQuaternion.slerp(targetQuaternion, aimProgress));
 
         this.leftArm.rotation.x = THREE.MathUtils.lerp(this.startAimRotations.leftArm.x, -Math.PI / 2.2, aimProgress);
         this.rightArm.rotation.x = THREE.MathUtils.lerp(this.startAimRotations.rightArm.x, -Math.PI / 2.2, aimProgress);
@@ -387,7 +445,7 @@ export class Mobster {
      * Returns the main character group object.
      * @returns {THREE.Group}
      */
-        getObject() {
+    getObject() {
         return this.characterGroup;
     }
 
@@ -408,15 +466,18 @@ export class Mobster {
     takeDamage(amount) {
         this.health -= amount;
         if (this.health <= 0) {
-            this.fallAndDisappear();
+            // this.fallAndDisappear(); // Now called from main.js
         }
     }
 
-    fallAndDisappear() {
+    fallAndDisappear(direction) { // direction parameter added to match call
+        if (this.isFalling) return; // Prevent multiple fall animations
+        this.isFalling = true; // Set the state to falling
+
         // Simple fall animation: rotate the character group
         const rotationSpeed = 0.1; // Adjust as needed
         const fallSpeed = 0.2; // Adjust as needed
-        
+
         const targetRotation = new THREE.Euler(-Math.PI / 2, 0, 0); // THREE.Euler(0, 0, Math.PI / 2); // Rotate 90 degrees around Z-axis
 
         const animateFall = () => {

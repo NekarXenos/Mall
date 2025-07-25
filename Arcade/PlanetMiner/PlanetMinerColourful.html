@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voxel Planet Miner - Advanced Materials (Improved Physics)</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+    <!-- Include Simplex Noise library for terrain generation -->
+    <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #message-box {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1.2em;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 200;
+            color: white;
+            font-size: 2em;
+            cursor: pointer;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin-left: -10px;
+            margin-top: -10px;
+            border: 2px solid white;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.2);
+            z-index: 100;
+        }
+        #mobile-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 0 20px;
+            box-sizing: border-box;
+            z-index: 150;
+            pointer-events: none;
+        }
+        #joystick-area, #action-buttons-area {
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #joystick-base {
+            width: 100px;
+            height: 100px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            touch-action: none;
+        }
+        #joystick-thumb {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            position: absolute;
+            touch-action: none;
+        }
+        .action-button {
+            background-color: #007bff;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2em;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            transition: background-color 0.2s ease-in-out;
+        }
+        .action-button:active {
+            background-color: #0056b3;
+        }
+        #inventory-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            background-color: rgba(31, 41, 55, 0.8);
+            padding: 8px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            z-index: 10;
+        }
+        #inventory-slots {
+            display: flex;
+            gap: 8px;
+            padding: 0 10px;
+        }
+        .inventory-slot {
+            width: 60px;
+            height: 60px;
+            background-color: #374151;
+            border: 2px solid #4B5563;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+            text-transform: capitalize;
+        }
+        .inventory-slot.selected {
+            border-color: #facc15;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(250, 204, 21, 0.5);
+        }
+        .slot-color-preview {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .slot-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: rgba(0,0,0,0.6);
+            text-align: center;
+            padding: 4px 0;
+            z-index: 1;
+        }
+        .slot-name {
+            font-size: 0.7em;
+        }
+        .slot-count {
+            font-size: 1em;
+            font-weight: bold;
+        }
+        .material-switch {
+            background-color: #4B5563;
+            border: none;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            border-radius: 8px;
+            width: 40px;
+            height: 60px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .material-switch:hover {
+            background-color: #6B7280;
+        }
+        #game-info {
+            display: none;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div style="position: absolute; top: 10px; left: 10px; z-index: 999;">
+        <a href="../Arcade.html" style="color: white; text-decoration: none; background-color: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px;">Back to Arcade</a>
+    </div>
+
+    <!-- New Inventory Bar -->
+    <div id="inventory-bar">
+        <button id="prev-material" class="material-switch">&lt;</button>
+        <div id="inventory-slots">
+            <!-- Slots will be generated by JS -->
+        </div>
+        <button id="next-material" class="material-switch">&gt;</button>
+    </div>
+
+    <div id="message-box">Click or tap to play!</div>
+    <div id="overlay">Click to start</div>
+    <div id="crosshair"></div>
+
+    <div id="mobile-controls">
+        <div id="joystick-area">
+            <div id="joystick-base">
+                <div id="joystick-thumb"></div>
+            </div>
+        </div>
+        <div id="action-buttons-area">
+            <button id="mine-button" class="action-button">MINE</button>
+            <button id="build-button" class="action-button">BUILD</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+
+        // --- Material Definitions ---
+        const MATERIALS = {
+            // Planet Surface
+            GRASS:     { id: 'grass',     color: new THREE.Color(0x335010), buildable: true },
+            SOIL:      { id: 'soil',      color: new THREE.Color(0x332211), buildable: true },
+            SAND:      { id: 'sand',      color: new THREE.Color(0xD2B48C), buildable: true },
+            ROCK:      { id: 'rock',      color: new THREE.Color(0x222222), buildable: true },
+            // Underwater
+            SEAWEED:   { id: 'seaweed',   color: new THREE.Color(0x2E8B57) }, // Still defined, but won't be used for generation
+            ANEMONE:   { id: 'anemone',   color: new THREE.Color(0x4169E1) },
+            // Subsurface
+            LAVA:      { id: 'lava',      color: new THREE.Color(0xFF4500), emissive: new THREE.Color(0xdd3300) },
+            // Moon
+            MOON_ROCK: { id: 'moon_rock', color: new THREE.Color(0x8c8c8c), buildable: true },
+            MOON_SAND: { id: 'moon_sand', color: new THREE.Color(0xbebebe), buildable: true },
+            // Default/Error
+            DEFAULT:   { id: 'default',   color: new THREE.Color(0xff00ff) }
+        };
+
+        // Lookup Tables for Marching Cubes
+        const EdgeVertexIndices = [[0,1],[1,3],[3,2],[2,0],[4,5],[5,7],[7,6],[6,4],[0,4],[1,5],[3,7],[2,6]];
+        const TriangleTable = [[-1],[0,3,8,-1],[0,9,1,-1],[3,8,1,1,8,9,-1],[2,11,3,-1],[8,0,11,11,0,2,-1],[3,2,11,1,0,9,-1],[11,1,2,11,9,1,11,8,9,-1],[1,10,2,-1],[0,3,8,2,1,10,-1],[10,2,9,9,2,0,-1],[8,2,3,8,10,2,8,9,10,-1],[11,3,10,10,3,1,-1],[10,0,1,10,8,0,10,11,8,-1],[9,3,0,9,11,3,9,10,11,-1],[8,9,11,11,9,10,-1],[4,8,7,-1],[7,4,3,3,4,0,-1],[4,8,7,0,9,1,-1],[1,4,9,1,7,4,1,3,7,-1],[8,7,4,11,3,2,-1],[4,11,7,4,2,11,4,0,2,-1],[0,9,1,8,7,4,11,3,2,-1],[7,4,11,11,4,2,2,4,9,2,9,1,-1],[4,8,7,2,1,10,-1],[7,4,3,3,4,0,10,2,1,-1],[10,2,9,9,2,0,7,4,8,-1],[10,2,3,10,3,4,3,7,4,9,10,4,-1],[1,10,3,3,10,11,4,8,7,-1],[10,11,1,11,7,4,1,11,4,1,4,0,-1],[7,4,8,9,3,0,9,11,3,9,10,11,-1],[7,4,11,4,9,11,9,10,11,-1],[9,4,5,-1],[9,4,5,8,0,3,-1],[4,5,0,0,5,1,-1],[5,8,4,5,3,8,5,1,3,-1],[9,4,5,11,3,2,-1],[2,11,0,0,11,8,5,9,4,-1],[4,5,0,0,5,1,11,3,2,-1],[5,1,4,1,2,11,4,1,11,4,11,8,-1],[1,10,2,5,9,4,-1],[9,4,5,0,3,8,2,1,10,-1],[2,5,10,2,4,5,2,0,4,-1],[10,2,5,5,2,4,4,2,3,4,3,8,-1],[11,3,10,10,3,1,4,5,9,-1],[4,5,9,10,0,1,10,8,0,10,11,8,-1],[11,3,0,11,0,5,0,4,5,10,11,5,-1],[4,5,8,5,10,8,10,11,8,-1],[8,7,9,9,7,5,-1],[3,9,0,3,5,9,3,7,5,-1],[7,0,8,7,1,0,7,5,1,-1],[7,5,3,3,5,1,-1],[5,9,7,7,9,8,2,11,3,-1],[2,11,7,2,7,9,7,5,9,0,2,9,-1],[2,11,3,7,0,8,7,1,0,7,5,1,-1],[2,11,1,11,7,1,7,5,1,-1],[8,7,9,9,7,5,2,1,10,-1],[10,2,1,3,9,0,3,5,9,3,7,5,-1],[7,5,8,5,10,2,8,5,2,8,2,0,-1],[10,2,5,2,3,5,3,7,5,-1],[8,7,5,8,5,9,11,3,10,3,1,10,-1],[5,11,7,10,11,5,1,9,0,-1],[11,5,10,7,5,11,8,3,0,-1],[5,11,7,10,11,5,-1],[6,7,11,-1],[7,11,6,3,8,0,-1],[6,7,11,0,9,1,-1],[9,1,8,8,1,3,6,7,11,-1],[3,2,7,7,2,6,-1],[0,7,8,0,6,7,0,2,6,-1],[6,7,2,2,7,3,9,1,0,-1],[6,7,8,6,8,1,8,9,1,2,6,1,-1],[11,6,7,10,2,1,-1],[3,8,0,11,6,7,10,2,1,-1],[0,9,2,2,9,10,7,11,6,-1],[6,7,11,8,2,3,8,10,2,8,9,10,-1],[7,10,6,7,1,10,7,3,1,-1],[8,0,7,7,0,6,6,0,1,6,1,10,-1],[7,3,6,3,0,9,6,3,9,6,9,10,-1],[6,7,10,7,8,10,8,9,10,-1],[11,6,8,8,6,4,-1],[6,3,11,6,0,3,6,4,0,-1],[11,6,8,8,6,4,1,0,9,-1],[1,3,9,3,11,6,9,3,6,9,6,4,-1],[2,8,3,2,4,8,2,6,4,-1],[4,0,6,6,0,2,-1],[9,1,0,2,8,3,2,4,8,2,6,4,-1],[9,1,4,1,2,4,2,6,4,-1],[4,8,6,6,8,11,1,10,2,-1],[1,10,2,6,3,11,6,0,3,6,4,0,-1],[11,6,4,11,4,8,10,2,9,2,0,9,-1],[10,4,9,6,4,10,11,2,3,-1],[4,8,3,4,3,10,3,1,10,6,4,10,-1],[1,10,0,10,6,0,6,4,0,-1],[4,10,6,9,10,4,0,8,3,-1],[4,10,6,9,10,4,-1],[6,7,11,4,5,9,-1],[4,5,9,7,11,6,3,8,0,-1],[1,0,5,5,0,4,11,6,7,-1],[11,6,7,5,8,4,5,3,8,5,1,3,-1],[3,2,7,7,2,6,9,4,5,-1],[5,9,4,0,7,8,0,6,7,0,2,6,-1],[3,2,6,3,6,7,1,0,5,0,4,5,-1],[6,1,2,5,1,6,4,7,8,-1],[10,2,1,6,7,11,4,5,9,-1],[0,3,8,4,5,9,11,6,7,10,2,1,-1],[7,11,6,2,5,10,2,4,5,2,0,4,-1],[8,4,7,5,10,6,3,11,2,-1],[9,4,5,7,10,6,7,1,10,7,3,1,-1],[10,6,5,7,8,4,1,9,0,-1],[4,3,0,7,3,4,6,5,10,-1],[10,6,5,8,4,7,-1],[9,6,5,9,11,6,9,8,11,-1],[11,6,3,3,6,0,0,6,5,0,5,9,-1],[11,6,5,11,5,0,5,1,0,8,11,0,-1],[11,6,3,6,5,3,5,1,3,-1],[9,8,5,8,3,2,5,8,2,6,5,2,-1],[5,9,6,9,0,6,0,2,6,-1],[1,6,5,2,6,1,3,0,8,-1],[1,6,5,2,6,1,-1],[2,1,10,9,6,5,9,11,6,9,8,11,-1],[9,0,1,3,11,2,5,10,6,-1],[11,0,8,2,0,11,10,6,5,-1],[3,11,2,5,10,6,-1],[1,8,3,9,8,1,5,10,6,-1],[6,5,10,0,1,9,-1],[8,3,0,5,10,6,-1],[6,5,10,-1],[10,5,6,-1],[0,3,8,6,10,5,-1],[10,5,6,9,1,0,-1],[3,8,1,1,8,9,6,10,5,-1],[2,11,3,6,10,5,-1],[8,0,11,11,0,2,5,6,10,-1],[1,0,9,2,11,3,6,10,5,-1],[5,6,10,11,1,2,11,9,1,11,8,9,-1],[5,6,1,1,6,2,-1],[5,6,1,1,6,2,8,0,3,-1],[6,9,5,6,0,9,6,2,0,-1],[6,2,5,2,3,8,5,2,8,5,8,9,-1],[3,6,11,3,5,6,3,1,5,-1],[8,0,1,8,1,6,1,5,6,11,8,6,-1],[11,3,6,6,3,5,5,3,0,5,0,9,-1],[5,6,9,6,11,9,11,8,9,-1],[5,6,10,7,4,8,-1],[0,3,4,4,3,7,10,5,6,-1],[5,6,10,4,8,7,0,9,1,-1],[6,10,5,1,4,9,1,7,4,1,3,7,-1],[7,4,8,6,10,5,2,11,3,-1],[10,5,6,4,11,7,4,2,11,4,0,2,-1],[4,8,7,6,10,5,3,2,11,1,0,9,-1],[1,2,10,11,7,6,9,5,4,-1],[2,1,6,6,1,5,8,7,4,-1],[0,3,7,0,7,4,2,1,6,1,5,6,-1],[8,7,4,6,9,5,6,0,9,6,2,0,-1],[7,2,3,6,2,7,5,4,9,-1],[4,8,7,3,6,11,3,5,6,3,1,5,-1],[5,0,1,4,0,5,7,6,11,-1],[9,5,4,6,11,7,0,8,3,-1],[11,7,6,9,5,4,-1],[6,10,4,4,10,9,-1],[6,10,4,4,10,9,3,8,0,-1],[0,10,1,0,6,10,0,4,6,-1],[6,10,1,6,1,8,1,3,8,4,6,8,-1],[9,4,10,10,4,6,3,2,11,-1],[2,11,8,2,8,0,6,10,4,10,9,4,-1],[11,3,2,0,10,1,0,6,10,0,4,6,-1],[6,8,4,11,8,6,2,10,1,-1],[4,1,9,4,2,1,4,6,2,-1],[3,8,0,4,1,9,4,2,1,4,6,2,-1],[6,2,4,4,2,0,-1],[3,8,2,8,4,2,4,6,2,-1],[4,6,9,6,11,3,9,6,3,9,3,1,-1],[8,6,11,4,6,8,9,0,1,-1],[11,3,6,3,0,6,0,4,6,-1],[8,6,11,4,6,8,-1],[10,7,6,10,8,7,10,9,8,-1],[3,7,0,7,6,10,0,7,10,0,10,9,-1],[6,10,7,7,10,8,8,10,1,8,1,0,-1],[6,10,7,10,1,7,1,3,7,-1],[3,2,11,10,7,6,10,8,7,10,9,8,-1],[9,2,10,0,2,9,8,4,7,-1],[0,8,3,7,6,11,1,2,10,-1],[7,6,11,1,2,10,-1],[2,1,9,2,9,7,9,8,7,6,2,7,-1],[2,7,6,3,7,2,0,1,9,-1],[8,7,0,7,6,0,6,2,0,-1],[7,2,3,6,2,7,-1],[8,1,9,3,1,8,11,7,6,-1],[11,7,6,1,9,0,-1],[6,11,7,0,8,3,-1],[11,7,6,-1],[7,11,5,5,11,10,-1],[10,5,11,11,5,7,0,3,8,-1],[7,11,5,5,11,10,0,9,1,-1],[7,11,10,7,10,5,3,8,1,8,9,1,-1],[5,2,10,5,3,2,5,7,3,-1],[5,7,10,7,8,0,10,7,0,10,0,2,-1],[0,9,1,5,2,10,5,3,2,5,7,3,-1],[9,7,8,5,7,9,10,1,2,-1],[1,11,2,1,7,11,1,5,7,-1],[8,0,3,1,11,2,1,7,11,1,5,7,-1],[7,11,2,7,2,9,2,0,9,5,7,9,-1],[7,9,5,8,9,7,3,11,2,-1],[3,1,7,7,1,5,-1],[8,0,7,0,1,7,1,5,7,-1],[0,9,3,9,5,3,5,7,3,-1],[9,7,8,5,7,9,-1],[8,5,4,8,10,5,8,11,10,-1],[0,3,11,0,11,5,11,10,5,4,0,5,-1],[1,0,9,8,5,4,8,10,5,8,11,10,-1],[10,3,11,1,3,10,9,5,4,-1],[3,2,8,8,2,4,4,2,10,4,10,5,-1],[10,5,2,5,4,2,4,0,2,-1],[5,4,9,8,3,0,10,1,2,-1],[2,10,1,4,9,5,-1],[8,11,4,11,2,1,4,11,1,4,1,5,-1],[0,5,4,1,5,0,2,3,11,-1],[0,11,2,8,11,0,4,9,5,-1],[5,4,9,2,3,11,-1],[4,8,5,8,3,5,3,1,5,-1],[0,5,4,1,5,0,-1],[5,4,9,3,0,8,-1],[5,4,9,-1],[11,4,7,11,9,4,11,10,9,-1],[0,3,8,11,4,7,11,9,4,11,10,9,-1],[11,10,7,10,1,0,7,10,0,7,0,4,-1],[3,10,1,11,10,3,7,8,4,-1],[3,2,10,3,10,4,10,9,4,7,3,4,-1],[9,2,10,0,2,9,8,4,7,-1],[3,4,7,0,4,3,1,2,10,-1],[7,8,4,10,1,2,-1],[7,11,4,4,11,9,9,11,2,9,2,1,-1],[1,9,0,4,7,8,2,3,11,-1],[7,11,4,11,2,4,2,0,4,-1],[4,7,8,2,3,11,-1],[9,4,1,4,7,1,7,3,1,-1],[7,8,4,1,9,0,-1],[3,4,7,0,4,3,-1],[7,8,4,-1],[11,10,8,8,10,9,-1],[0,3,9,3,11,9,11,10,9,-1],[1,0,10,0,8,10,8,11,10,-1],[10,3,11,1,3,10,-1],[3,2,8,2,10,8,10,9,8,-1],[9,2,10,0,2,9,-1],[8,3,0,10,1,2,-1],[2,10,1,-1],[2,1,11,1,9,11,9,8,11,-1],[11,2,3,9,0,1,-1],[11,0,8,2,0,11,-1],[3,11,2,-1],[1,8,3,9,8,1,-1],[1,9,0,-1],[8,3,0,-1],[-1]];
+
+        // Marching Cubes utility function
+        function generateMarchingCubesGeometry(grid, threshold, gridSize, blockSize, centerOffset = new THREE.Vector3(0,0,0)) {
+            const vertices = [];
+            const normals = []; // Added for normal calculation
+            const indices = [];
+            const resolution = gridSize;
+
+            // Function to get interpolated vertex position
+            function interpolateVertex(p1, p2, val1, val2, threshold) {
+                const mu = (threshold - val1) / (val2 - val1);
+                return new THREE.Vector3( // Ensure new THREE.Vector3 is returned
+                    p1.x + mu * (p2.x - p1.x),
+                    p1.y + mu * (p2.y - p1.y),
+                    p1.z + mu * (p2.z - p1.z)
+                );
+            }
+
+            for (let x = 0; x < resolution - 1; x++) {
+                for (let y = 0; y < resolution - 1; y++) {
+                    for (let z = 0; z < resolution - 1; z++) {
+                        const cubeValues = new Array(8);
+                        const cubeCorners = new Array(8);
+                        let cubeIndex = 0;
+
+                        for (let i = 0; i < 8; i++) {
+                            const x_offset = (i & 1);
+                            const y_offset = (i & 2) >> 1;
+                            const z_offset = (i & 4) >> 2;
+                            const gx = x + x_offset, gy = y + y_offset, gz = z + z_offset;
+                            cubeValues[i] = grid[gx][gy][gz];
+                            cubeCorners[i] = new THREE.Vector3(
+                                (gx - gridSize / 2 + 0.5) * blockSize,
+                                (gy - gridSize / 2 + 0.5) * blockSize,
+                                (gz - gridSize / 2 + 0.5) * blockSize
+                            );
+                            if (cubeValues[i] < threshold) cubeIndex |= (1 << i);
+                        }
+
+                        const triangles = TriangleTable[cubeIndex];
+                        if (triangles[0] === -1) continue;
+
+                        for (let i = 0; triangles[i] !== -1; i += 3) {
+                            const edge1Index = triangles[i], edge2Index = triangles[i+1], edge3Index = triangles[i+2];
+                            const v1a_idx = EdgeVertexIndices[edge1Index][0], v1b_idx = EdgeVertexIndices[edge1Index][1];
+                            const v2a_idx = EdgeVertexIndices[edge2Index][0], v2b_idx = EdgeVertexIndices[edge2Index][1];
+                            const v3a_idx = EdgeVertexIndices[edge3Index][0], v3b_idx = EdgeVertexIndices[edge3Index][1];
+
+                            const p1 = interpolateVertex(cubeCorners[v1a_idx], cubeCorners[v1b_idx], cubeValues[v1a_idx], cubeValues[v1b_idx], threshold);
+                            const p2 = interpolateVertex(cubeCorners[v2a_idx], cubeCorners[v2b_idx], cubeValues[v2a_idx], cubeValues[v2b_idx], threshold);
+                            const p3 = interpolateVertex(cubeCorners[v3a_idx], cubeCorners[v3b_idx], cubeValues[v3a_idx], cubeValues[v3b_idx], threshold);
+                            
+                            const currentVertexCount = vertices.length / 3;
+                            vertices.push(p1.x, p1.y, p1.z);
+                            vertices.push(p2.x, p2.y, p2.z);
+                            vertices.push(p3.x, p3.y, p3.z);
+
+                            indices.push(currentVertexCount, currentVertexCount + 1, currentVertexCount + 2);
+
+                            // Calculate face normal
+                            const cb = new THREE.Vector3().subVectors(p3, p2);
+                            const ab = new THREE.Vector3().subVectors(p1, p2);
+                            const normal = new THREE.Vector3().crossVectors(cb, ab).normalize();
+
+                            normals.push(normal.x, normal.y, normal.z);
+                            normals.push(normal.x, normal.y, normal.z);
+                            normals.push(normal.x, normal.y, normal.z);
+                        }
+                    }
+                }
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            if (vertices.length > 0) {
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3)); // Added normals attribute
+                geometry.setIndex(indices);
+                geometry.computeVertexNormals();
+            }
+            return geometry;
+        }
+
+        // Set up basic Three.js scene components
+        let scene, camera, renderer, raycaster;
+        let marchingCubesMesh, marchingCubesMeshMoon;
+        let waterMesh;
+        let torchLight; // Global variable for the torch spotlight
+
+        // --- Inventory & Building ---
+        let inventory = {};
+        const buildableMaterials = [];
+        let selectedMaterialIndex = 0;
+        let cubes = [];
+        let cubeParent;
+        const builtCubeMaterials = {};
+
+        // --- Player, Camera, and Controls ---
+        let player;
+        const clock = new THREE.Clock();
+        const thirdPersonCameraOffset = new THREE.Vector3(0, 3, 8);
+        let isFirstPersonView = true;
+        // Updated player settings from PlanetMiner (2).html
+        const playerSettings = {
+            height: 2,
+            speed: 5.0, // Units per second
+            gravityStrength: 0.1, // per-frame acceleration
+            jumpStrength: 5, // per-jump impulse
+            sensitivity: 0.002
+        };
+        const planetCenter = new THREE.Vector3(0, 0, 0);
+        let dominantBodyPosition = planetCenter;
+        const keys = { w: false, a: false, s: false, d: false, space: false, c: false, ctrl: false, arrowLeft: false, arrowRight: false }; // Added arrowLeft and arrowRight
+        let isLocked = false;
+
+        // Mobile control variables (declared globally for setupMobileControls)
+        let mobileJoystickTouchId = -1;
+        let joystickCenter = new THREE.Vector2();
+        const joystickRadius = 50;
+        const joystickBase = document.getElementById('joystick-base');
+        const joystickThumb = document.getElementById('joystick-thumb');
+        const mineButton = document.getElementById('mine-button');
+        const buildButton = document.getElementById('build-button');
+        const mobileControls = document.getElementById('mobile-controls');
+
+        // Voxel grid properties
+        const GRID_SIZE = 100;
+        const BLOCK_SIZE = 1;
+        const PLANET_RADIUS_FACTOR = 0.8;
+        const ISO_LEVEL = 0.5;
+        const PLANET_RADIUS = GRID_SIZE / 2 * BLOCK_SIZE * PLANET_RADIUS_FACTOR;
+        const WATER_LEVEL_OFFSET = -10;
+
+        // Moon properties
+        const GRID_SIZE_MOON = 20;
+        const MOON_RADIUS_FACTOR = 0.9;
+        const MOON_ORBIT_DISTANCE = GRID_SIZE * BLOCK_SIZE * 0.75;
+        const MOON_RADIUS = GRID_SIZE_MOON / 2 * BLOCK_SIZE * MOON_RADIUS_FACTOR;
+
+        let voxelData = [], voxelDataMoon = [];
+        let moonPosition = new THREE.Vector3();
+        const simplex = new SimplexNoise();
+
+        // Noise parameters
+        const initialNoiseScale = 0.02, noiseStrength = 0.5, octaves = 6, lacunarity = 2.0, persistence = 0.5;
+
+        // DOM Elements
+        const overlay = document.getElementById('overlay');
+        const messageBox = document.getElementById('message-box');
+        let canvas;
+
+        /**
+         * Determines the material type at a given world point based on various environmental factors.
+         * @param {THREE.Vector3} worldPoint - The point in world space to check.
+         * @param {THREE.Vector3} surfaceNormal - The normal of the surface at the world point.
+         * @param {boolean} onMoon - Whether the point is on the moon.
+         * @returns {object} The material object from the MATERIALS constant.
+         */
+        function getMaterialAtPoint(worldPoint, surfaceNormal, onMoon = false) {
+            const center = onMoon ? moonPosition : planetCenter;
+            const radius = onMoon ? MOON_RADIUS : PLANET_RADIUS;
+            const waterRadius = PLANET_RADIUS + WATER_LEVEL_OFFSET;
+
+            // 1. Calculate depth from the "true" noise-defined surface
+            const terrainNoise = getRidgedMultifractalNoise(worldPoint.x, worldPoint.y, worldPoint.z, simplex, initialNoiseScale, noiseStrength, octaves, lacunarity, persistence);
+            const distSurface = (1.0 + terrainNoise - ISO_LEVEL) * radius;
+            const distCenter = worldPoint.distanceTo(center);
+            const depth = distSurface - distCenter;
+
+            // 2. Handle subsurface materials first based on depth
+            if (onMoon) {
+                if (depth > 15) return MATERIALS.LAVA;
+                if (depth > 2) return MATERIALS.MOON_ROCK;
+                if (depth >= 0) return MATERIALS.MOON_SAND;
+            } else {
+                if (depth > 25) return MATERIALS.LAVA;
+                if (depth > 3) return MATERIALS.ROCK;
+                if (depth >= 0) return MATERIALS.SOIL;
+            }
+
+            // 3. Handle surface materials (where depth is near zero or negative)
+            const upVector = worldPoint.clone().sub(center).normalize();
+            const slope = 1.0 - Math.abs(surfaceNormal.dot(upVector)); // 0 = flat, 1 = vertical
+
+            if (onMoon) {
+                return slope > 0.4 ? MATERIALS.MOON_ROCK : MATERIALS.MOON_SAND;
+            }
+
+            // Planet surface logic
+            const heightAboveWater = distCenter - waterRadius;
+            const isVertical = slope > 0.7; // Very steep, definitely rock
+            const isSteep = slope > 0.3; // Moderately steep
+
+            // All overhangs/steep areas should be rock
+            if (isVertical || isSteep) {
+                return MATERIALS.ROCK;
+            }
+
+            if (heightAboveWater < -1.0) { // Deep underwater
+                const underwaterPattern = simplex.noise3D(worldPoint.x * 2, worldPoint.y * 2, worldPoint.z * 2);
+                // Replaced seaweed with anemone: if it was seaweed or anemone, now it's anemone. Otherwise, sand.
+                if (underwaterPattern < -0.3 || underwaterPattern > 0.3) return MATERIALS.ANEMONE;
+                return MATERIALS.SAND;
+            }
+
+            if (Math.abs(heightAboveWater) <= 1.0) { // Shoreline
+                // If not steep (already handled above), it's sand at the shoreline
+                return MATERIALS.SAND;
+            }
+
+            if (heightAboveWater > 1.0) { // Above shoreline
+                // If not steep (already handled above), it's only grass for near horizontal areas
+                return MATERIALS.GRASS;
+            }
+
+            return MATERIALS.SOIL; // Default fallback (should be rarely reached now)
+        }
+
+        function getRidgedMultifractalNoise(x, y, z, noiseGenerator, scale, strength, numOctaves, lac, pers) {
+            let totalNoise = 0, amplitude = 1, frequency = scale, maxAmplitudeSum = 0;
+            for (let i = 0; i < numOctaves; i++) {
+                let n = 1.0 - Math.abs(noiseGenerator.noise3D(x * frequency, y * frequency, z * frequency));
+                n *= n;
+                totalNoise += n * amplitude;
+                maxAmplitudeSum += amplitude;
+                amplitude *= pers;
+                frequency *= lac;
+            }
+            return (totalNoise / maxAmplitudeSum) * strength;
+        }
+
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            scene.fog = new THREE.Fog(0x1a1a2e, 10, 150);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            canvas = renderer.domElement;
+
+            const ambientLight = new THREE.AmbientLight(0xcccccc, 0.8);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(50, 50, 50);
+            scene.add(directionalLight);
+
+            // Setup the torch spotlight
+            torchLight = new THREE.SpotLight(0xffffff, 0, 50, Math.PI / 6, 0.5, 2); // Color, intensity (0 initially), distance, angle, penumbra, decay
+            torchLight.castShadow = true;
+            torchLight.shadow.mapSize.width = 1024;
+            torchLight.shadow.mapSize.height = 1024;
+            torchLight.shadow.camera.near = 0.5;
+            torchLight.shadow.camera.far = 50;
+            torchLight.shadow.camera.fov = 30; // Match spotlight angle
+            scene.add(torchLight); // Add torch light directly to the scene
+            torchLight.target = new THREE.Object3D(); // Target for the spotlight
+            scene.add(torchLight.target); // Add the target directly to the scene
+
+            raycaster = new THREE.Raycaster();
+
+            // Populate inventory and buildable materials list
+            for (const key in MATERIALS) {
+                const mat = MATERIALS[key];
+                if (mat.buildable) {
+                    inventory[mat.id] = 0;
+                    buildableMaterials.push(mat.id);
+                    builtCubeMaterials[mat.id] = new THREE.MeshStandardMaterial({ color: mat.color, roughness: 0.8 });
+                }
+            }
+
+            generatePlanet();
+            generateMoon();
+            createWaterLayer();
+
+            cubeParent = new THREE.Group();
+            scene.add(cubeParent);
+            
+            createPlayer();
+
+            setupEventListeners();
+            setupInventoryUI();
+
+            // Mobile device detection and control setup
+            if (isMobileDevice()) {
+                mobileControls.style.display = 'flex';
+                setupMobileControls();
+                messageBox.textContent = "Tap joystick to move, drag right side to look, tap buttons to interact!";
+            } else {
+                mobileControls.style.display = 'none';
+                messageBox.textContent = "WASD: Move, Space: Jump, Mouse: Look, Click: Interact, Arrow Keys: Switch Material, L: Teleport to Moon, T: Toggle Torch"; // Updated message
+            }
+        }
+        
+        function setupEventListeners() {
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            document.addEventListener('pointerlockchange', onPointerLockChange);
+            
+            overlay.addEventListener('click', () => {
+                // The request for pointer lock can be denied by the user, or fail if the
+                // document is not in the correct state. This can sometimes lead to an
+                // unhandled promise rejection in certain environments. This handles that case.
+                const request = canvas.requestPointerLock();
+                if (request && typeof request.catch === 'function') {
+                    request.catch(err => {
+                        console.warn("Pointer lock request was cancelled or failed.", err);
+                    });
+                }
+            });
+
+            document.addEventListener('mousedown', onMouseDownDesktop);
+            document.addEventListener('contextmenu', (e) => e.preventDefault());
+            window.addEventListener('resize', onWindowResize);
+
+            // Removed click listeners for prev/next material buttons as they are now keyboard controlled
+            // document.getElementById('prev-material').addEventListener('click', selectPrevMaterial);
+            // document.getElementById('next-material').addEventListener('click', selectNextMaterial);
+        }
+
+        /**
+         * Creates a semi-transparent geodesic sphere for the water layer.
+         */
+        function createWaterLayer() {
+            const waterGeometry = new THREE.SphereGeometry(PLANET_RADIUS + WATER_LEVEL_OFFSET, 64, 64);
+            const waterMaterial = new THREE.MeshStandardMaterial({
+                color: 0x0077ff, // Blue color for water
+                transparent: true,
+                opacity: 0.7, // Semi-transparent
+                roughness: 0.1, // Low roughness for reflective water
+                metalness: 0.9, // High metalness for reflective water
+                side: THREE.DoubleSide // Render both sides
+            });
+            waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+            waterMesh.position.copy(planetCenter); // Center the water sphere on the planet
+            scene.add(waterMesh);
+        }
+
+        function createPlayer() {
+            player = new THREE.Group();
+            // Attach state properties directly to the player group
+            player.velocity = new THREE.Vector3();
+            player.onGround = false;
+
+            const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x5588ff });
+            player.body = new THREE.Mesh(bodyGeometry, bodyMaterial); // Assign to player.body
+            player.body.castShadow = true; // Added castShadow
+            player.body.position.y = -0.3;
+            player.add(player.body);
+
+            const headGeometry = new THREE.DodecahedronGeometry(0.5, 0);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffccaa });
+            player.head = new THREE.Mesh(headGeometry, headMaterial); // Assign to player.head
+            player.head.castShadow = true; // Added castShadow
+            player.head.position.y = 0.8;
+            player.add(player.head);
+
+            // Initial position on the planet's surface
+            player.position.set(0, PLANET_RADIUS + playerSettings.height, 0);
+            
+            // Orient player to be upright at the start
+            const initialUp = player.position.clone().normalize();
+            player.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), initialUp);
+            scene.add(player);
+        }
+
+        function onMouseDownDesktop(event) {
+            if (!isLocked) return;
+            if (event.button === 0) mineBlockAtCrosshair();
+            else if (event.button === 2) placeBlockAtCrosshair();
+        }
+        
+        // --- MOBILE CONTROL FUNCTIONS ---
+        function isMobileDevice() {
+            const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+            return /android|iphone|ipad|ipod|blackberry|windows phone/i.test(userAgent) ||
+                   ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        }
+
+        function setupMobileControls() {
+            joystickBase.addEventListener('touchstart', onJoystickStart, { passive: false });
+            document.addEventListener('touchmove', onJoystickMove, { passive: false });
+            document.addEventListener('touchend', onJoystickEnd, { passive: false });
+            mineButton.addEventListener('click', mineBlockAtCrosshair);
+            buildButton.addEventListener('click', placeBlockAtCrosshair);
+        }
+
+        function onJoystickStart(event) {
+            event.preventDefault();
+            if (mobileJoystickTouchId === -1) {
+                const touch = event.changedTouches[0];
+                const rect = joystickBase.getBoundingClientRect();
+                joystickCenter.set(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                mobileJoystickTouchId = touch.identifier;
+            }
+        }
+
+        function onJoystickMove(event) {
+            event.preventDefault();
+            for (let touch of event.changedTouches) {
+                if (touch.identifier === mobileJoystickTouchId) {
+                    let dx = touch.clientX - joystickCenter.x;
+                    let dy = touch.clientY - joystickCenter.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance > joystickRadius) {
+                        dx *= joystickRadius / distance;
+                        dy *= joystickRadius / distance;
+                    }
+                    joystickThumb.style.transform = `translate(${dx}px, ${dy}px)`;
+                    keys.w = dy < -20;
+                    keys.s = dy > 20;
+                    keys.a = dx < -20;
+                    keys.d = dx > 20;
+                }
+            }
+        }
+
+        function onJoystickEnd(event) {
+            for (let touch of event.changedTouches) {
+                if (touch.identifier === mobileJoystickTouchId) {
+                    joystickThumb.style.transform = `translate(0, 0)`;
+                    mobileJoystickTouchId = -1;
+                    keys.w = keys.a = keys.s = keys.d = false;
+                }
+            }
+        }
+
+        // --- INVENTORY UI FUNCTIONS ---
+        function setupInventoryUI() {
+            const slotsContainer = document.getElementById('inventory-slots');
+            slotsContainer.innerHTML = '';
+            buildableMaterials.forEach(matId => {
+                const mat = Object.values(MATERIALS).find(m => m.id === matId);
+                const slot = document.createElement('div');
+                slot.className = 'inventory-slot';
+                slot.id = `slot-${matId}`;
+                slot.innerHTML = `
+                    <div class="slot-color-preview" style="background-color: #${mat.color.getHexString()}"></div>
+                    <div class="slot-info">
+                        <div class="slot-name">${mat.id.replace('_', ' ')}</div>
+                        <div class="slot-count" id="count-${matId}">0</div>
+                    </div>
+                `;
+                slot.onclick = () => selectMaterialById(matId);
+                slotsContainer.appendChild(slot);
+            });
+            updateInventoryUI();
+        }
+
+        function updateInventoryUI() {
+            buildableMaterials.forEach((matId, index) => {
+                const countSpan = document.getElementById(`count-${matId}`);
+                if (countSpan) countSpan.textContent = inventory[matId];
+                
+                const slotDiv = document.getElementById(`slot-${matId}`);
+                if (slotDiv) {
+                    slotDiv.classList.toggle('selected', index === selectedMaterialIndex);
+                }
+            });
+        }
+
+        function selectMaterial(index) {
+            selectedMaterialIndex = (index + buildableMaterials.length) % buildableMaterials.length;
+            updateInventoryUI();
+        }
+        function selectPrevMaterial() { selectMaterial(selectedMaterialIndex - 1); }
+        function selectNextMaterial() { selectMaterial(selectedMaterialIndex + 1); }
+        function selectMaterialById(matId) {
+            const index = buildableMaterials.findIndex(id => id === matId);
+            if (index !== -1) selectMaterial(index);
+        }
+
+        // --- CORE GAME LOGIC ---
+        function onKeyDown(event) {
+            switch (event.code) {
+                case 'KeyW': keys.w = true; break;
+                case 'KeyA': keys.a = true; break;
+                case 'KeyS': keys.s = true; break;
+                case 'KeyD': keys.d = true; break;
+                case 'Space':
+                    keys.space = true; // Always track spacebar state
+                    // Jump impulse should only happen when on the ground.
+                    if (player && player.onGround) {
+                        const upDirection = player.position.clone().sub(dominantBodyPosition).normalize();
+                        player.velocity.add(upDirection.multiplyScalar(playerSettings.jumpStrength));
+                        player.onGround = false; // Player is no longer on ground after jumping
+                    }
+                    break;
+                case 'KeyC': keys.c = true; break;
+                case 'ControlLeft': case 'ControlRight': keys.ctrl = true; break;
+                case 'ArrowLeft': keys.arrowLeft = true; selectPrevMaterial(); break; // Added for material selection
+                case 'ArrowRight': keys.arrowRight = true; selectNextMaterial(); break; // Added for material selection
+                case 'KeyL': // Teleport to Moon
+                    player.position.copy(moonPosition.clone().add(new THREE.Vector3(0, MOON_RADIUS + playerSettings.height, 0)));
+                    player.velocity.set(0, 0, 0); // Reset velocity
+                    player.onGround = false; // Player might not be on ground immediately after teleport
+                    messageBox.textContent = "Teleported to the Moon!";
+                    setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
+                    break;
+                case 'KeyT': // Toggle Torch
+                    if (torchLight.intensity === 0) {
+                        torchLight.intensity = 1; // Turn on
+                        messageBox.textContent = "Torch ON";
+                    } else {
+                        torchLight.intensity = 0; // Turn off
+                        messageBox.textContent = "Torch OFF";
+                    }
+                    setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
+                    break;
+            }
+        }
+
+        function onKeyUp(event) {
+            switch (event.code) {
+                case 'KeyW': keys.w = false; break;
+                case 'KeyA': keys.a = false; break;
+                case 'KeyS': keys.s = false; break;
+                case 'KeyD': keys.d = false; break;
+                case 'Space': keys.space = false; break;
+                case 'KeyC': keys.c = false; break;
+                case 'ControlLeft': case 'ControlRight': keys.ctrl = false; break;
+                case 'KeyV': isFirstPersonView = !isFirstPersonView; break;
+                case 'ArrowLeft': keys.arrowLeft = false; break; // Added for material selection
+                case 'ArrowRight': keys.arrowRight = false; break; // Added for material selection
+            }
+        }
+
+        function onMouseMove(event) {
+            if (!isLocked || !player) return;
+            const movementX = event.movementX || 0;
+            const movementY = event.movementY || 0;
+
+            const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
+            const yawDelta = -movementX * playerSettings.sensitivity;
+            const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(playerUp, yawDelta);
+            player.quaternion.premultiply(yawQuaternion);
+
+            const pitchDelta = -movementY * playerSettings.sensitivity;
+            player.head.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.head.rotation.x + pitchDelta));
+        }
+
+        function onPointerLockChange() {
+            isLocked = document.pointerLockElement === canvas;
+            overlay.style.display = isLocked ? 'none' : 'flex';
+            messageBox.style.display = isLocked ? 'block' : 'none';
+            if (isLocked) {
+                document.addEventListener('mousemove', onMouseMove, false);
+            } else {
+                document.removeEventListener('mousemove', onMouseMove, false);
+            }
+        }
+
+        function mineBlockAtCrosshair() {
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects([marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes));
+            if (intersects.length > 0) {
+                const intersected = intersects[0];
+                const intersectionPoint = intersected.point;
+                const intersectedObject = intersected.object;
+                const miningRayDir = raycaster.ray.direction;
+                const offsetWorldPoint = intersectionPoint.clone().add(miningRayDir.clone().multiplyScalar(-BLOCK_SIZE * 0.25));
+
+                // Determine which Marching Cubes mesh was hit
+                let targetGrid, targetGridSize, targetCenterOffset;
+                let isMarchingCubesObject = false;
+                let onMoon = false; // Added for material determination
+
+                if (intersectedObject === marchingCubesMesh) {
+                    targetGrid = voxelData;
+                    targetGridSize = GRID_SIZE;
+                    targetCenterOffset = planetCenter; // Marching cubes mesh is at 0,0,0
+                    isMarchingCubesObject = true;
+                    onMoon = false;
+                } else if (intersectedObject === marchingCubesMeshMoon) {
+                    targetGrid = voxelDataMoon;
+                    targetGridSize = GRID_SIZE_MOON;
+                    targetCenterOffset = marchingCubesMeshMoon.position; // Moon mesh is at moonPosition
+                    isMarchingCubesObject = true;
+                    onMoon = true;
+                }
+
+                if (isMarchingCubesObject) {
+                    // Convert world coordinates to grid coordinates relative to the object's center
+                    const localPoint = offsetWorldPoint.clone().sub(targetCenterOffset);
+                    const halfTargetGrid = targetGridSize / 2;
+                    const gridX = Math.floor(localPoint.x / BLOCK_SIZE + halfTargetGrid);
+                    const gridY = Math.floor(localPoint.y / BLOCK_SIZE + halfTargetGrid);
+                    const gridZ = Math.floor(localPoint.z / BLOCK_SIZE + halfTargetGrid);
+
+                    if (gridX >= 0 && gridX < targetGridSize && gridY >= 0 && gridY < targetGridSize && gridZ >= 0 && gridZ < targetGridSize) {
+                        // Set the voxel value to 0 (empty)
+                        targetGrid[gridX][gridY][gridZ] = 0;
+
+                        // Re-generate the Marching Cubes mesh for the affected object
+                        if (intersectedObject === marchingCubesMesh) {
+                            updateMarchingCubesMesh();
+                        } else if (intersectedObject === marchingCubesMeshMoon) {
+                            updateMarchingCubesMoonMesh();
+                        }
+                        
+                        const minedMaterial = getMaterialAtPoint(offsetWorldPoint, intersected.face.normal, onMoon);
+                        if (minedMaterial.buildable) {
+                            inventory[minedMaterial.id]++;
+                            updateInventoryUI();
+                        }
+                        createMiningEffect(intersectionPoint, minedMaterial);
+                    }
+                } else if (cubes.includes(intersectedObject)) {
+                    // This is a manually placed cube
+                    const minedMaterialId = intersectedObject.userData.materialId;
+                    if (minedMaterialId && inventory[minedMaterialId] !== undefined) {
+                        inventory[minedMaterialId]++;
+                        updateInventoryUI();
+                    }
+                    const builtMaterial = Object.values(MATERIALS).find(m => m.id === minedMaterialId) || MATERIALS.ROCK; // Fallback
+                    createMiningEffect(intersectionPoint, builtMaterial);
+
+                    cubeParent.remove(intersectedObject);
+                    cubes = cubes.filter(cube => cube.uuid !== intersectedObject.uuid);
+                    intersectedObject.geometry.dispose();
+                    intersectedObject.material.dispose(); // Dispose material too
+                }
+            }
+        }
+
+        /**
+         * Creates a chamfered box geometry for built blocks.
+         * @param {number} width
+         * @param {number} height
+         * @param {number} depth
+         * @returns {THREE.ConvexGeometry}
+         */
+        function createChamferedBlockGeometry(width, height, depth) {
+            const w = width / 2;
+            const h = height / 2;
+            const d = depth / 2;
+
+            const points = [];
+
+            const getRandomChamfer = (dim) => THREE.MathUtils.randFloat(dim / 10, dim / 3);
+
+            const corners = [
+                new THREE.Vector3(w, h, d),   new THREE.Vector3(w, h, -d),
+                new THREE.Vector3(w, -h, d),  new THREE.Vector3(w, -h, -d),
+                new THREE.Vector3(-w, h, d),  new THREE.Vector3(-w, h, -d),
+                new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
+            ];
+
+            corners.forEach(corner => {
+                const sx = Math.sign(corner.x);
+                const sy = Math.sign(corner.y);
+                const sz = Math.sign(corner.z);
+
+                const chamferX = getRandomChamfer(width);
+                const chamferY = getRandomChamfer(height);
+                const chamferZ = getRandomChamfer(depth);
+
+                points.push(new THREE.Vector3(corner.x - sx * chamferX, corner.y, corner.z));
+                points.push(new THREE.Vector3(corner.x, corner.y - sy * chamferY, corner.z));
+                points.push(new THREE.Vector3(corner.x, corner.y, corner.z - sz * chamferZ));
+            });
+
+            const geometry = new ConvexGeometry(points);
+            return geometry;
+        }
+
+        function placeBlockAtCrosshair() {
+            const materialIdToBuild = buildableMaterials[selectedMaterialIndex];
+            if (inventory[materialIdToBuild] <= 0) {
+                messageBox.textContent = `No ${materialIdToBuild.replace('_', ' ')} to place!`;
+                setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
+                return;
+            }
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const objectsToIntersect = [marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes);
+            const intersects = raycaster.intersectObjects(objectsToIntersect);
+            if (intersects.length > 0) {
+                const intersected = intersects[0];
+                const hitPoint = intersected.point;
+                const faceNormal = intersected.face.normal;
+                const newPosition = hitPoint.clone().add(faceNormal.clone().multiplyScalar(BLOCK_SIZE / 2));
+                
+                const distanceToPlayer = newPosition.distanceTo(player.position);
+                if (distanceToPlayer < BLOCK_SIZE) { // Changed from 1.5 to 1.0 for closer placement
+                    messageBox.textContent = "Cannot place block inside yourself!";
+                    setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
+                    return;
+                }
+
+                const newCubeGeometry = createChamferedBlockGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE); // Use chamfered geometry
+                const newCube = new THREE.Mesh(newCubeGeometry, builtCubeMaterials[materialIdToBuild]);
+                newCube.position.copy(newPosition);
+                
+                // Orient the cube to the dominant body's surface
+                newCube.lookAt(dominantBodyPosition); // Orient based on dominant body
+
+                // Then apply a random rotation around a random axis by 90 degrees.
+                const axes = [new THREE.Vector3(1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,1)];
+                const randomAxis = axes[Math.floor(Math.random() * 3)];
+                const randomAngle = (Math.floor(Math.random() * 4)) * Math.PI / 2; // 0, 90, 180, 270 degrees
+                const randomRotation = new THREE.Quaternion().setFromAxisAngle(randomAxis, randomAngle);
+                newCube.quaternion.multiply(randomRotation); // Apply random rotation
+
+                newCube.userData.materialId = materialIdToBuild; // Store material ID
+                cubeParent.add(newCube);
+                cubes.push(newCube);
+                inventory[materialIdToBuild]--;
+                updateInventoryUI();
+            }
+        }
+
+        function generatePlanet() {
+            const halfGrid = GRID_SIZE / 2;
+            for (let x = 0; x < GRID_SIZE; x++) {
+                voxelData[x] = [];
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    voxelData[x][y] = [];
+                    for (let z = 0; z < GRID_SIZE; z++) {
+                        const wx = (x - halfGrid + 0.5) * BLOCK_SIZE;
+                        const wy = (y - halfGrid + 0.5) * BLOCK_SIZE;
+                        const wz = (z - halfGrid + 0.5) * BLOCK_SIZE;
+                        const dist = Math.sqrt(wx*wx + wy*wy + wz*wz);
+                        const terrainNoise = getRidgedMultifractalNoise(wx, wy, wz, simplex, initialNoiseScale, noiseStrength, octaves, lacunarity, persistence);
+                        const normalizedDist = dist / PLANET_RADIUS;
+                        voxelData[x][y][z] = (1.0 - normalizedDist) + terrainNoise;
+                    }
+                }
+            }
+            updateMarchingCubesMesh();
+        }
+
+        function generateMoon() {
+            moonPosition.set(1, 1, 1).normalize().negate().setLength(MOON_ORBIT_DISTANCE);
+            const halfGridMoon = GRID_SIZE_MOON / 2;
+            for (let x = 0; x < GRID_SIZE_MOON; x++) {
+                voxelDataMoon[x] = [];
+                for (let y = 0; y < GRID_SIZE_MOON; y++) {
+                    voxelDataMoon[x][y] = [];
+                    for (let z = 0; z < GRID_SIZE_MOON; z++) {
+                        const wx = (x - halfGridMoon + 0.5) * BLOCK_SIZE;
+                        const wy = (y - halfGridMoon + 0.5) * BLOCK_SIZE;
+                        const wz = (z - halfGridMoon + 0.5) * BLOCK_SIZE;
+                        const dist = Math.sqrt(wx*wx + wy*wy + wz*wz);
+                        const terrainNoise = getRidgedMultifractalNoise(wx, wy, wz, simplex, 0.05, 0.3, 5, 2.2, 0.4);
+                        const normalizedDist = dist / MOON_RADIUS;
+                        voxelDataMoon[x][y][z] = (1.0 - normalizedDist) + terrainNoise;
+                    }
+                }
+            }
+            updateMarchingCubesMoonMesh();
+        }
+
+        function updateMarchingCubesMesh() {
+            if (marchingCubesMesh) {
+                scene.remove(marchingCubesMesh);
+                marchingCubesMesh.geometry.dispose();
+                marchingCubesMesh.material.dispose();
+            }
+            const geometry = generateMarchingCubesGeometry(voxelData, ISO_LEVEL, GRID_SIZE, BLOCK_SIZE, planetCenter); // Pass centerOffset
+            if (geometry.attributes.position) {
+                const positions = geometry.attributes.position.array;
+                const normals = geometry.attributes.normal.array;
+                const colors = [];
+                const vertex = new THREE.Vector3(), normal = new THREE.Vector3();
+
+                for (let i = 0; i < positions.length; i += 3) {
+                    vertex.set(positions[i], positions[i+1], positions[i+2]);
+                    normal.set(normals[i], normals[i+1], normals[i+2]);
+                    const material = getMaterialAtPoint(vertex, normal, false);
+                    colors.push(material.color.r, material.color.g, material.color.b);
+                }
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            }
+            const material = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.2, side: THREE.DoubleSide, vertexColors: true }); // Added DoubleSide
+            marchingCubesMesh = new THREE.Mesh(geometry, material);
+            scene.add(marchingCubesMesh);
+        }
+
+        function updateMarchingCubesMoonMesh() {
+            if (marchingCubesMeshMoon) {
+                scene.remove(marchingCubesMeshMoon);
+                if (marchingCubesMeshMoon.geometry) marchingCubesMeshMoon.geometry.dispose();
+                if (marchingCubesMeshMoon.material) marchingCubesMeshMoon.material.dispose();
+            }
+            const geometry = generateMarchingCubesGeometry(voxelDataMoon, ISO_LEVEL, GRID_SIZE_MOON, BLOCK_SIZE, moonPosition); // Pass centerOffset
+            if (geometry.attributes.position) {
+                const positions = geometry.attributes.position.array;
+                const normals = geometry.attributes.normal.array;
+                const colors = [];
+                const vertex = new THREE.Vector3(), normal = new THREE.Vector3(), worldVertex = new THREE.Vector3();
+
+                for (let i = 0; i < positions.length; i += 3) {
+                    vertex.set(positions[i], positions[i+1], positions[i+2]);
+                    worldVertex.copy(vertex).add(moonPosition);
+                    normal.set(normals[i], normals[i+1], normals[i+2]);
+                    const material = getMaterialAtPoint(worldVertex, normal, true);
+                    colors.push(material.color.r, material.color.g, material.color.b);
+                }
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            }
+            const material = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide, vertexColors: true }); // Added DoubleSide
+            marchingCubesMeshMoon = new THREE.Mesh(geometry, material);
+            marchingCubesMeshMoon.position.copy(moonPosition);
+            scene.add(marchingCubesMeshMoon);
+            const moonLight = new THREE.PointLight(0x6080ff, 0.6, MOON_ORBIT_DISTANCE * 1.2, 1.5); // Added moon light
+            marchingCubesMeshMoon.add(moonLight);
+        }
+
+        function createMiningEffect(position, minedMaterial) {
+            const particleCount = 10; // Reduced particle count for performance
+            const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8); // Changed to sphere
+            const particleMaterial = new THREE.MeshBasicMaterial({ color: minedMaterial.color }); // Use passed material color
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+                particle.position.copy(position);
+
+                particle.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.5, // Reduced initial velocity
+                    (Math.random() - 0.5) * 0.5,
+                    (Math.random() - 0.5) * 0.5
+                );
+                particle.decay = 0.02; // Consistent decay
+
+                scene.add(particle);
+
+                let opacity = 1;
+                const interval = setInterval(() => {
+                    if (opacity <= 0) {
+                        scene.remove(particle);
+                        clearInterval(interval);
+                        particle.geometry.dispose(); // Dispose geometry
+                        particle.material.dispose(); // Dispose material
+                    } else {
+                        particle.position.add(particle.velocity);
+                        particle.material.opacity = opacity;
+                        particle.material.transparent = true;
+                        particle.scale.multiplyScalar(0.95); // Scale down
+                        opacity -= particle.decay;
+                    }
+                }, 50); // Adjusted interval for smoother animation
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (isMobileDevice()) { // Update joystick center on resize
+                const rect = joystickBase.getBoundingClientRect();
+                joystickCenter.set(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            }
+        }
+
+        function updateCamera() {
+            if (!player) return;
+            camera.up.copy(player.position).sub(dominantBodyPosition).normalize();
+            const headPosition = new THREE.Vector3();
+            player.head.getWorldPosition(headPosition);
+
+            if (isFirstPersonView) {
+                player.body.visible = false;
+                player.head.visible = false;
+                
+                // Position torch at camera and point it in camera's direction
+                if (torchLight) {
+                    torchLight.position.copy(camera.position);
+                    torchLight.target.position.copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(10));
+                    torchLight.target.updateMatrixWorld(); // Ensure the target's world position is updated
+                }
+
+                const headQuaternion = new THREE.Quaternion();
+                player.head.getWorldQuaternion(headQuaternion);
+                camera.position.copy(headPosition);
+                camera.quaternion.copy(headQuaternion);
+            } else {
+                player.body.visible = true;
+                player.head.visible = true;
+                
+                // Position torch at player's head and point it in head's direction
+                if (torchLight) {
+                    torchLight.position.copy(headPosition);
+                    torchLight.target.position.copy(headPosition).add(player.head.getWorldDirection(new THREE.Vector3()).multiplyScalar(10));
+                    torchLight.target.updateMatrixWorld(); // Ensure the target's world position is updated
+                }
+
+                const headQuaternion = new THREE.Quaternion();
+                player.head.getWorldQuaternion(headQuaternion);
+                const offsetFromHead = thirdPersonCameraOffset.clone();
+                offsetFromHead.y -= player.head.position.y; // This line is crucial for correct third-person position relative to head
+                const cameraOffsetRotated = offsetFromHead.clone().applyQuaternion(headQuaternion);
+                const desiredCameraPosition = headPosition.clone().add(cameraOffsetRotated);
+                camera.position.lerp(desiredCameraPosition, 0.15);
+                camera.lookAt(headPosition);
+            }
+            // Ensure torch light visibility matches its intensity
+            if (torchLight) {
+                torchLight.visible = (torchLight.intensity > 0);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.1); // Clamp delta to avoid physics glitches
+
+            if (isLocked && player) {
+                // --- Player Update Logic ---
+                const distToPlanet = player.position.distanceTo(planetCenter);
+                const distToMoon = player.position.distanceTo(marchingCubesMeshMoon.position);
+
+                let dominantBody, dominantBodyRadius;
+                dominantBodyPosition = planetCenter; // Initialize with planetCenter
+                if (distToPlanet < distToMoon) {
+                    dominantBody = marchingCubesMesh;
+                    dominantBodyPosition = planetCenter;
+                    dominantBodyRadius = PLANET_RADIUS;
+                } else {
+                    dominantBody = marchingCubesMeshMoon;
+                    dominantBodyPosition = marchingCubesMeshMoon.position;
+                    dominantBodyRadius = MOON_RADIUS;
+                }
+
+                const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
+                const gravityDirection = dominantBodyPosition.clone().sub(player.position).normalize();
+
+                // Non-linear gravity falloff
+                const distFromSurface = player.position.distanceTo(dominantBodyPosition) - dominantBodyRadius;
+                const l1_distance = MOON_ORBIT_DISTANCE / 2; // Simplified L1 point
+                let gravityFactor = 1.0;
+                if (distFromSurface > 0 && distFromSurface < l1_distance) {
+                    gravityFactor = 1.0 - Math.pow(distFromSurface / l1_distance, 2);
+                }
+
+                const waterRadius = waterMesh.geometry.parameters.radius;
+                const distToWaterCenter = player.position.distanceTo(planetCenter);
+                const isInWater = distToWaterCenter < waterRadius;
+                const maxWaterSpeed = playerSettings.speed * 0.5; // Half of the normal speed
+
+                // Swimming Animation
+                const targetRotation = new THREE.Quaternion();
+                const targetPosition = new THREE.Vector3();
+
+                if (isInWater && !player.onGround) {
+                    // Rotate body back and move it up and behind the head
+                    targetRotation.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+                    targetPosition.set(0, 0.8, 0.6);
+                } else {
+                    targetRotation.identity();
+                    targetPosition.set(0, -0.3, 0); // Original position
+                }
+                player.body.quaternion.slerp(targetRotation, 0.1);
+                player.body.position.lerp(targetPosition, 0.1);
+
+                // 1. Apply gravity
+                if (!player.onGround && !isInWater) { // Add !isInWater condition
+                    player.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength * gravityFactor));
+                } else if (isInWater) {
+                    // If in water, apply damping and handle vertical controls
+                    player.velocity.multiplyScalar(0.98); // Water resistance
+
+                    if (!player.onGround) {
+                        const waterVerticalSpeed = playerSettings.speed * 0.5;
+                        if (keys.space) {
+                            player.velocity.add(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
+                        }
+                        if (keys.c || keys.ctrl) {
+                            player.velocity.sub(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
+                        }
+                    }
+                    
+                    const currentSpeed = player.velocity.length();
+                    // If the current speed exceeds the maximum water speed, scale it down
+                    if (currentSpeed > maxWaterSpeed) {
+                        player.velocity.normalize().multiplyScalar(maxWaterSpeed);
+                    }
+                }
+
+                // 2. Get movement input and project onto tangent plane
+                const moveDirection = new THREE.Vector3();
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
+                if (keys.w) moveDirection.add(forward);
+                if (keys.s) moveDirection.sub(forward);
+                if (keys.a) moveDirection.add(right.clone().multiplyScalar(-1));
+                if (keys.d) moveDirection.add(right);
+
+                const verticalComponent = player.velocity.clone().projectOnVector(playerUp);
+                const horizontalComponent = player.velocity.clone().sub(verticalComponent);
+
+                if (moveDirection.lengthSq() > 0) {
+                    const projectedMove = moveDirection.projectOnPlane(playerUp).normalize();
+                    const targetVelocity = projectedMove.multiplyScalar(playerSettings.speed);
+                    if (isInWater) {
+                        player.velocity.add(targetVelocity.multiplyScalar(delta)); // Direct application in water
+                    } else {
+                        horizontalComponent.lerp(targetVelocity, 0.2);
+                    }
+                } else if (!isInWater) {
+                    horizontalComponent.lerp(new THREE.Vector3(), 0.1);
+                }
+                if (!isInWater) {
+                    player.velocity.copy(horizontalComponent).add(verticalComponent);
+                }
+
+                // 3. Update position based on velocity
+                player.position.add(player.velocity.clone().multiplyScalar(delta));
+
+                // 4. Collision detection and response (only if not in water)
+                // The original code had this commented out, I will keep it commented.
+                // if (!isInWater) {
+                    const groundObjects = [marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes);
+                    const rayOrigin = player.position.clone().add(playerUp.clone().multiplyScalar(-playerSettings.height * 0.5));
+                    raycaster.set(rayOrigin, gravityDirection);
+                    const intersects = raycaster.intersectObjects(groundObjects);
+
+                    player.onGround = false;
+                    if (intersects.length > 0) {
+                        const hitPoint = intersects[0].point;
+                        const distanceToHitPoint = rayOrigin.distanceTo(hitPoint);
+                        const groundDetectionTolerance = 0.1;
+                        const verticalSpeed = player.velocity.dot(playerUp);
+
+                        if (distanceToHitPoint < groundDetectionTolerance && verticalSpeed < 0.05) {
+                            player.onGround = true;
+                            const snapOffset = 0.01;
+                            player.position.copy(hitPoint.clone().add(playerUp.clone().multiplyScalar(playerSettings.height * 0.5 + snapOffset)));
+                            const verticalVelocityComponent = playerUp.clone().multiplyScalar(player.velocity.dot(playerUp));
+                            player.velocity.sub(verticalVelocityComponent);
+                        }
+                    }
+                    
+                    // Upward collision correction
+                    if (!player.onGround && groundObjects.length > 0) {
+                        const rayOriginUpward = player.position.clone();
+                        raycaster.set(rayOriginUpward, playerUp);
+                        const intersectsUpward = raycaster.intersectObjects(groundObjects);
+                        if (intersectsUpward.length > 0 && intersectsUpward[0].distance < playerSettings.height * 0.5) {
+                            const hitPointUpward = intersectsUpward[0].point;
+                            player.position.copy(hitPointUpward.clone().add(playerUp.clone().multiplyScalar(playerSettings.height * 0.5 + 0.01)));
+                            player.onGround = true;
+                            const verticalVel = player.velocity.dot(playerUp);
+                            if (verticalVel < 0) player.velocity.sub(playerUp.clone().multiplyScalar(verticalVel));
+                        }
+                    }
+                // }
+
+                // 5. Orient player to stand upright on the dominant body
+                const playerCurrentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);
+                const newUp = player.position.clone().sub(dominantBodyPosition).normalize();
+                const correction = new THREE.Quaternion().setFromUnitVectors(playerCurrentUp, newUp);
+                player.quaternion.slerp(correction.multiply(player.quaternion), 0.2);
+            }
+
+            updateCamera();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function() {
+            init();
+            animate();
+        };
+    </script>
+</body>
+</html>

@@ -536,6 +536,13 @@ for (let x = -half + tileSize / 2; x < half; x += tileSize) {
                 }
                 
                 controls.getObject().position.y += (velocity.y * delta);
+
+                // Prevent falling through the floor
+                if (controls.getObject().position.y < 1.75) {
+                    velocity.y = 0;
+                    controls.getObject().position.y = 1.75;
+                    canJump = true;
+                }
             }
 
             prevTime = time;

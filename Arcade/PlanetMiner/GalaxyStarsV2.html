@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Spiral Galaxy Fly-Through</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: 'Inter', sans-serif; }
+        canvas { display: block; }
+        #info-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 10px;
+            max-width: 300px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        h1 { margin-top: 0; font-size: 1.2em; }
+        p { font-size: 0.9em; line-height: 1.4; }
+        button {
+            background-color: #0d6efd;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            width: 100%;
+            margin-top: 10px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0b5ed7;
+        }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="info-panel">
+        <h1>Spiral Galaxy Explorer</h1>
+        <p>A procedural spiral galaxy. You can now tweak the variables in the code to change the galaxy's shape!</p>
+        <button id="ftl-button">Engage FTL Drive</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Basic Setup ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 20000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 10;
+        controls.maxDistance = 5000;
+        
+        camera.position.set(1000, 1500, 1000);
+        camera.lookAt(scene.position);
+
+        // --- Galaxy Parameters ---
+        // Feel free to tweak these values to see how they affect the galaxy's appearance!
+        const GALAXY_RADIUS = 2000;
+        const NUM_STARS = 25000;
+        const GALAXY_THICKNESS = 150; // How flat the galaxy is.
+        const BULGE_DENSITY = 3;      // How dense the central bulge is. Higher values mean a smaller, denser core.
+        
+        // --- ARM DEFINITION PARAMETERS ---
+        const NUM_ARMS = 2;           // Number of spiral arms.
+        const ARM_ROTATION = 2.5;     // How tightly the arms are wound. Higher values = tighter spiral.
+        const ARM_SPREAD = 2;       // How much stars spread from the arm's center line. Lower values = more defined arms.
+        const ARM_RANDOMNESS = 0.1;   // Adds extra randomness to star positions within the arms.
+
+        // --- Star Colors (Spectral Types O, B, A, F, G, K, M) ---
+        const STAR_COLORS = [
+            new THREE.Color(0x9bb0ff), // O-type (Blue)
+            new THREE.Color(0xaabfff), // B-type (Blue-White)
+            new THREE.Color(0xcad8ff), // A-type (White)
+            new THREE.Color(0xfef8ff), // F-type (Yellow-White)
+            new THREE.Color(0xfff4e8), // G-type (Yellow - like our Sun)
+            new THREE.Color(0xffd2a1), // K-type (Orange)
+            new THREE.Color(0xffb56c)  // M-type (Red)
+        ];
+
+        // --- Shaders for Star Particles ---
+        const vertexShader = `
+            attribute float size;
+            varying vec3 vColor;
+            void main() {
+                vColor = color; 
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                gl_Position = projectionMatrix * mvPosition;
+                gl_PointSize = size * (300.0 / -mvPosition.z); // Scale size by distance
+            }
+        `;
+
+        const fragmentShader = `
+            varying vec3 vColor;
+            void main() {
+                vec2 coord = gl_PointCoord - vec2(0.5);
+                float d = length(coord);
+                if (d > 0.5) discard;
+                
+                vec3 white = vec3(1.0);
+                vec3 starColor = vColor;
+                vec3 finalColor;
+                float alpha = pow(1.0 - d * 2.0, 2.0); // Soft fade from center to edge
+                
+                finalColor = mix(starColor, white, pow(d, 0.5)); // White hot center
+                
+                gl_FragColor = vec4(finalColor, alpha);
+            }
+        `;
+        
+        const simpleFragmentShader = `
+            varying vec3 vColor;
+            void main() {
+                gl_FragColor = vec4(vColor, 1.0);
+            }
+        `;
+
+        // --- Material & Geometry ---
+        const starMaterial = new THREE.ShaderMaterial({
+            uniforms: {},
+            vertexShader,
+            fragmentShader,
+            blending: THREE.AdditiveBlending,
+            depthTest: false,
+            transparent: true,
+            vertexColors: true
+        });
+        
+        const simpleStarMaterial = new THREE.ShaderMaterial({
+            uniforms: {},
+            vertexShader,
+            fragmentShader: simpleFragmentShader,
+            blending: THREE.AdditiveBlending,
+            depthTest: false,
+            transparent: true,
+            vertexColors: true 
+        });
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = [];
+        const colors = [];
+        const sizes = [];
+
+        // --- Galaxy Generation Logic ---
+        for (let i = 0; i < NUM_STARS; i++) {
+            // Calculate star's distance from the center
+            // We use Math.pow to concentrate more stars towards the center
+            const dist = Math.pow(Math.random(), 2) * GALAXY_RADIUS;
+
+            // Choose which arm the star belongs to
+            const armIndex = Math.floor(Math.random() * NUM_ARMS);
+            const armAngle = (armIndex / NUM_ARMS) * Math.PI * 2;
+
+            // Define the spiral shape of the arm
+            const spiralAngle = (dist / GALAXY_RADIUS) * ARM_ROTATION * Math.PI * 2;
+
+            // Add spread to the star's position within the arm
+            const spreadAngle = (Math.random() - 0.5) * ARM_SPREAD;
+
+            // The final angle for the star's position
+            const totalAngle = armAngle + spiralAngle + spreadAngle;
+
+            // Add randomness to the distance to make arms less uniform
+            const randomDist = (Math.random() - 0.5) * ARM_RANDOMNESS * dist;
+            const finalDist = dist + randomDist;
+            
+            // Add a central bulge effect by squashing positions closer to the center
+            const bulgeFactor = Math.pow(1.0 - (dist / GALAXY_RADIUS), BULGE_DENSITY);
+
+            // Calculate final X, Y, Z coordinates
+            const x = Math.cos(totalAngle) * finalDist;
+            const z = Math.sin(totalAngle) * finalDist;
+            // Use a gaussian-like random for Y to create a denser plane
+            const y = (Math.random() - 0.5) * (Math.random() - 0.5) * GALAXY_THICKNESS * bulgeFactor;
+
+            positions.push(x, y, z);
+
+            // Assign color based on a weighted random selection
+            const colorIndex = Math.floor(Math.pow(Math.random(), 2) * STAR_COLORS.length);
+            const color = STAR_COLORS[colorIndex];
+            colors.push(color.r, color.g, color.b);
+
+            // Assign a random size for each star
+            sizes.push(Math.random() * 15 + 5);
+        }
+
+        // Set the attributes on the geometry
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+        
+        // --- LOD (Level of Detail) ---
+        const detailedStars = new THREE.Points(geometry, starMaterial);
+        const simpleStars = new THREE.Points(geometry, simpleStarMaterial);
+        
+        scene.add(detailedStars);
+        scene.add(simpleStars);
+        
+        // --- Animation State ---
+        let ftlInProgress = false;
+        let flyThroughActive = false;
+        const ftlButton = document.getElementById('ftl-button');
+
+        ftlButton.addEventListener('click', () => {
+            if (!ftlInProgress) {
+                startFTL();
+            }
+        });
+
+        function startFTL() {
+            ftlInProgress = true;
+            flyThroughActive = false;
+            ftlButton.disabled = true;
+            controls.enabled = false;
+
+            const duration = 5000; // 5 seconds
+            const startTime = Date.now();
+            const startPos = camera.position.clone();
+            const endPos = new THREE.Vector3(0, 0, 0); // Target center of galaxy
+            const startFov = camera.fov;
+            const ftlFov = 140;
+
+            function ftlUpdate() {
+                const elapsedTime = Date.now() - startTime;
+                const progress = Math.min(elapsedTime / duration, 1);
+                const easeProgress = 0.5 - 0.5 * Math.cos(progress * Math.PI); // Ease in-out
+
+                camera.position.lerpVectors(startPos, endPos, easeProgress);
+                
+                if (progress < 0.5) {
+                    camera.fov = THREE.MathUtils.lerp(startFov, ftlFov, progress * 2);
+                } else {
+                    camera.fov = THREE.MathUtils.lerp(ftlFov, startFov, (progress - 0.5) * 2);
+                }
+                camera.updateProjectionMatrix();
+
+                if (progress < 1) {
+                    requestAnimationFrame(ftlUpdate);
+                } else {
+                    startFlyThrough();
+                }
+            }
+            ftlUpdate();
+        }
+
+        function startFlyThrough() {
+            flyThroughActive = true;
+            const flyDuration = 20000; // 20 seconds
+            const flyStartTime = Date.now();
+            
+            const path = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(200, 50, 500),
+                new THREE.Vector3(-400, -20, 1000),
+                new THREE.Vector3(100, 10, 1500),
+                new THREE.Vector3(0, 0, 2500)
+            ]);
+
+            function flyUpdate() {
+                const elapsedTime = Date.now() - flyStartTime;
+                let progress = Math.min(elapsedTime / flyDuration, 1);
+
+                const pos = path.getPointAt(progress);
+                camera.position.copy(pos);
+
+                const lookAtPos = path.getPointAt(Math.min(progress + 0.01, 1));
+                camera.lookAt(lookAtPos);
+
+                if (progress < 1) {
+                    requestAnimationFrame(flyUpdate);
+                } else {
+                    ftlInProgress = false;
+                    flyThroughActive = false;
+                    ftlButton.disabled = false;
+                    controls.enabled = true;
+                    camera.position.set(500, 200, 3000);
+                    controls.target.set(0,0,0);
+                }
+            }
+            flyUpdate();
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (!ftlInProgress) {
+                controls.update();
+            }
+            
+            const distance = camera.position.length();
+            if (distance > 3000) {
+                detailedStars.visible = false;
+                simpleStars.visible = true;
+            } else {
+                detailedStars.visible = true;
+                simpleStars.visible = false;
+            }
+
+            if (!flyThroughActive) {
+                detailedStars.rotation.y += 0.0001;
+                simpleStars.rotation.y += 0.0001;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- Handle Window Resize ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }, false);
+
+        animate();
+    </script>
+</body>
+</html>

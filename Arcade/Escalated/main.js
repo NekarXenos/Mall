@@ -698,7 +698,7 @@ function updateProjectiles(deltaTime) {
                 // Simple bounding box collision for now
                 const enemyBox = new THREE.Box3().setFromObject(enemy.getObject());
                 if (enemyBox.containsPoint(projectile.position)) {
-                    enemy.takeDamage(25); // Each hit does 25 damage
+                    enemy.takeDamage(100); // Each hit does 25 damage
                     if (enemy.health <= 0) {
                         // Mobster defeated
                         playerScore += 100; // Increase score

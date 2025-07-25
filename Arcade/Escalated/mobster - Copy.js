@@ -36,6 +36,7 @@ export class Mobster {
 
         // --- THREE.js objects ---
         this.characterGroup = null;
+        this.headGroup = null;
         this.gunGroup = null;
         this.leftArm = null;
         this.rightArm = null;
@@ -75,16 +76,19 @@ export class Mobster {
         this.characterGroup.add(body);
 
         // Head
+        this.headGroup = new THREE.Group();
+        this.characterGroup.add(this.headGroup);
+
         const headGeometry = new THREE.DodecahedronGeometry(1.2, 0);
         const head = new THREE.Mesh(headGeometry, skinMaterial);
         head.rotation.x = -0.2;
         head.position.y = 1.2;
-        this.characterGroup.add(head);
+        this.headGroup.add(head);
 
         const hairGeometry = new THREE.BoxGeometry(1.8, 1.5, 1.5);
         const hair = new THREE.Mesh(hairGeometry, coatMaterial);
         hair.position.set(0, 1.2, -0.5);
-        this.characterGroup.add(hair);
+        this.headGroup.add(hair);
 
         // Sunglasses
         const shadesGeometry = new THREE.CylinderGeometry(1, 1, 1, 6);
@@ -93,34 +97,34 @@ export class Mobster {
         shades.rotation.x = Math.PI / 2;
         shades.rotation.y = Math.PI / 2;
         shades.position.set(0, 1.5, 0.5);
-        this.characterGroup.add(shades);
+        this.headGroup.add(shades);
 
         // Fedora
         const fedoraTop1Geometry = new THREE.SphereGeometry(1, 6, 4);
         fedoraTop1Geometry.scale(0.7, 1, 1);
         const fedoraTop1 = new THREE.Mesh(fedoraTop1Geometry, fedoraMaterial);
         fedoraTop1.position.set(0.3, 2.1, 0);
-        this.characterGroup.add(fedoraTop1);
+        this.headGroup.add(fedoraTop1);
 
         const fedoraTop2Geometry = new THREE.SphereGeometry(1, 6, 4);
         fedoraTop2Geometry.scale(0.7, 1, 1);
         const fedoraTop2 = new THREE.Mesh(fedoraTop2Geometry, fedoraMaterial);
         fedoraTop2.position.set(-0.3, 2.1, 0);
-        this.characterGroup.add(fedoraTop2);
+        this.headGroup.add(fedoraTop2);
 
         const fedoraBrimGeometry = new THREE.TorusGeometry(1.3, 0.5, 3, 6);
         fedoraBrimGeometry.scale(1, 1, 0.5);
         const fedoraBrim = new THREE.Mesh(fedoraBrimGeometry, fedoraMaterial);
         fedoraBrim.rotation.set(Math.PI / 2 + 0.1, 0, Math.PI / 2);
         fedoraBrim.position.y = 1.8;
-        this.characterGroup.add(fedoraBrim);
+        this.headGroup.add(fedoraBrim);
 
         const fedoraBandGeometry = new THREE.TorusGeometry(1, 0.2, 4, 6);
         fedoraBandGeometry.scale(1, 1, 1.5);
         const fedoraBand = new THREE.Mesh(fedoraBandGeometry, fedBandMaterial);
         fedoraBand.rotation.x = Math.PI / 2 + 0.1;
         fedoraBand.position.y = 2;
-        this.characterGroup.add(fedoraBand);
+        this.headGroup.add(fedoraBand);
 
         // Limbs
         const upperArmGeometry = new THREE.CylinderGeometry(0.5, 0.45, 1.5, 6);
@@ -231,7 +235,7 @@ export class Mobster {
         const desiredHeight = 1.7;
         const scaleFactor = desiredHeight / currentHeight;
         this.characterGroup.scale.set(scaleFactor, scaleFactor, scaleFactor);
-        
+
 
         this.characterGroup.traverse(object => {
             if (object.isMesh) {
@@ -297,7 +301,7 @@ export class Mobster {
         if (this.characterState !== 'aiming') {
             this.characterState = 'aiming';
             this.aimStartTime = this.clock.getElapsedTime();
-            
+
             // Store current rotations for smooth transition
             this.startAimRotations = {
                 leftArm: this.leftArm.rotation.clone(),
@@ -383,8 +387,22 @@ export class Mobster {
      * Returns the main character group object.
      * @returns {THREE.Group}
      */
-        getObject() {
+    getObject() {
         return this.characterGroup;
+    }
+
+    getHeadGroup() {
+        return this.headGroup;
+    }
+
+    getHeadMeshes() {
+        const headMeshes = [];
+        this.headGroup.traverse(child => {
+            if (child.isMesh) {
+                headMeshes.push(child);
+            }
+        });
+        return headMeshes;
     }
 
     takeDamage(amount) {
@@ -398,7 +416,7 @@ export class Mobster {
         // Simple fall animation: rotate the character group
         const rotationSpeed = 0.1; // Adjust as needed
         const fallSpeed = 0.2; // Adjust as needed
-        
+
         const targetRotation = new THREE.Euler(-Math.PI / 2, 0, 0); // THREE.Euler(0, 0, Math.PI / 2); // Rotate 90 degrees around Z-axis
 
         const animateFall = () => {

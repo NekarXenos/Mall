@@ -15,7 +15,7 @@ const loader = {
     escalatorFont: "'Ultra', sans-serif",
     animationFrameId: null,
     escalatorAnimationDone: false,
-    mayhemAlpha: 0.1,
+    mayhemAlpha: 0,
     continueMessage: null,
     readyToContinue: false,
 

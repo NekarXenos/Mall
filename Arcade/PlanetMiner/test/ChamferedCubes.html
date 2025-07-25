@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Chamfered Block Pyramid</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #111827; }
+        canvas { display: block; }
+        .info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: #e5e7eb;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">Drag to rotate, scroll to zoom</div>
+
+    <!-- Import maps for Three.js modules -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.147.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        // Import necessary modules from Three.js
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+
+        let scene, camera, renderer, controls;
+
+        // --- CORE FUNCTION: Create a block with random chamfers ---
+        /**
+         * Creates a THREE.Mesh representing a block with randomly sized chamfers on each edge.
+         * @param {number} width - The width of the block.
+         * @param {number} height - The height of the block.
+         * @param {number} depth - The depth of the block.
+         * @returns {THREE.Mesh} A mesh with a ConvexGeometry representing the chamfered block.
+         */
+        function createChamferedBlock(width, height, depth) {
+            const w = width / 2;
+            const h = height / 2;
+            const d = depth / 2;
+
+            const points = [];
+
+            // Helper function to get a random chamfer size for a given dimension.
+            // The size is between 1/10th and 1/3rd of the dimension.
+            const getRandomChamfer = (dim) => THREE.MathUtils.randFloat(dim / 10, dim / 3);
+
+            // Define the 8 corners of a standard box.
+            const corners = [
+                new THREE.Vector3(w, h, d),   new THREE.Vector3(w, h, -d),
+                new THREE.Vector3(w, -h, d),  new THREE.Vector3(w, -h, -d),
+                new THREE.Vector3(-w, h, d),  new THREE.Vector3(-w, h, -d),
+                new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
+            ];
+
+            // For each of the 8 corners, we generate 3 new points.
+            // These points are offset from the original corner along the connecting edges.
+            // This creates the chamfered effect.
+            corners.forEach(corner => {
+                const sx = Math.sign(corner.x);
+                const sy = Math.sign(corner.y);
+                const sz = Math.sign(corner.z);
+
+                // Generate three random chamfer distances for the three edges meeting at this corner.
+                const chamferX = getRandomChamfer(width);
+                const chamferY = getRandomChamfer(height);
+                const chamferZ = getRandomChamfer(depth);
+
+                // Create the 3 points by moving from the corner back along each axis.
+                points.push(new THREE.Vector3(corner.x - sx * chamferX, corner.y, corner.z));
+                points.push(new THREE.Vector3(corner.x, corner.y - sy * chamferY, corner.z));
+                points.push(new THREE.Vector3(corner.x, corner.y, corner.z - sz * chamferZ));
+            });
+
+            // ConvexGeometry creates a convex hull from a set of points.
+            // This is perfect for creating our custom block shape from the 24 points we generated.
+            const geometry = new ConvexGeometry(points);
+            
+            // Use a standard material with a random color for each block.
+            const material = new THREE.MeshStandardMaterial({
+                color: new THREE.Color().setHSL(Math.random(), 0.7, 0.6),
+                roughness: 0.4,
+                metalness: 0.1,
+                flatShading: true, // Flat shading highlights the chamfered faces.
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            
+            return mesh;
+        }
+
+        // --- SCENE SETUP ---
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111827); // Dark blue-gray background
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(15, 15, 25);
+            camera.lookAt(0, 5, 0);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.target.set(0, 5, 0);
+            controls.minDistance = 10;
+            controls.maxDistance = 100;
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            directionalLight.position.set(20, 30, 15);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 100;
+            directionalLight.shadow.camera.left = -30;
+            directionalLight.shadow.camera.right = 30;
+            directionalLight.shadow.camera.top = 30;
+            directionalLight.shadow.camera.bottom = -30;
+            scene.add(directionalLight);
+
+            // Ground Plane
+            const groundGeo = new THREE.PlaneGeometry(100, 100);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.9 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // --- BUILD THE PYRAMID ---
+            const pyramidBaseSize = 7;
+            const blockWidth = 3;
+            const blockHeight = 1.5;
+            const blockDepth = 3;
+            const gap = 0.2; // A small gap between blocks
+
+            let currentY = 0;
+
+            // Loop from the base layer to the top
+            for (let i = pyramidBaseSize; i > 0; i--) {
+                const layerSize = i;
+                const layerWidth = layerSize * (blockWidth + gap) - gap;
+                const layerDepth = layerSize * (blockDepth + gap) - gap;
+
+                // Create each block in the current layer
+                for (let x = 0; x < layerSize; x++) {
+                    for (let z = 0; z < layerSize; z++) {
+                        const block = createChamferedBlock(blockWidth, blockHeight, blockDepth);
+
+                        // Position the block, centering the layer
+                        block.position.x = (x * (blockWidth + gap)) - (layerWidth / 2) + (blockWidth / 2);
+                        block.position.y = currentY + (blockHeight / 2);
+                        block.position.z = (z * (blockDepth + gap)) - (layerDepth / 2) + (blockDepth / 2);
+                        
+                        scene.add(block);
+                    }
+                }
+                // Move up for the next layer
+                currentY += blockHeight + gap;
+            }
+
+            // Handle window resizing
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        // --- EVENT HANDLERS & ANIMATION LOOP ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); // only required if enableDamping is true
+            renderer.render(scene, camera);
+        }
+
+        // Start the application
+        init();
+        animate();
+    </script>
+</body>
+</html>

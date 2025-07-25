@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Spiral Galaxy Fly-Through</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: 'Inter', sans-serif; }
+        canvas { display: block; }
+        #info-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 10px;
+            max-width: 300px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        h1 { margin-top: 0; font-size: 1.2em; }
+        p { font-size: 0.9em; line-height: 1.4; }
+        button {
+            background-color: #0d6efd;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            width: 100%;
+            margin-top: 10px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0b5ed7;
+        }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="info-panel">
+        <h1>Spiral Galaxy Explorer</h1>
+        <p>A procedural two-armed spiral galaxy. Stars are instanced with custom shaders for a glowing effect and LOD for performance.</p>
+        <button id="ftl-button">Engage FTL Drive</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Basic Setup ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 20000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 10;
+        controls.maxDistance = 5000;
+        
+        camera.position.set(1000, 1500, 1000);
+        camera.lookAt(scene.position);
+
+        // --- Galaxy Parameters ---
+        const GALAXY_RADIUS = 2000;
+        const NUM_STARS = 150000;
+        const ARM_ROTATION = 4; // How tightly the arms are wound
+        const BULGE_DENSITY = 3; // How dense the central bulge is
+
+        // --- Star Colors (Spectral Types O, B, A, F, G, K, M) ---
+        const STAR_COLORS = [
+            new THREE.Color(0x9bb0ff), // O-type (Blue)
+            new THREE.Color(0xaabfff), // B-type (Blue-White)
+            new THREE.Color(0xcad8ff), // A-type (White)
+            new THREE.Color(0xfef8ff), // F-type (Yellow-White)
+            new THREE.Color(0xfff4e8), // G-type (Yellow - like our Sun)
+            new THREE.Color(0xffd2a1), // K-type (Orange)
+            new THREE.Color(0xffb56c)  // M-type (Red)
+        ];
+
+        // --- Shaders for Star Particles ---
+        // Vertex shader
+        const vertexShader = `
+            // The 'color' attribute is automatically supplied by Three.js when a material's 
+            // 'vertexColors' property is true. We must not redeclare it here.
+            // We DO need to declare any other custom attributes we are using, like 'size'.
+            attribute float size;
+            varying vec3 vColor;
+
+            void main() {
+                // 'color' and 'position' are provided automatically by Three.js.
+                vColor = color; 
+                
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                gl_Position = projectionMatrix * mvPosition;
+
+                // Use the 'size' attribute that was being calculated for each star.
+                // This gives each star a unique size.
+                gl_PointSize = size;
+            }
+        `;
+
+        // Fragment shader for circular gradient
+        const fragmentShader = `
+            varying vec3 vColor;
+            void main() {
+                vec2 coord = gl_PointCoord - vec2(0.5);
+                float d = length(coord);
+                if (d > 0.5) discard; // Make it circular
+                
+                vec3 white = vec3(1.0);
+                vec3 starColor = vColor;
+                vec3 finalColor;
+                float alpha;
+
+                // This logic creates a soft, glowing effect for each star particle.
+                // It transitions from a white-hot center to the star's actual color.
+                if (d <= 0.05) { // 0 to 5% radius (hot core)
+                    float t = d / 0.05;
+                    finalColor = mix(white, starColor, t);
+                    alpha = 1.0;
+                } else if (d <= 0.25) { // 5% to 25% radius (main glow)
+                    float t = (d - 0.05) / 0.20;
+                    alpha = 1.0 - t * 0.5;
+                    finalColor = starColor;
+                } else { // 25% to 50% radius (outer fade)
+                    float t = (d - 0.25) / 0.25;
+                    alpha = 0.5 - t * 0.5;
+                    finalColor = starColor;
+                }
+                
+                gl_FragColor = vec4(finalColor, alpha);
+            }
+        `;
+        
+        // A simpler fragment shader for distant stars to improve performance.
+        const simpleFragmentShader = `
+            varying vec3 vColor;
+            void main() {
+                gl_FragColor = vec4(vColor, 1.0);
+            }
+        `;
+
+        // --- Material & Geometry ---
+        const starMaterial = new THREE.ShaderMaterial({
+            uniforms: {},
+            vertexShader,
+            fragmentShader,
+            blending: THREE.AdditiveBlending,
+            depthTest: false,
+            transparent: true,
+            vertexColors: true // This tells Three.js to use the 'color' attribute from the geometry
+        });
+        
+        const simpleStarMaterial = new THREE.ShaderMaterial({
+            uniforms: {},
+            vertexShader, // Both materials use the same vertex shader
+            fragmentShader: simpleFragmentShader,
+            blending: THREE.AdditiveBlending,
+            depthTest: false,
+            transparent: true,
+            vertexColors: true 
+        });
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = [];
+        const colors = [];
+        const sizes = [];
+
+        // --- Galaxy Generation Logic ---
+        for (let i = 0; i < NUM_STARS; i++) {
+            // Calculate star's position in the galaxy
+            const dist = Math.random() * GALAXY_RADIUS;
+            const angle = Math.random() * Math.PI * 2;
+            const arm = Math.round(Math.random()); // 0 or 1 for two arms
+            const armOffset = (dist / GALAXY_RADIUS) * ARM_ROTATION * Math.PI;
+            
+            let totalAngle = angle + armOffset;
+            if (arm === 1) {
+                totalAngle += Math.PI;
+            }
+
+            // Add some randomness to star positions to create a central bulge
+            const randomFactor = Math.pow(Math.random(), BULGE_DENSITY);
+            const x = Math.cos(totalAngle) * dist * randomFactor;
+            const z = Math.sin(totalAngle) * dist * randomFactor;
+            // Make the galaxy flatter by reducing the y-spread
+            const y = (Math.random() - 0.5) * 100 * (1 - dist/GALAXY_RADIUS) * Math.random();
+
+            positions.push(x, y, z);
+
+            // Assign color based on a weighted random selection
+            const colorIndex = Math.floor(Math.pow(Math.random(), 2) * STAR_COLORS.length);
+            const color = STAR_COLORS[colorIndex];
+            colors.push(color.r, color.g, color.b);
+
+            // Assign a random size for each star
+            sizes.push(Math.random() * 15 + 5);
+        }
+
+        // Set the attributes on the geometry
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+        
+        // --- LOD (Level of Detail) ---
+        // We create two particle systems: one detailed, one simple.
+        // We'll switch their visibility based on camera distance for better performance.
+        const detailedStars = new THREE.Points(geometry, starMaterial);
+        const simpleStars = new THREE.Points(geometry, simpleStarMaterial);
+        
+        scene.add(detailedStars);
+        scene.add(simpleStars);
+        
+        // --- Animation State ---
+        let ftlInProgress = false;
+        let flyThroughActive = false;
+        const ftlButton = document.getElementById('ftl-button');
+
+        ftlButton.addEventListener('click', () => {
+            if (!ftlInProgress) {
+                startFTL();
+            }
+        });
+
+        function startFTL() {
+            ftlInProgress = true;
+            flyThroughActive = false;
+            ftlButton.disabled = true;
+            controls.enabled = false;
+
+            const duration = 5000; // 5 seconds
+            const startTime = Date.now();
+            const startPos = camera.position.clone();
+            const endPos = new THREE.Vector3(0, 0, 0); // Target center of galaxy
+            const startFov = camera.fov;
+            const ftlFov = 140;
+
+            function ftlUpdate() {
+                const elapsedTime = Date.now() - startTime;
+                const progress = Math.min(elapsedTime / duration, 1);
+                const easeProgress = 0.5 - 0.5 * Math.cos(progress * Math.PI); // Ease in-out
+
+                // Zoom in
+                camera.position.lerpVectors(startPos, endPos, easeProgress);
+                
+                // FOV effect for speed
+                if (progress < 0.5) {
+                    camera.fov = THREE.MathUtils.lerp(startFov, ftlFov, progress * 2);
+                } else {
+                    camera.fov = THREE.MathUtils.lerp(ftlFov, startFov, (progress - 0.5) * 2);
+                }
+                camera.updateProjectionMatrix();
+
+                if (progress < 1) {
+                    requestAnimationFrame(ftlUpdate);
+                } else {
+                    startFlyThrough();
+                }
+            }
+            ftlUpdate();
+        }
+
+        function startFlyThrough() {
+            flyThroughActive = true;
+            const flyDuration = 20000; // 20 seconds
+            const flyStartTime = Date.now();
+            
+            // Define a path for the camera to follow
+            const path = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(200, 50, 500),
+                new THREE.Vector3(-400, -20, 1000),
+                new THREE.Vector3(100, 10, 1500),
+                new THREE.Vector3(0, 0, 2500)
+            ]);
+
+            function flyUpdate() {
+                const elapsedTime = Date.now() - flyStartTime;
+                let progress = Math.min(elapsedTime / flyDuration, 1);
+
+                const pos = path.getPointAt(progress);
+                camera.position.copy(pos);
+
+                // Look slightly ahead on the path
+                const lookAtPos = path.getPointAt(Math.min(progress + 0.01, 1));
+                camera.lookAt(lookAtPos);
+
+                if (progress < 1) {
+                    requestAnimationFrame(flyUpdate);
+                } else {
+                    ftlInProgress = false;
+                    flyThroughActive = false;
+                    ftlButton.disabled = false;
+                    controls.enabled = true;
+                    // Reset camera to a nice final position
+                    camera.position.set(500, 200, 3000);
+                    controls.target.set(0,0,0);
+                }
+            }
+            flyUpdate();
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (!ftlInProgress) {
+                controls.update();
+            }
+            
+            // LOD logic: Switch between detailed and simple stars based on distance
+            const distance = camera.position.length();
+            if (distance > 3000) {
+                detailedStars.visible = false;
+                simpleStars.visible = true;
+            } else {
+                detailedStars.visible = true;
+                simpleStars.visible = false;
+            }
+
+            // Slow rotation of the galaxy for a dynamic effect
+            if (!flyThroughActive) {
+                detailedStars.rotation.y += 0.0001;
+                simpleStars.rotation.y += 0.0001;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- Handle Window Resize ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }, false);
+
+        // Start the animation loop
+        animate();
+    </script>
+</body>
+</html>
