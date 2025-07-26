@@ -461,7 +461,8 @@
 
             // 3. Handle surface materials (where depth is near zero or negative)
             const upVector = worldPoint.clone().sub(center).normalize();
-            const slope = 1.0 - Math.abs(surfaceNormal.dot(upVector)); // 0 = flat, 1 = vertical
+            // By not using Math.abs(), we can distinguish overhangs (dot product < 0, slope > 1) from normal ground.
+            const slope = 1.0 + surfaceNormal.dot(upVector); // 0=flat, 1=vertical, 2=overhang
 
             if (onMoon) {
                 return slope > 0.4 ? MATERIALS.MOON_ROCK : MATERIALS.MOON_SAND;
