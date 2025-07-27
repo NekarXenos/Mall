@@ -461,8 +461,16 @@
 
             // 3. Handle surface materials (where depth is near zero or negative)
             const upVector = worldPoint.clone().sub(center).normalize();
-            // By not using Math.abs(), we can distinguish overhangs (dot product < 0, slope > 1) from normal ground.
-            const slope = 1.0 + surfaceNormal.dot(upVector); // 0=flat, 1=vertical, 2=overhang
+
+            const dot = surfaceNormal.dot(upVector);
+
+            // Overhang check: If the surface normal points towards the planet center (dot < 0), it's an overhang.
+            if (dot > 0.5) {
+                return MATERIALS.ROCK;
+            }
+
+
+            const slope = 1.0 - Math.abs(surfaceNormal.dot(upVector)); // 0 = flat, 1 = vertical
 
             if (onMoon) {
                 return slope > 0.4 ? MATERIALS.MOON_ROCK : MATERIALS.MOON_SAND;
@@ -471,7 +479,7 @@
             // Planet surface logic
             const heightAboveWater = distCenter - waterRadius;
             const isVertical = slope > 0.7; // Very steep, definitely rock
-            const isSteep = slope > 0.3; // Moderately steep
+            const isSteep = slope > 0.5; // Moderately steep
 
             // All overhangs/steep areas should be rock
             if (isVertical || isSteep) {
