@@ -209,6 +209,23 @@
         #game-info {
             display: none;
         }
+        #location-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(31, 41, 55, 0.8);
+            padding: 10px 15px;
+            border-radius: 12px;
+            color: #e0e0e0;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9em;
+            text-align: left;
+            line-height: 1.5;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            z-index: 10;
+            display: none; /* Initially hidden */
+        }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -227,6 +244,8 @@
         </div>
         <button id="next-material" class="material-switch">&gt;</button>
     </div>
+
+    <div id="location-info"></div>
 
     <div id="message-box">Click or tap to play!</div>
     <div id="overlay">Click to start</div>
@@ -429,6 +448,7 @@
         const overlay = document.getElementById('overlay');
         const messageBox = document.getElementById('message-box');
         let canvas;
+        let locationInfoDiv;
 
         /**
          * Determines the material type at a given world point based on various environmental factors.
@@ -531,6 +551,7 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
             canvas = renderer.domElement;
+            locationInfoDiv = document.getElementById('location-info');
 
             const ambientLight = new THREE.AmbientLight(0xcccccc, 0.8);
             scene.add(ambientLight);
@@ -1033,6 +1054,7 @@
             isLocked = document.pointerLockElement === canvas;
             overlay.style.display = isLocked ? 'none' : 'flex';
             messageBox.style.display = isLocked ? 'block' : 'none';
+            if (locationInfoDiv) locationInfoDiv.style.display = isLocked ? 'block' : 'none';
             if (isLocked) {
                 document.addEventListener('mousemove', onMouseMove, false);
             } else {
@@ -1504,6 +1526,26 @@
                     dominantBody = marchingCubesMeshMoon;
                     dominantBodyPosition = marchingCubesMeshMoon.position;
                     dominantBodyRadius = MOON_RADIUS;
+                }
+
+                // --- Update Location Info ---
+                const altitude = player.position.distanceTo(dominantBodyPosition) - dominantBodyRadius;
+                const relativePlayerPos = player.position.clone().sub(dominantBodyPosition);
+                const r = relativePlayerPos.length();
+                // Latitude: angle from the equatorial plane (XZ plane). In radians.
+                const latitude = Math.asin(relativePlayerPos.y / r);
+                // Longitude: angle around the Y axis from the X axis. In radians.
+                const longitude = Math.atan2(relativePlayerPos.z, relativePlayerPos.x);
+                const currentBodyName = (distToPlanet < distToMoon) ? 'Planet' : 'Moon';
+
+                if (locationInfoDiv) {
+                    locationInfoDiv.innerHTML = `
+                        <b>Location</b><br>
+                        Body: ${currentBodyName}<br>
+                        Lat: ${latitude.toFixed(2)} rad<br>
+                        Lon: ${longitude.toFixed(2)} rad<br>
+                        Alt: ${altitude.toFixed(2)} m
+                    `;
                 }
 
                 const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
