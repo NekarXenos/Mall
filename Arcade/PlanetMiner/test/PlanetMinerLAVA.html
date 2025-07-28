@@ -228,9 +228,9 @@
         }
         #health-bar-container {
             position: absolute;
-            bottom: 20px;
-            left: 20px;
-            transform: none;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             width: 300px;
             height: 25px;
             background-color: rgba(31, 41, 55, 0.8);
@@ -454,10 +454,6 @@
         const clock = new THREE.Clock();
         const thirdPersonCameraOffset = new THREE.Vector3(0, 3, 8);
         let isFirstPersonView = true;
-        // Water effects state
-        let wasInWater = false;
-        let lastSplashTime = 0;
-        let lastBubbleTime = 0;
         // Updated player settings from PlanetMiner (2).html
         const playerSettings = {
             height: 2,
@@ -1682,105 +1678,6 @@
             }
         }
 
-        function createBubbleEffect(position) {
-            const particleCount = 2; // Few bubbles at a time
-            const particleGeometry = new THREE.SphereGeometry(0.03, 8, 8);
-            const particleMaterial = new THREE.MeshBasicMaterial({
-                color: 0xffffff,
-                transparent: true,
-                opacity: 0.6
-            });
-
-            for (let i = 0; i < particleCount; i++) {
-                const particle = new THREE.Mesh(particleGeometry.clone(), particleMaterial.clone());
-                particle.position.copy(position).add(new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.2,
-                    (Math.random() - 0.5) * 0.2,
-                    (Math.random() - 0.5) * 0.2
-                ));
-
-                const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
-                particle.velocity = playerUp.clone().multiplyScalar(Math.random() * 0.5 + 0.2); // Bubbles rise up
-                particle.velocity.add(new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.1,
-                    (Math.random() - 0.5) * 0.1,
-                    (Math.random() - 0.5) * 0.1
-                ));
-
-                scene.add(particle);
-
-                let lifetime = 1.5; // Bubbles last for 1.5 seconds
-                const decayRate = 1 / (lifetime * 20); // 20 updates per second approx
-
-                const interval = setInterval(() => {
-                    lifetime -= 0.05;
-                    if (lifetime <= 0) {
-                        scene.remove(particle);
-                        particle.geometry.dispose();
-                        particle.material.dispose();
-                        clearInterval(interval);
-                    } else {
-                        particle.position.add(particle.velocity.clone().multiplyScalar(0.05));
-                        particle.material.opacity -= decayRate;
-                        particle.scale.multiplyScalar(1.01); // Bubbles expand as they rise
-                    }
-                }, 50);
-            }
-        }
-
-        function createSplashEffect(position, velocity) {
-            const particleCount = 15;
-            const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
-            const particleMaterial = new THREE.MeshBasicMaterial({ color: 0x88ccff });
-
-            const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
-
-            for (let i = 0; i < particleCount; i++) {
-                const particle = new THREE.Mesh(particleGeometry.clone(), particleMaterial.clone());
-                particle.position.copy(position);
-
-                // Splash particles should go up and out
-                const splashVector = new THREE.Vector3(
-                    (Math.random() - 0.5) * 2,
-                    Math.random() * 1.5 + 0.5, // Mostly upward
-                    (Math.random() - 0.5) * 2
-                ).normalize().multiplyScalar(Math.random() * 1.5 + 0.5);
-
-                // Orient the splash relative to the player's up direction
-                const tangent = new THREE.Vector3().crossVectors(playerUp, velocity.clone().normalize() || player.getWorldDirection(new THREE.Vector3())).normalize();
-                const bitangent = new THREE.Vector3().crossVectors(playerUp, tangent).normalize();
-                
-                particle.velocity = playerUp.clone().multiplyScalar(splashVector.y)
-                                    .add(tangent.clone().multiplyScalar(splashVector.x))
-                                    .add(bitangent.clone().multiplyScalar(splashVector.z));
-
-                // Add some of the player's velocity to the splash
-                particle.velocity.add(velocity.clone().multiplyScalar(0.2));
-
-                scene.add(particle);
-
-                let lifetime = 1.0;
-                const decayRate = 1 / (lifetime * 20);
-
-                const interval = setInterval(() => {
-                    lifetime -= 0.05;
-                    if (lifetime <= 0) {
-                        scene.remove(particle);
-                        particle.geometry.dispose();
-                        particle.material.dispose();
-                        clearInterval(interval);
-                    } else {
-                        // Apply gravity to the splash particles
-                        const gravityDirection = dominantBodyPosition.clone().sub(particle.position).normalize();
-                        particle.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength * 0.05));
-                        particle.position.add(particle.velocity.clone().multiplyScalar(0.05));
-                        particle.material.opacity -= decayRate * 2;
-                        particle.material.transparent = true;
-                    }
-                }, 50);
-            }
-        }
-
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -1894,34 +1791,6 @@
                 const distToWaterCenter = player.position.distanceTo(planetCenter);
                 const isInWater = distToWaterCenter < waterRadius;
                 const maxWaterSpeed = playerSettings.speed * 0.5; // Half of the normal speed
-
-                // Water effects
-                const headPosition = new THREE.Vector3();
-                player.head.getWorldPosition(headPosition);
-                const isHeadUnderwater = headPosition.distanceTo(planetCenter) < waterRadius;
-
-                if (isInWater) {
-                    if (!wasInWater) { // Just entered water
-                        if (clock.getElapsedTime() - lastSplashTime > 0.2) {
-                            createSplashEffect(player.position, player.velocity);
-                            lastSplashTime = clock.getElapsedTime();
-                        }
-                    } else if (player.velocity.length() > 0.5 && clock.getElapsedTime() - lastSplashTime > 0.1) { // Moving in water
-                        createSplashEffect(player.position, player.velocity);
-                        lastSplashTime = clock.getElapsedTime();
-                    }
-
-                    if (isHeadUnderwater && clock.getElapsedTime() - lastBubbleTime > 0.5) { // Head underwater
-                        createBubbleEffect(headPosition);
-                        lastBubbleTime = clock.getElapsedTime();
-                    }
-                } else if (wasInWater) { // Just exited water
-                    if (clock.getElapsedTime() - lastSplashTime > 0.2) {
-                        createSplashEffect(player.position, player.velocity);
-                        lastSplashTime = clock.getElapsedTime();
-                    }
-                }
-                wasInWater = isInWater;
 
                 // Swimming Animation
                 const targetRotation = new THREE.Quaternion();

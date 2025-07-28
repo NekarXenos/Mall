@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -24,11 +25,13 @@
             -webkit-user-select: none;
             user-select: none;
         }
+
         canvas {
             display: block;
             width: 100vw;
             height: 100vh;
         }
+
         #message-box {
             position: absolute;
             top: 20px;
@@ -43,6 +46,7 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
             z-index: 100;
         }
+
         #overlay {
             position: absolute;
             top: 0;
@@ -58,6 +62,7 @@
             font-size: 2em;
             cursor: pointer;
         }
+
         #crosshair {
             position: absolute;
             top: 50%;
@@ -71,6 +76,7 @@
             background-color: rgba(255, 255, 255, 0.2);
             z-index: 100;
         }
+
         #mobile-controls {
             position: absolute;
             bottom: 20px;
@@ -84,12 +90,15 @@
             z-index: 150;
             pointer-events: none;
         }
-        #joystick-area, #action-buttons-area {
+
+        #joystick-area,
+        #action-buttons-area {
             pointer-events: auto;
             display: flex;
             align-items: center;
             gap: 10px;
         }
+
         #joystick-base {
             width: 100px;
             height: 100px;
@@ -101,6 +110,7 @@
             position: relative;
             touch-action: none;
         }
+
         #joystick-thumb {
             width: 60px;
             height: 60px;
@@ -109,6 +119,7 @@
             position: absolute;
             touch-action: none;
         }
+
         .action-button {
             background-color: #007bff;
             color: white;
@@ -120,9 +131,11 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
             transition: background-color 0.2s ease-in-out;
         }
+
         .action-button:active {
             background-color: #0056b3;
         }
+
         #inventory-bar {
             position: absolute;
             bottom: 20px;
@@ -133,18 +146,20 @@
             background-color: rgba(31, 41, 55, 0.8);
             padding: 8px;
             border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             border: 1px solid rgba(75, 85, 99, 0.5);
             z-index: 10;
         }
+
         #inventory-slots {
             display: flex;
             gap: 8px;
             padding: 0 10px;
         }
+
         .inventory-slot {
-            width: 50px;
-            height: 50px;
+            width: 60px;
+            height: 60px;
             background-color: #374151;
             border: 2px solid #4B5563;
             border-radius: 8px;
@@ -160,11 +175,13 @@
             overflow: hidden;
             text-transform: capitalize;
         }
+
         .inventory-slot.selected {
             border-color: #facc15;
             transform: scale(1.1);
             box-shadow: 0 0 15px rgba(250, 204, 21, 0.5);
         }
+
         .slot-color-preview {
             width: 100%;
             height: 100%;
@@ -172,23 +189,27 @@
             top: 0;
             left: 0;
         }
+
         .slot-info {
             position: absolute;
             bottom: 0;
             left: 0;
             width: 100%;
-            background-color: rgba(0,0,0,0.6);
+            background-color: rgba(0, 0, 0, 0.6);
             text-align: center;
             padding: 4px 0;
             z-index: 1;
         }
+
         .slot-name {
-            font-size: 0.65em;
+            font-size: 0.7em;
         }
+
         .slot-count {
-            font-size: 0.9em;
+            font-size: 1em;
             font-weight: bold;
         }
+
         .material-switch {
             background-color: #4B5563;
             border: none;
@@ -203,106 +224,39 @@
             justify-content: center;
             align-items: center;
         }
+
         .material-switch:hover {
             background-color: #6B7280;
         }
+
         #game-info {
             display: none;
-        }
-        #location-info {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background-color: rgba(31, 41, 55, 0.8);
-            padding: 10px 15px;
-            border-radius: 12px;
-            color: #e0e0e0;
-            font-family: 'Inter', sans-serif;
-            font-size: 0.9em;
-            text-align: left;
-            line-height: 1.5;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            border: 1px solid rgba(75, 85, 99, 0.5);
-            z-index: 10;
-            display: none; /* Initially hidden */
-        }
-        #health-bar-container {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            transform: none;
-            width: 300px;
-            height: 25px;
-            background-color: rgba(31, 41, 55, 0.8);
-            border-radius: 12px;
-            border: 1px solid rgba(75, 85, 99, 0.5);
-            overflow: hidden;
-            z-index: 100;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            display: none; /* Initially hidden */
-        }
-
-        #health-bar-fill {
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(to right, #e11d48, #f43f5e);
-            border-radius: 8px;
-            transition: width 0.2s ease-out;
-        }
-
-        #health-bar-text {
-            position: absolute;
-            width: 100%;
-            text-align: center;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-weight: 600;
-            font-size: 0.9em;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
-        }
-        #damage-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(255, 0, 0, 0.5);
-            z-index: 9999;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.5s ease-out;
         }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div style="position: absolute; top: 10px; left: 10px; z-index: 999;">
-        <a href="../Arcade.html" style="color: white; text-decoration: none; background-color: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px;">Back to Arcade</a>
+        <a href="../Arcade.html"
+            style="color: white; text-decoration: none; background-color: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px;">Back
+            to Arcade</a>
     </div>
 
     <!-- New Inventory Bar -->
     <div id="inventory-bar">
+        <button id="prev-material" class="material-switch">&lt;</button>
         <div id="inventory-slots">
             <!-- Slots will be generated by JS -->
         </div>
-    </div>
-
-    <div id="location-info"></div>
-
-    <div id="health-bar-container">
-        <div id="health-bar-fill" style="width:100%;"></div>
-        <span id="health-bar-text">100 / 100</span>
+        <button id="next-material" class="material-switch">&gt;</button>
     </div>
 
     <div id="message-box">Click or tap to play!</div>
     <div id="overlay">Click to start</div>
     <div id="crosshair"></div>
-
-    <div id="damage-overlay"></div>
 
     <div id="mobile-controls">
         <div id="joystick-area">
@@ -323,29 +277,28 @@
         // --- Material Definitions ---
         const MATERIALS = {
             // Planet Surface
-            GRASS:     { id: 'grass',     color: new THREE.Color(0x335010), buildable: true },
-            SOIL:      { id: 'soil',      color: new THREE.Color(0x332208), buildable: true },
-            SAND:      { id: 'sand',      color: new THREE.Color(0xD2B48C), buildable: true },
-            ROCK:      { id: 'rock',      color: new THREE.Color(0x222222), buildable: true },
+            GRASS: { id: 'grass', color: new THREE.Color(0x335010), buildable: true },
+            SOIL: { id: 'soil', color: new THREE.Color(0x332208), buildable: true },
+            SAND: { id: 'sand', color: new THREE.Color(0xD2B48C), buildable: true },
+            ROCK: { id: 'rock', color: new THREE.Color(0x222222), buildable: true },
             // Underwater
-            SEAWEED:   { id: 'seaweed',   color: new THREE.Color(0x2E8B57) }, // Still defined, but won't be used for generation
-            ANEMONE:   { id: 'anemone',   color: new THREE.Color(0x4169E1), buildable: true },
+            SEAWEED: { id: 'seaweed', color: new THREE.Color(0x2E8B57) }, // Still defined, but won't be used for generation
+            ANEMONE: { id: 'anemone', color: new THREE.Color(0x4169E1), buildable: true },
             // Subsurface
-            LAVA:      { id: 'lava',      color: new THREE.Color(0xFF4500), emissive: new THREE.Color(0xdd3300), buildable: true },
+            LAVA: { id: 'lava', color: new THREE.Color(0xFF4500), emissive: new THREE.Color(0xdd3300) },
             // Moon
             MOON_ROCK: { id: 'moon_rock', color: new THREE.Color(0x8c8c8c), buildable: true },
             MOON_SAND: { id: 'moon_sand', color: new THREE.Color(0xbebebe), buildable: true },
             // Default/Error
-            DEFAULT:   { id: 'default',   color: new THREE.Color(0xff00ff) }
+            DEFAULT: { id: 'default', color: new THREE.Color(0xff00ff) }
         };
 
         // Lookup Tables for Marching Cubes
-                // Lookup Tables for Marching Cubes
-        const EdgeVertexIndices = [[0,1],[1,3],[3,2],[2,0],[4,5],[5,7],[7,6],[6,4],[0,4],[1,5],[3,7],[2,6]];
-        const TriangleTable = [[-1],[0,3,8,-1],[0,9,1,-1],[3,8,1,1,8,9,-1],[2,11,3,-1],[8,0,11,11,0,2,-1],[3,2,11,1,0,9,-1],[11,1,2,11,9,1,11,8,9,-1],[1,10,2,-1],[0,3,8,2,1,10,-1],[10,2,9,9,2,0,-1],[8,2,3,8,10,2,8,9,10,-1],[11,3,10,10,3,1,-1],[10,0,1,10,8,0,10,11,8,-1],[9,3,0,9,11,3,9,10,11,-1],[8,9,11,11,9,10,-1],[4,8,7,-1],[7,4,3,3,4,0,-1],[4,8,7,0,9,1,-1],[1,4,9,1,7,4,1,3,7,-1],[8,7,4,11,3,2,-1],[4,11,7,4,2,11,4,0,2,-1],[0,9,1,8,7,4,11,3,2,-1],[7,4,11,11,4,2,2,4,9,2,9,1,-1],[4,8,7,2,1,10,-1],[7,4,3,3,4,0,10,2,1,-1],[10,2,9,9,2,0,7,4,8,-1],[10,2,3,10,3,4,3,7,4,9,10,4,-1],[1,10,3,3,10,11,4,8,7,-1],[10,11,1,11,7,4,1,11,4,1,4,0,-1],[7,4,8,9,3,0,9,11,3,9,10,11,-1],[7,4,11,4,9,11,9,10,11,-1],[9,4,5,-1],[9,4,5,8,0,3,-1],[4,5,0,0,5,1,-1],[5,8,4,5,3,8,5,1,3,-1],[9,4,5,11,3,2,-1],[2,11,0,0,11,8,5,9,4,-1],[4,5,0,0,5,1,11,3,2,-1],[5,1,4,1,2,11,4,1,11,4,11,8,-1],[1,10,2,5,9,4,-1],[9,4,5,0,3,8,2,1,10,-1],[2,5,10,2,4,5,2,0,4,-1],[10,2,5,5,2,4,4,2,3,4,3,8,-1],[11,3,10,10,3,1,4,5,9,-1],[4,5,9,10,0,1,10,8,0,10,11,8,-1],[11,3,0,11,0,5,0,4,5,10,11,5,-1],[4,5,8,5,10,8,10,11,8,-1],[8,7,9,9,7,5,-1],[3,9,0,3,5,9,3,7,5,-1],[7,0,8,7,1,0,7,5,1,-1],[7,5,3,3,5,1,-1],[5,9,7,7,9,8,2,11,3,-1],[2,11,7,2,7,9,7,5,9,0,2,9,-1],[2,11,3,7,0,8,7,1,0,7,5,1,-1],[2,11,1,11,7,1,7,5,1,-1],[8,7,9,9,7,5,2,1,10,-1],[10,2,1,3,9,0,3,5,9,3,7,5,-1],[7,5,8,5,10,2,8,5,2,8,2,0,-1],[10,2,5,2,3,5,3,7,5,-1],[8,7,5,8,5,9,11,3,10,3,1,10,-1],[5,11,7,10,11,5,1,9,0,-1],[11,5,10,7,5,11,8,3,0,-1],[5,11,7,10,11,5,-1],[6,7,11,-1],[7,11,6,3,8,0,-1],[6,7,11,0,9,1,-1],[9,1,8,8,1,3,6,7,11,-1],[3,2,7,7,2,6,-1],[0,7,8,0,6,7,0,2,6,-1],[6,7,2,2,7,3,9,1,0,-1],[6,7,8,6,8,1,8,9,1,2,6,1,-1],[11,6,7,10,2,1,-1],[3,8,0,11,6,7,10,2,1,-1],[0,9,2,2,9,10,7,11,6,-1],[6,7,11,8,2,3,8,10,2,8,9,10,-1],[7,10,6,7,1,10,7,3,1,-1],[8,0,7,7,0,6,6,0,1,6,1,10,-1],[7,3,6,3,0,9,6,3,9,6,9,10,-1],[6,7,10,7,8,10,8,9,10,-1],[11,6,8,8,6,4,-1],[6,3,11,6,0,3,6,4,0,-1],[11,6,8,8,6,4,1,0,9,-1],[1,3,9,3,11,6,9,3,6,9,6,4,-1],[2,8,3,2,4,8,2,6,4,-1],[4,0,6,6,0,2,-1],[9,1,0,2,8,3,2,4,8,2,6,4,-1],[9,1,4,1,2,4,2,6,4,-1],[4,8,6,6,8,11,1,10,2,-1],[1,10,2,6,3,11,6,0,3,6,4,0,-1],[11,6,4,11,4,8,10,2,9,2,0,9,-1],[10,4,9,6,4,10,11,2,3,-1],[4,8,3,4,3,10,3,1,10,6,4,10,-1],[1,10,0,10,6,0,6,4,0,-1],[4,10,6,9,10,4,0,8,3,-1],[4,10,6,9,10,4,-1],[6,7,11,4,5,9,-1],[4,5,9,7,11,6,3,8,0,-1],[1,0,5,5,0,4,11,6,7,-1],[11,6,7,5,8,4,5,3,8,5,1,3,-1],[3,2,7,7,2,6,9,4,5,-1],[5,9,4,0,7,8,0,6,7,0,2,6,-1],[3,2,6,3,6,7,1,0,5,0,4,5,-1],[6,1,2,5,1,6,4,7,8,-1],[10,2,1,6,7,11,4,5,9,-1],[0,3,8,4,5,9,11,6,7,10,2,1,-1],[7,11,6,2,5,10,2,4,5,2,0,4,-1],[8,4,7,5,10,6,3,11,2,-1],[9,4,5,7,10,6,7,1,10,7,3,1,-1],[10,6,5,7,8,4,1,9,0,-1],[4,3,0,7,3,4,6,5,10,-1],[10,6,5,8,4,7,-1],[9,6,5,9,11,6,9,8,11,-1],[11,6,3,3,6,0,0,6,5,0,5,9,-1],[11,6,5,11,5,0,5,1,0,8,11,0,-1],[11,6,3,6,5,3,5,1,3,-1],[9,8,5,8,3,2,5,8,2,6,5,2,-1],[5,9,6,9,0,6,0,2,6,-1],[1,6,5,2,6,1,3,0,8,-1],[1,6,5,2,6,1,-1],[2,1,10,9,6,5,9,11,6,9,8,11,-1],[9,0,1,3,11,2,5,10,6,-1],[11,0,8,2,0,11,10,6,5,-1],[3,11,2,5,10,6,-1],[1,8,3,9,8,1,5,10,6,-1],[6,5,10,0,1,9,-1],[8,3,0,5,10,6,-1],[6,5,10,-1],[10,5,6,-1],[0,3,8,6,10,5,-1],[10,5,6,9,1,0,-1],[3,8,1,1,8,9,6,10,5,-1],[2,11,3,6,10,5,-1],[8,0,11,11,0,2,5,6,10,-1],[1,0,9,2,11,3,6,10,5,-1],[5,6,10,11,1,2,11,9,1,11,8,9,-1],[5,6,1,1,6,2,-1],[5,6,1,1,6,2,8,0,3,-1],[6,9,5,6,0,9,6,2,0,-1],[6,2,5,2,3,8,5,2,8,5,8,9,-1],[3,6,11,3,5,6,3,1,5,-1],[8,0,1,8,1,6,1,5,6,11,8,6,-1],[11,3,6,6,3,5,5,3,0,5,0,9,-1],[5,6,9,6,11,9,11,8,9,-1],[5,6,10,7,4,8,-1],[0,3,4,4,3,7,10,5,6,-1],[5,6,10,4,8,7,0,9,1,-1],[6,10,5,1,4,9,1,7,4,1,3,7,-1],[7,4,8,6,10,5,2,11,3,-1],[10,5,6,4,11,7,4,2,11,4,0,2,-1],[4,8,7,6,10,5,3,2,11,1,0,9,-1],[1,2,10,11,7,6,9,5,4,-1],[2,1,6,6,1,5,8,7,4,-1],[0,3,7,0,7,4,2,1,6,1,5,6,-1],[8,7,4,6,9,5,6,0,9,6,2,0,-1],[7,2,3,6,2,7,5,4,9,-1],[4,8,7,3,6,11,3,5,6,3,1,5,-1],[5,0,1,4,0,5,7,6,11,-1],[9,5,4,6,11,7,0,8,3,-1],[11,7,6,9,5,4,-1],[6,10,4,4,10,9,-1],[6,10,4,4,10,9,3,8,0,-1],[0,10,1,0,6,10,0,4,6,-1],[6,10,1,6,1,8,1,3,8,4,6,8,-1],[9,4,10,10,4,6,3,2,11,-1],[2,11,8,2,8,0,6,10,4,10,9,4,-1],[11,3,2,0,10,1,0,6,10,0,4,6,-1],[6,8,4,11,8,6,2,10,1,-1],[4,1,9,4,2,1,4,6,2,-1],[3,8,0,4,1,9,4,2,1,4,6,2,-1],[6,2,4,4,2,0,-1],[3,8,2,8,4,2,4,6,2,-1],[4,6,9,6,11,3,9,6,3,9,3,1,-1],[8,6,11,4,6,8,9,0,1,-1],[11,3,6,3,0,6,0,4,6,-1],[8,6,11,4,6,8,-1],[10,7,6,10,8,7,10,9,8,-1],[3,7,0,7,6,10,0,7,10,0,10,9,-1],[6,10,7,7,10,8,8,10,1,8,1,0,-1],[6,10,7,10,1,7,1,3,7,-1],[3,2,11,10,7,6,10,8,7,10,9,8,-1],[9,2,10,0,2,9,8,4,7,-1],[0,8,3,7,6,11,1,2,10,-1],[7,6,11,1,2,10,-1],[2,1,9,2,9,7,9,8,7,6,2,7,-1],[2,7,6,3,7,2,0,1,9,-1],[8,7,0,7,6,0,6,2,0,-1],[7,2,3,6,2,7,-1],[8,1,9,3,1,8,11,7,6,-1],[11,7,6,1,9,0,-1],[6,11,7,0,8,3,-1],[11,7,6,-1],[7,11,5,5,11,10,-1],[10,5,11,11,5,7,0,3,8,-1],[7,11,5,5,11,10,0,9,1,-1],[7,11,10,7,10,5,3,8,1,8,9,1,-1],[5,2,10,5,3,2,5,7,3,-1],[5,7,10,7,8,0,10,7,0,10,0,2,-1],[0,9,1,5,2,10,5,3,2,5,7,3,-1],[9,7,8,5,7,9,10,1,2,-1],[1,11,2,1,7,11,1,5,7,-1],[8,0,3,1,11,2,1,7,11,1,5,7,-1],[7,11,2,7,2,9,2,0,9,5,7,9,-1],[7,9,5,8,9,7,3,11,2,-1],[3,1,7,7,1,5,-1],[8,0,7,0,1,7,1,5,7,-1],[0,9,3,9,5,3,5,7,3,-1],[9,7,8,5,7,9,-1],[8,5,4,8,10,5,8,11,10,-1],[0,3,11,0,11,5,11,10,5,4,0,5,-1],[1,0,9,8,5,4,8,10,5,8,11,10,-1],[10,3,11,1,3,10,9,5,4,-1],[3,2,8,8,2,4,4,2,10,4,10,5,-1],[10,5,2,5,4,2,4,0,2,-1],[5,4,9,8,3,0,10,1,2,-1],[2,10,1,4,9,5,-1],[8,11,4,11,2,1,4,11,1,4,1,5,-1],[0,5,4,1,5,0,2,3,11,-1],[0,11,2,8,11,0,4,9,5,-1],[5,4,9,2,3,11,-1],[4,8,5,8,3,5,3,1,5,-1],[0,5,4,1,5,0,-1],[5,4,9,3,0,8,-1],[5,4,9,-1],[11,4,7,11,9,4,11,10,9,-1],[0,3,8,11,4,7,11,9,4,11,10,9,-1],[11,10,7,10,1,0,7,10,0,7,0,4,-1],[3,10,1,11,10,3,7,8,4,-1],[3,2,10,3,10,4,10,9,4,7,3,4,-1],[9,2,10,0,2,9,8,4,7,-1],[3,4,7,0,4,3,1,2,10,-1],[7,8,4,10,1,2,-1],[7,11,4,4,11,9,9,11,2,9,2,1,-1],[1,9,0,4,7,8,2,3,11,-1],[7,11,4,11,2,4,2,0,4,-1],[4,7,8,2,3,11,-1],[9,4,1,4,7,1,7,3,1,-1],[7,8,4,1,9,0,-1],[3,4,7,0,4,3,-1],[7,8,4,-1],[11,10,8,8,10,9,-1],[0,3,9,3,11,9,11,10,9,-1],[1,0,10,0,8,10,8,11,10,-1],[10,3,11,1,3,10,-1],[3,2,8,2,10,8,10,9,8,-1],[9,2,10,0,2,9,-1],[8,3,0,10,1,2,-1],[2,10,1,-1],[2,1,11,1,9,11,9,8,11,-1],[11,2,3,9,0,1,-1],[11,0,8,2,0,11,-1],[3,11,2,-1],[1,8,3,9,8,1,-1],[1,9,0,-1],[8,3,0,-1],[-1]];
+        const EdgeVertexIndices = [[0, 1], [1, 3], [3, 2], [2, 0], [4, 5], [5, 7], [7, 6], [6, 4], [0, 4], [1, 5], [3, 7], [2, 6]];
+        const TriangleTable = [[-1], [0, 3, 8, -1], [0, 9, 1, -1], [3, 8, 1, 1, 8, 9, -1], [2, 11, 3, -1], [8, 0, 11, 11, 0, 2, -1], [3, 2, 11, 1, 0, 9, -1], [11, 1, 2, 11, 9, 1, 11, 8, 9, -1], [1, 10, 2, -1], [0, 3, 8, 2, 1, 10, -1], [10, 2, 9, 9, 2, 0, -1], [8, 2, 3, 8, 10, 2, 8, 9, 10, -1], [11, 3, 10, 10, 3, 1, -1], [10, 0, 1, 10, 8, 0, 10, 11, 8, -1], [9, 3, 0, 9, 11, 3, 9, 10, 11, -1], [8, 9, 11, 11, 9, 10, -1], [4, 8, 7, -1], [7, 4, 3, 3, 4, 0, -1], [4, 8, 7, 0, 9, 1, -1], [1, 4, 9, 1, 7, 4, 1, 3, 7, -1], [8, 7, 4, 11, 3, 2, -1], [4, 11, 7, 4, 2, 11, 4, 0, 2, -1], [0, 9, 1, 8, 7, 4, 11, 3, 2, -1], [7, 4, 11, 11, 4, 2, 2, 4, 9, 2, 9, 1, -1], [4, 8, 7, 2, 1, 10, -1], [7, 4, 3, 3, 4, 0, 10, 2, 1, -1], [10, 2, 9, 9, 2, 0, 7, 4, 8, -1], [10, 2, 3, 10, 3, 4, 3, 7, 4, 9, 10, 4, -1], [1, 10, 3, 3, 10, 11, 4, 8, 7, -1], [10, 11, 1, 11, 7, 4, 1, 11, 4, 1, 4, 0, -1], [7, 4, 8, 9, 3, 0, 9, 11, 3, 9, 10, 11, -1], [7, 4, 11, 4, 9, 11, 9, 10, 11, -1], [9, 4, 5, -1], [9, 4, 5, 8, 0, 3, -1], [4, 5, 0, 0, 5, 1, -1], [5, 8, 4, 5, 3, 8, 5, 1, 3, -1], [9, 4, 5, 11, 3, 2, -1], [2, 11, 0, 0, 11, 8, 5, 9, 4, -1], [4, 5, 0, 0, 5, 1, 11, 3, 2, -1], [5, 1, 4, 1, 2, 11, 4, 1, 11, 4, 11, 8, -1], [1, 10, 2, 5, 9, 4, -1], [9, 4, 5, 0, 3, 8, 2, 1, 10, -1], [2, 5, 10, 2, 4, 5, 2, 0, 4, -1], [10, 2, 5, 5, 2, 4, 4, 2, 3, 4, 3, 8, -1], [11, 3, 10, 10, 3, 1, 4, 5, 9, -1], [4, 5, 9, 10, 0, 1, 10, 8, 0, 10, 11, 8, -1], [11, 3, 0, 11, 0, 5, 0, 4, 5, 10, 11, 5, -1], [4, 5, 8, 5, 10, 8, 10, 11, 8, -1], [8, 7, 9, 9, 7, 5, -1], [3, 9, 0, 3, 5, 9, 3, 7, 5, -1], [7, 0, 8, 7, 1, 0, 7, 5, 1, -1], [7, 5, 3, 3, 5, 1, -1], [5, 9, 7, 7, 9, 8, 2, 11, 3, -1], [2, 11, 7, 2, 7, 9, 7, 5, 9, 0, 2, 9, -1], [2, 11, 3, 7, 0, 8, 7, 1, 0, 7, 5, 1, -1], [2, 11, 1, 11, 7, 1, 7, 5, 1, -1], [8, 7, 9, 9, 7, 5, 2, 1, 10, -1], [10, 2, 1, 3, 9, 0, 3, 5, 9, 3, 7, 5, -1], [7, 5, 8, 5, 10, 2, 8, 5, 2, 8, 2, 0, -1], [10, 2, 5, 2, 3, 5, 3, 7, 5, -1], [8, 7, 5, 8, 5, 9, 11, 3, 10, 3, 1, 10, -1], [5, 11, 7, 10, 11, 5, 1, 9, 0, -1], [11, 5, 10, 7, 5, 11, 8, 3, 0, -1], [5, 11, 7, 10, 11, 5, -1], [6, 7, 11, -1], [7, 11, 6, 3, 8, 0, -1], [6, 7, 11, 0, 9, 1, -1], [9, 1, 8, 8, 1, 3, 6, 7, 11, -1], [3, 2, 7, 7, 2, 6, -1], [0, 7, 8, 0, 6, 7, 0, 2, 6, -1], [6, 7, 2, 2, 7, 3, 9, 1, 0, -1], [6, 7, 8, 6, 8, 1, 8, 9, 1, 2, 6, 1, -1], [11, 6, 7, 10, 2, 1, -1], [3, 8, 0, 11, 6, 7, 10, 2, 1, -1], [0, 9, 2, 2, 9, 10, 7, 11, 6, -1], [6, 7, 11, 8, 2, 3, 8, 10, 2, 8, 9, 10, -1], [7, 10, 6, 7, 1, 10, 7, 3, 1, -1], [8, 0, 7, 7, 0, 6, 6, 0, 1, 6, 1, 10, -1], [7, 3, 6, 3, 0, 9, 6, 3, 9, 6, 9, 10, -1], [6, 7, 10, 7, 8, 10, 8, 9, 10, -1], [11, 6, 8, 8, 6, 4, -1], [6, 3, 11, 6, 0, 3, 6, 4, 0, -1], [11, 6, 8, 8, 6, 4, 1, 0, 9, -1], [1, 3, 9, 3, 11, 6, 9, 3, 6, 9, 6, 4, -1], [2, 8, 3, 2, 4, 8, 2, 6, 4, -1], [4, 0, 6, 6, 0, 2, -1], [9, 1, 0, 2, 8, 3, 2, 4, 8, 2, 6, 4, -1], [9, 1, 4, 1, 2, 4, 2, 6, 4, -1], [4, 8, 6, 6, 8, 11, 1, 10, 2, -1], [1, 10, 2, 6, 3, 11, 6, 0, 3, 6, 4, 0, -1], [11, 6, 4, 11, 4, 8, 10, 2, 9, 2, 0, 9, -1], [10, 4, 9, 6, 4, 10, 11, 2, 3, -1], [4, 8, 3, 4, 3, 10, 3, 1, 10, 6, 4, 10, -1], [1, 10, 0, 10, 6, 0, 6, 4, 0, -1], [4, 10, 6, 9, 10, 4, 0, 8, 3, -1], [4, 10, 6, 9, 10, 4, -1], [6, 7, 11, 4, 5, 9, -1], [4, 5, 9, 7, 11, 6, 3, 8, 0, -1], [1, 0, 5, 5, 0, 4, 11, 6, 7, -1], [11, 6, 7, 5, 8, 4, 5, 3, 8, 5, 1, 3, -1], [3, 2, 7, 7, 2, 6, 9, 4, 5, -1], [5, 9, 4, 0, 7, 8, 0, 6, 7, 0, 2, 6, -1], [3, 2, 6, 3, 6, 7, 1, 0, 5, 0, 4, 5, -1], [6, 1, 2, 5, 1, 6, 4, 7, 8, -1], [10, 2, 1, 6, 7, 11, 4, 5, 9, -1], [0, 3, 8, 4, 5, 9, 11, 6, 7, 10, 2, 1, -1], [7, 11, 6, 2, 5, 10, 2, 4, 5, 2, 0, 4, -1], [8, 4, 7, 5, 10, 6, 3, 11, 2, -1], [9, 4, 5, 7, 10, 6, 7, 1, 10, 7, 3, 1, -1], [10, 6, 5, 7, 8, 4, 1, 9, 0, -1], [4, 3, 0, 7, 3, 4, 6, 5, 10, -1], [10, 6, 5, 8, 4, 7, -1], [9, 6, 5, 9, 11, 6, 9, 8, 11, -1], [11, 6, 3, 3, 6, 0, 0, 6, 5, 0, 5, 9, -1], [11, 6, 5, 11, 5, 0, 5, 1, 0, 8, 11, 0, -1], [11, 6, 3, 6, 5, 3, 5, 1, 3, -1], [9, 8, 5, 8, 3, 2, 5, 8, 2, 6, 5, 2, -1], [5, 9, 6, 9, 0, 6, 0, 2, 6, -1], [1, 6, 5, 2, 6, 1, 3, 0, 8, -1], [1, 6, 5, 2, 6, 1, -1], [2, 1, 10, 9, 6, 5, 9, 11, 6, 9, 8, 11, -1], [9, 0, 1, 3, 11, 2, 5, 10, 6, -1], [11, 0, 8, 2, 0, 11, 10, 6, 5, -1], [3, 11, 2, 5, 10, 6, -1], [1, 8, 3, 9, 8, 1, 5, 10, 6, -1], [6, 5, 10, 0, 1, 9, -1], [8, 3, 0, 5, 10, 6, -1], [6, 5, 10, -1], [10, 5, 6, -1], [0, 3, 8, 6, 10, 5, -1], [10, 5, 6, 9, 1, 0, -1], [3, 8, 1, 1, 8, 9, 6, 10, 5, -1], [2, 11, 3, 6, 10, 5, -1], [8, 0, 11, 11, 0, 2, 5, 6, 10, -1], [1, 0, 9, 2, 11, 3, 6, 10, 5, -1], [5, 6, 10, 11, 1, 2, 11, 9, 1, 11, 8, 9, -1], [5, 6, 1, 1, 6, 2, -1], [5, 6, 1, 1, 6, 2, 8, 0, 3, -1], [6, 9, 5, 6, 0, 9, 6, 2, 0, -1], [6, 2, 5, 2, 3, 8, 5, 2, 8, 5, 8, 9, -1], [3, 6, 11, 3, 5, 6, 3, 1, 5, -1], [8, 0, 1, 8, 1, 6, 1, 5, 6, 11, 8, 6, -1], [11, 3, 6, 6, 3, 5, 5, 3, 0, 5, 0, 9, -1], [5, 6, 9, 6, 11, 9, 11, 8, 9, -1], [5, 6, 10, 7, 4, 8, -1], [0, 3, 4, 4, 3, 7, 10, 5, 6, -1], [5, 6, 10, 4, 8, 7, 0, 9, 1, -1], [6, 10, 5, 1, 4, 9, 1, 7, 4, 1, 3, 7, -1], [7, 4, 8, 6, 10, 5, 2, 11, 3, -1], [10, 5, 6, 4, 11, 7, 4, 2, 11, 4, 0, 2, -1], [4, 8, 7, 6, 10, 5, 3, 2, 11, 1, 0, 9, -1], [1, 2, 10, 11, 7, 6, 9, 5, 4, -1], [2, 1, 6, 6, 1, 5, 8, 7, 4, -1], [0, 3, 7, 0, 7, 4, 2, 1, 6, 1, 5, 6, -1], [8, 7, 4, 6, 9, 5, 6, 0, 9, 6, 2, 0, -1], [7, 2, 3, 6, 2, 7, 5, 4, 9, -1], [4, 8, 7, 3, 6, 11, 3, 5, 6, 3, 1, 5, -1], [5, 0, 1, 4, 0, 5, 7, 6, 11, -1], [9, 5, 4, 6, 11, 7, 0, 8, 3, -1], [11, 7, 6, 9, 5, 4, -1], [6, 10, 4, 4, 10, 9, -1], [6, 10, 4, 4, 10, 9, 3, 8, 0, -1], [0, 10, 1, 0, 6, 10, 0, 4, 6, -1], [6, 10, 1, 6, 1, 8, 1, 3, 8, 4, 6, 8, -1], [9, 4, 10, 10, 4, 6, 3, 2, 11, -1], [2, 11, 8, 2, 8, 0, 6, 10, 4, 10, 9, 4, -1], [11, 3, 2, 0, 10, 1, 0, 6, 10, 0, 4, 6, -1], [6, 8, 4, 11, 8, 6, 2, 10, 1, -1], [4, 1, 9, 4, 2, 1, 4, 6, 2, -1], [3, 8, 0, 4, 1, 9, 4, 2, 1, 4, 6, 2, -1], [6, 2, 4, 4, 2, 0, -1], [3, 8, 2, 8, 4, 2, 4, 6, 2, -1], [4, 6, 9, 6, 11, 3, 9, 6, 3, 9, 3, 1, -1], [8, 6, 11, 4, 6, 8, 9, 0, 1, -1], [11, 3, 6, 3, 0, 6, 0, 4, 6, -1], [8, 6, 11, 4, 6, 8, -1], [10, 7, 6, 10, 8, 7, 10, 9, 8, -1], [3, 7, 0, 7, 6, 10, 0, 7, 10, 0, 10, 9, -1], [6, 10, 7, 7, 10, 8, 8, 10, 1, 8, 1, 0, -1], [6, 10, 7, 10, 1, 7, 1, 3, 7, -1], [3, 2, 11, 10, 7, 6, 10, 8, 7, 10, 9, 8, -1], [9, 2, 10, 0, 2, 9, 8, 4, 7, -1], [0, 8, 3, 7, 6, 11, 1, 2, 10, -1], [7, 6, 11, 1, 2, 10, -1], [2, 1, 9, 2, 9, 7, 9, 8, 7, 6, 2, 7, -1], [2, 7, 6, 3, 7, 2, 0, 1, 9, -1], [8, 7, 0, 7, 6, 0, 6, 2, 0, -1], [7, 2, 3, 6, 2, 7, -1], [8, 1, 9, 3, 1, 8, 11, 7, 6, -1], [11, 7, 6, 1, 9, 0, -1], [6, 11, 7, 0, 8, 3, -1], [11, 7, 6, -1], [7, 11, 5, 5, 11, 10, -1], [10, 5, 11, 11, 5, 7, 0, 3, 8, -1], [7, 11, 5, 5, 11, 10, 0, 9, 1, -1], [7, 11, 10, 7, 10, 5, 3, 8, 1, 8, 9, 1, -1], [5, 2, 10, 5, 3, 2, 5, 7, 3, -1], [5, 7, 10, 7, 8, 0, 10, 7, 0, 10, 0, 2, -1], [0, 9, 1, 5, 2, 10, 5, 3, 2, 5, 7, 3, -1], [9, 7, 8, 5, 7, 9, 10, 1, 2, -1], [1, 11, 2, 1, 7, 11, 1, 5, 7, -1], [8, 0, 3, 1, 11, 2, 1, 7, 11, 1, 5, 7, -1], [7, 11, 2, 7, 2, 9, 2, 0, 9, 5, 7, 9, -1], [7, 9, 5, 8, 9, 7, 3, 11, 2, -1], [3, 1, 7, 7, 1, 5, -1], [8, 0, 7, 0, 1, 7, 1, 5, 7, -1], [0, 9, 3, 9, 5, 3, 5, 7, 3, -1], [9, 7, 8, 5, 7, 9, -1], [8, 5, 4, 8, 10, 5, 8, 11, 10, -1], [0, 3, 11, 0, 11, 5, 11, 10, 5, 4, 0, 5, -1], [1, 0, 9, 8, 5, 4, 8, 10, 5, 8, 11, 10, -1], [10, 3, 11, 1, 3, 10, 9, 5, 4, -1], [3, 2, 8, 8, 2, 4, 4, 2, 10, 4, 10, 5, -1], [10, 5, 2, 5, 4, 2, 4, 0, 2, -1], [5, 4, 9, 8, 3, 0, 10, 1, 2, -1], [2, 10, 1, 4, 9, 5, -1], [8, 11, 4, 11, 2, 1, 4, 11, 1, 4, 1, 5, -1], [0, 5, 4, 1, 5, 0, 2, 3, 11, -1], [0, 11, 2, 8, 11, 0, 4, 9, 5, -1], [5, 4, 9, 2, 3, 11, -1], [4, 8, 5, 8, 3, 5, 3, 1, 5, -1], [0, 5, 4, 1, 5, 0, -1], [5, 4, 9, 3, 0, 8, -1], [5, 4, 9, -1], [11, 4, 7, 11, 9, 4, 11, 10, 9, -1], [0, 3, 8, 11, 4, 7, 11, 9, 4, 11, 10, 9, -1], [11, 10, 7, 10, 1, 0, 7, 10, 0, 7, 0, 4, -1], [3, 10, 1, 11, 10, 3, 7, 8, 4, -1], [3, 2, 10, 3, 10, 4, 10, 9, 4, 7, 3, 4, -1], [9, 2, 10, 0, 2, 9, 8, 4, 7, -1], [3, 4, 7, 0, 4, 3, 1, 2, 10, -1], [7, 8, 4, 10, 1, 2, -1], [7, 11, 4, 4, 11, 9, 9, 11, 2, 9, 2, 1, -1], [1, 9, 0, 4, 7, 8, 2, 3, 11, -1], [7, 11, 4, 11, 2, 4, 2, 0, 4, -1], [4, 7, 8, 2, 3, 11, -1], [9, 4, 1, 4, 7, 1, 7, 3, 1, -1], [7, 8, 4, 1, 9, 0, -1], [3, 4, 7, 0, 4, 3, -1], [7, 8, 4, -1], [11, 10, 8, 8, 10, 9, -1], [0, 3, 9, 3, 11, 9, 11, 10, 9, -1], [1, 0, 10, 0, 8, 10, 8, 11, 10, -1], [10, 3, 11, 1, 3, 10, -1], [3, 2, 8, 2, 10, 8, 10, 9, 8, -1], [9, 2, 10, 0, 2, 9, -1], [8, 3, 0, 10, 1, 2, -1], [2, 10, 1, -1], [2, 1, 11, 1, 9, 11, 9, 8, 11, -1], [11, 2, 3, 9, 0, 1, -1], [11, 0, 8, 2, 0, 11, -1], [3, 11, 2, -1], [1, 8, 3, 9, 8, 1, -1], [1, 9, 0, -1], [8, 3, 0, -1], [-1]];
 
         // Marching Cubes utility function
-        function generateMarchingCubesGeometry(grid, threshold, gridSize, blockSize, centerOffset = new THREE.Vector3(0,0,0)) {
+        function generateMarchingCubesGeometry(grid, threshold, gridSize, blockSize, centerOffset = new THREE.Vector3(0, 0, 0)) {
             const vertices = [];
             const normals = []; // Added for normal calculation
             const indices = [];
@@ -386,7 +339,7 @@
                         if (triangles[0] === -1) continue;
 
                         for (let i = 0; triangles[i] !== -1; i += 3) {
-                            const edge1Index = triangles[i], edge2Index = triangles[i+1], edge3Index = triangles[i+2];
+                            const edge1Index = triangles[i], edge2Index = triangles[i + 1], edge3Index = triangles[i + 2];
                             const v1a_idx = EdgeVertexIndices[edge1Index][0], v1b_idx = EdgeVertexIndices[edge1Index][1];
                             const v2a_idx = EdgeVertexIndices[edge2Index][0], v2b_idx = EdgeVertexIndices[edge2Index][1];
                             const v3a_idx = EdgeVertexIndices[edge3Index][0], v3b_idx = EdgeVertexIndices[edge3Index][1];
@@ -394,7 +347,7 @@
                             const p1 = interpolateVertex(cubeCorners[v1a_idx], cubeCorners[v1b_idx], cubeValues[v1a_idx], cubeValues[v1b_idx], threshold);
                             const p2 = interpolateVertex(cubeCorners[v2a_idx], cubeCorners[v2b_idx], cubeValues[v2a_idx], cubeValues[v2b_idx], threshold);
                             const p3 = interpolateVertex(cubeCorners[v3a_idx], cubeCorners[v3b_idx], cubeValues[v3a_idx], cubeValues[v3b_idx], threshold);
-                            
+
                             const currentVertexCount = vertices.length / 3;
                             vertices.push(p1.x, p1.y, p1.z);
                             vertices.push(p2.x, p2.y, p2.z);
@@ -454,18 +407,13 @@
         const clock = new THREE.Clock();
         const thirdPersonCameraOffset = new THREE.Vector3(0, 3, 8);
         let isFirstPersonView = true;
-        // Water effects state
-        let wasInWater = false;
-        let lastSplashTime = 0;
-        let lastBubbleTime = 0;
         // Updated player settings from PlanetMiner (2).html
         const playerSettings = {
             height: 2,
             speed: 5.0, // Units per second
             gravityStrength: 0.1, // per-frame acceleration
             jumpStrength: 5, // per-jump impulse
-            sensitivity: 0.002,
-            maxHealth: 100
+            sensitivity: 0.002
         };
         const planetCenter = new THREE.Vector3(0, 0, 0);
         let dominantBodyPosition = planetCenter;
@@ -507,7 +455,6 @@
         const overlay = document.getElementById('overlay');
         const messageBox = document.getElementById('message-box');
         let canvas;
-        let locationInfoDiv;
 
         /**
          * Determines the material type at a given world point based on various environmental factors.
@@ -529,7 +476,7 @@
 
             // 2. Handle subsurface materials first based on depth
             if (onMoon) {
-                if (depth > 5) return MATERIALS.LAVA; // default is 15+ meters deep on the moon is lava
+                if (depth > 15) return MATERIALS.LAVA;
                 if (depth > 2) return MATERIALS.MOON_ROCK;
                 if (depth >= 0) return MATERIALS.MOON_SAND;
             } else {
@@ -540,15 +487,6 @@
 
             // 3. Handle surface materials (where depth is near zero or negative)
             const upVector = worldPoint.clone().sub(center).normalize();
-
-            const dot = surfaceNormal.dot(upVector);
-
-            // Overhang check: If the surface normal points towards the planet center (dot < 0), it's an overhang.
-            if (dot > 0.5) {
-                return MATERIALS.ROCK;
-            }
-
-
             const slope = 1.0 - Math.abs(surfaceNormal.dot(upVector)); // 0 = flat, 1 = vertical
 
             if (onMoon) {
@@ -558,7 +496,7 @@
             // Planet surface logic
             const heightAboveWater = distCenter - waterRadius;
             const isVertical = slope > 0.7; // Very steep, definitely rock
-            const isSteep = slope > 0.5; // Moderately steep
+            const isSteep = slope > 0.3; // Moderately steep
 
             // All overhangs/steep areas should be rock
             if (isVertical || isSteep) {
@@ -610,7 +548,6 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
             canvas = renderer.domElement;
-            locationInfoDiv = document.getElementById('location-info');
 
             const ambientLight = new THREE.AmbientLight(0xcccccc, 0.8);
             scene.add(ambientLight);
@@ -704,12 +641,7 @@
                 if (mat.buildable) {
                     inventory[mat.id] = 0;
                     buildableMaterials.push(mat.id);
-                    const materialOptions = { color: mat.color, roughness: 0.8 };
-                    if (mat.emissive) {
-                        materialOptions.emissive = mat.emissive;
-                        materialOptions.emissiveIntensity = 1.0; // Make it glow
-                    }
-                    builtCubeMaterials[mat.id] = new THREE.MeshStandardMaterial(materialOptions);
+                    builtCubeMaterials[mat.id] = new THREE.MeshStandardMaterial({ color: mat.color, roughness: 0.8 });
                 }
             }
 
@@ -721,7 +653,7 @@
 
             cubeParent = new THREE.Group();
             scene.add(cubeParent);
-            
+
             createPlayer();
 
             setupEventListeners();
@@ -737,12 +669,12 @@
                 messageBox.textContent = "WASD: Move, Space: Jump, Mouse: Look, Click: Interact, Arrow Keys or 1-9: Switch Material, L: Teleport, T: Toggle Torch";
             }
         }
-        
+
         function setupEventListeners() {
             document.addEventListener('keydown', onKeyDown);
             document.addEventListener('keyup', onKeyUp);
             document.addEventListener('pointerlockchange', onPointerLockChange);
-            
+
             overlay.addEventListener('click', () => {
                 // The request for pointer lock can be denied by the user, or fail if the
                 // document is not in the correct state. This can sometimes lead to an
@@ -787,8 +719,6 @@
             // Attach state properties directly to the player group
             player.velocity = new THREE.Vector3();
             player.onGround = false;
-            player.health = playerSettings.maxHealth; // Initialize health
-            player.lastDamageTime = 0; // For damage cooldown
 
             const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
             const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x5588ff });
@@ -806,7 +736,7 @@
 
             // Initial position on the planet's surface
             player.position.set(0, PLANET_RADIUS + playerSettings.height, 0);
-            
+
             // Orient player to be upright at the start
             const initialUp = player.position.clone().normalize();
             player.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), initialUp);
@@ -815,9 +745,7 @@
 
         function onMouseDownDesktop(event) {
             if (!isLocked) return;
-            event.preventDefault(); // Prevent default middle-click actions
             if (event.button === 0) mineBlockAtCrosshair();
-            else if (event.button === 1) firePowerLaser();
             else if (event.button === 2) placeBlockAtCrosshair();
         }
 
@@ -880,12 +808,12 @@
                 anemoneLODs.push(lodMesh);
             }
         }
-        
+
         // --- MOBILE CONTROL FUNCTIONS ---
         function isMobileDevice() {
             const userAgent = navigator.userAgent || navigator.vendor || window.opera;
             return /android|iphone|ipad|ipod|blackberry|windows phone/i.test(userAgent) ||
-                   ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+                ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
         }
 
         function setupMobileControls() {
@@ -943,20 +871,21 @@
         }
 
         function updateInventoryUI() {
-            // Store the ID of the currently selected material to maintain selection
+            // Store the ID of the currently selected material to maintain selection after sorting
             const selectedId = buildableMaterials[selectedMaterialIndex];
 
-            // Ensure buildableMaterials is in a fixed, predictable order. Do not sort.
-            // The initial order from the MATERIALS object is now preserved.
+            // Sort the buildable materials array based on inventory count, descending
+            buildableMaterials.sort((a, b) => inventory[b] - inventory[a]);
+
+            // Find the new index of the selected material
+            selectedMaterialIndex = buildableMaterials.findIndex(id => id === selectedId);
 
             const slotsContainer = document.getElementById('inventory-slots');
-            slotsContainer.innerHTML = ''; // Clear existing slots to re-render
+            slotsContainer.innerHTML = ''; // Clear existing slots to re-render in new order
 
-            // Re-create all slots in the fixed order
+            // Re-create all slots in the new sorted order
             buildableMaterials.forEach((matId, index) => {
                 const mat = Object.values(MATERIALS).find(m => m.id === matId);
-                if (!mat) return; // Safety check
-
                 const slot = document.createElement('div');
                 slot.className = 'inventory-slot';
                 slot.id = `slot-${matId}`;
@@ -976,12 +905,6 @@
                 slot.onclick = () => selectMaterialById(matId);
                 slotsContainer.appendChild(slot);
             });
-
-            // Scroll the selected item into view if it's outside the visible area
-            const selectedSlot = document.querySelector('.inventory-slot.selected');
-            if (selectedSlot) {
-                selectedSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-            }
         }
 
         function selectMaterial(index) {
@@ -1127,67 +1050,11 @@
             isLocked = document.pointerLockElement === canvas;
             overlay.style.display = isLocked ? 'none' : 'flex';
             messageBox.style.display = isLocked ? 'block' : 'none';
-            if (locationInfoDiv) locationInfoDiv.style.display = isLocked ? 'block' : 'none';
-            document.getElementById('health-bar-container').style.display = isLocked ? 'block' : 'none'; // Show/hide health bar
             if (isLocked) {
                 document.addEventListener('mousemove', onMouseMove, false);
             } else {
                 document.removeEventListener('mousemove', onMouseMove, false);
             }
-        }
-
-        function updateHealthUI() {
-            if (!player) return;
-            const healthPercentage = (player.health / playerSettings.maxHealth) * 100;
-            document.getElementById('health-bar-fill').style.width = `${healthPercentage}%`;
-            document.getElementById('health-bar-text').textContent = `${Math.ceil(player.health)} / ${playerSettings.maxHealth}`;
-        }
-
-        function takeDamage(amount) {
-            if (!player || player.health <= 0) return;
-
-            player.health -= amount;
-            player.lastDamageTime = clock.getElapsedTime();
-
-            const damageOverlay = document.getElementById('damage-overlay');
-            damageOverlay.style.opacity = 1;
-            setTimeout(() => { damageOverlay.style.opacity = 0; }, 250); // Fade out after 250ms
-
-            if (player.health <= 0) {
-                player.health = 0;
-                respawnPlayer();
-            }
-            updateHealthUI();
-        }
-
-        function respawnPlayer() {
-            messageBox.textContent = "You have perished! Respawning...";
-            messageBox.style.display = 'block';
-
-            // Reset player state
-            player.health = playerSettings.maxHealth;
-            player.velocity.set(0, 0, 0);
-            inventory = {}; // Optional: reset inventory on death
-            for (const key in MATERIALS) {
-                if (MATERIALS[key].buildable) {
-                    inventory[MATERIALS[key].id] = 0;
-                }
-            }
-            updateInventoryUI();
-
-            // Teleport to a safe spot on the planet surface
-            player.position.set(0, PLANET_RADIUS + playerSettings.height, 0);
-            const initialUp = player.position.clone().normalize();
-            player.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), initialUp);
-            player.onGround = false;
-
-            setTimeout(() => {
-                if (isLocked) {
-                    messageBox.textContent = "Controls active";
-                }
-            }, 2000);
-
-            updateHealthUI();
         }
 
         function mineBlockAtCrosshair() {
@@ -1237,7 +1104,7 @@
                         } else if (intersectedObject === marchingCubesMeshMoon) {
                             updateMarchingCubesMoonMesh();
                         }
-                        
+
                         const minedMaterial = getMaterialAtPoint(offsetWorldPoint, intersected.face.normal, onMoon);
                         if (minedMaterial.buildable) {
                             inventory[minedMaterial.id]++;
@@ -1304,9 +1171,9 @@
             const getRandomChamfer = (dim) => THREE.MathUtils.randFloat(dim / 10, dim / 3);
 
             const corners = [
-                new THREE.Vector3(w, h, d),   new THREE.Vector3(w, h, -d),
-                new THREE.Vector3(w, -h, d),  new THREE.Vector3(w, -h, -d),
-                new THREE.Vector3(-w, h, d),  new THREE.Vector3(-w, h, -d),
+                new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d),
+                new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
+                new THREE.Vector3(-w, h, d), new THREE.Vector3(-w, h, -d),
                 new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
             ];
 
@@ -1343,7 +1210,7 @@
                 const hitPoint = intersected.point;
                 const faceNormal = intersected.face.normal;
                 const newPosition = hitPoint.clone().add(faceNormal.clone().multiplyScalar(BLOCK_SIZE / 2));
-                
+
                 const distanceToPlayer = newPosition.distanceTo(player.position);
                 if (distanceToPlayer < BLOCK_SIZE) { // Changed from 1.5 to 1.0 for closer placement
                     messageBox.textContent = "Cannot place block inside yourself!";
@@ -1354,12 +1221,12 @@
                 const newCubeGeometry = createChamferedBlockGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE); // Use chamfered geometry
                 const newCube = new THREE.Mesh(newCubeGeometry, builtCubeMaterials[materialIdToBuild]);
                 newCube.position.copy(newPosition);
-                
+
                 // Orient the cube to the dominant body's surface
                 newCube.lookAt(dominantBodyPosition); // Orient based on dominant body
 
                 // Then apply a random rotation around a random axis by 90 degrees.
-                const axes = [new THREE.Vector3(1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,1)];
+                const axes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
                 const randomAxis = axes[Math.floor(Math.random() * 3)];
                 const randomAngle = (Math.floor(Math.random() * 4)) * Math.PI / 2; // 0, 90, 180, 270 degrees
                 const randomRotation = new THREE.Quaternion().setFromAxisAngle(randomAxis, randomAngle);
@@ -1373,110 +1240,6 @@
             }
         }
 
-        function createLaserBeamEffect(ray) {
-            const beamLength = 1000; // A very long beam
-            const startPoint = ray.origin;
-            const endPoint = ray.origin.clone().add(ray.direction.clone().multiplyScalar(beamLength));
-
-            const beamGeometry = new THREE.CylinderGeometry(0.1, 0.1, beamLength, 8);
-            const beamMaterial = new THREE.MeshBasicMaterial({
-                color: 0xff0000,
-                transparent: true,
-                opacity: 0.8,
-                blending: THREE.AdditiveBlending,
-                fog: false // Don't let fog affect the laser
-            });
-            const beamMesh = new THREE.Mesh(beamGeometry, beamMaterial);
-
-            // Position and orient the cylinder
-            const midPoint = new THREE.Vector3().addVectors(startPoint, endPoint).multiplyScalar(0.5);
-            beamMesh.position.copy(midPoint);
-            beamMesh.lookAt(endPoint);
-            beamMesh.rotateX(Math.PI / 2);
-
-            scene.add(beamMesh);
-
-            // Fade out and remove after a short time
-            setTimeout(() => {
-                if (beamMesh.parent) {
-                    scene.remove(beamMesh);
-                    beamMesh.geometry.dispose();
-                    beamMesh.material.dispose();
-                }
-            }, 500); // Remove after 0.5 seconds
-        }
-
-        function firePowerLaser() {
-            // 1. Clear inventory
-            for (const matId in inventory) {
-                inventory[matId] = 0;
-            }
-            updateInventoryUI();
-            messageBox.textContent = "Inventory Cleared! Firing Laser!";
-            setTimeout(() => { messageBox.textContent = "Controls active"; }, 2000);
-
-            // 2. Raycast to find target
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const intersects = raycaster.intersectObjects([marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh));
-            if (intersects.length === 0) { // Fired into space
-                createLaserBeamEffect(raycaster.ray);
-                return;
-            }
-
-            const intersected = intersects[0];
-            const targetObject = intersected.object;
-            const laserRay = raycaster.ray;
-
-            // Visual effect
-            createLaserBeamEffect(laserRay);
-
-            let targetGrid, targetGridSize, targetCenterOffset;
-            let updateFunction;
-
-            if (targetObject === marchingCubesMesh) {
-                targetGrid = voxelData;
-                targetGridSize = GRID_SIZE;
-                targetCenterOffset = planetCenter;
-                updateFunction = updateMarchingCubesMesh;
-            } else if (targetObject === marchingCubesMeshMoon) {
-                targetGrid = voxelDataMoon;
-                targetGridSize = GRID_SIZE_MOON;
-                targetCenterOffset = marchingCubesMeshMoon.position;
-                updateFunction = updateMarchingCubesMoonMesh;
-            } else {
-                return; // Should not happen
-            }
-
-            // 3. Voxel manipulation
-            const laserRadius = 2.0;
-            const laserRadiusSq = laserRadius * laserRadius;
-            const halfGrid = targetGridSize / 2;
-            const voxelWorldPos = new THREE.Vector3();
-
-            for (let x = 0; x < targetGridSize; x++) {
-                for (let y = 0; y < targetGridSize; y++) {
-                    for (let z = 0; z < targetGridSize; z++) {
-                        // Calculate voxel's world position
-                        voxelWorldPos.set(
-                            (x - halfGrid + 0.5) * BLOCK_SIZE,
-                            (y - halfGrid + 0.5) * BLOCK_SIZE,
-                            (z - halfGrid + 0.5) * BLOCK_SIZE
-                        ).add(targetCenterOffset);
-
-                        // Check distance from voxel center to the laser ray
-                        const distSq = laserRay.distanceSqToPoint(voxelWorldPos);
-
-                        if (distSq < laserRadiusSq) {
-                            targetGrid[x][y][z] = 0; // Set to air
-                        }
-                    }
-                }
-            }
-
-            // 4. Regenerate mesh
-            updateFunction();
-        }
-
         function generatePlanet() {
             const halfGrid = GRID_SIZE / 2;
             for (let x = 0; x < GRID_SIZE; x++) {
@@ -1487,7 +1250,7 @@
                         const wx = (x - halfGrid + 0.5) * BLOCK_SIZE;
                         const wy = (y - halfGrid + 0.5) * BLOCK_SIZE;
                         const wz = (z - halfGrid + 0.5) * BLOCK_SIZE;
-                        const dist = Math.sqrt(wx*wx + wy*wy + wz*wz);
+                        const dist = Math.sqrt(wx * wx + wy * wy + wz * wz);
                         const terrainNoise = getRidgedMultifractalNoise(wx, wy, wz, simplex, initialNoiseScale, noiseStrength, octaves, lacunarity, persistence);
                         const normalizedDist = dist / PLANET_RADIUS;
                         voxelData[x][y][z] = (1.0 - normalizedDist) + terrainNoise;
@@ -1508,7 +1271,7 @@
                         const wx = (x - halfGridMoon + 0.5) * BLOCK_SIZE;
                         const wy = (y - halfGridMoon + 0.5) * BLOCK_SIZE;
                         const wz = (z - halfGridMoon + 0.5) * BLOCK_SIZE;
-                        const dist = Math.sqrt(wx*wx + wy*wy + wz*wz);
+                        const dist = Math.sqrt(wx * wx + wy * wy + wz * wz);
                         const terrainNoise = getRidgedMultifractalNoise(wx, wy, wz, simplex, 0.05, 0.3, 5, 2.2, 0.4);
                         const normalizedDist = dist / MOON_RADIUS;
                         voxelDataMoon[x][y][z] = (1.0 - normalizedDist) + terrainNoise;
@@ -1532,8 +1295,8 @@
                 const vertex = new THREE.Vector3(), normal = new THREE.Vector3();
 
                 for (let i = 0; i < positions.length; i += 3) {
-                    vertex.set(positions[i], positions[i+1], positions[i+2]);
-                    normal.set(normals[i], normals[i+1], normals[i+2]);
+                    vertex.set(positions[i], positions[i + 1], positions[i + 2]);
+                    normal.set(normals[i], normals[i + 1], normals[i + 2]);
                     const material = getMaterialAtPoint(vertex, normal, false);
                     colors.push(material.color.r, material.color.g, material.color.b);
                 }
@@ -1630,9 +1393,9 @@
                 const vertex = new THREE.Vector3(), normal = new THREE.Vector3(), worldVertex = new THREE.Vector3();
 
                 for (let i = 0; i < positions.length; i += 3) {
-                    vertex.set(positions[i], positions[i+1], positions[i+2]);
+                    vertex.set(positions[i], positions[i + 1], positions[i + 2]);
                     worldVertex.copy(vertex).add(moonPosition);
-                    normal.set(normals[i], normals[i+1], normals[i+2]);
+                    normal.set(normals[i], normals[i + 1], normals[i + 2]);
                     const material = getMaterialAtPoint(worldVertex, normal, true);
                     colors.push(material.color.r, material.color.g, material.color.b);
                 }
@@ -1682,105 +1445,6 @@
             }
         }
 
-        function createBubbleEffect(position) {
-            const particleCount = 2; // Few bubbles at a time
-            const particleGeometry = new THREE.SphereGeometry(0.03, 8, 8);
-            const particleMaterial = new THREE.MeshBasicMaterial({
-                color: 0xffffff,
-                transparent: true,
-                opacity: 0.6
-            });
-
-            for (let i = 0; i < particleCount; i++) {
-                const particle = new THREE.Mesh(particleGeometry.clone(), particleMaterial.clone());
-                particle.position.copy(position).add(new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.2,
-                    (Math.random() - 0.5) * 0.2,
-                    (Math.random() - 0.5) * 0.2
-                ));
-
-                const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
-                particle.velocity = playerUp.clone().multiplyScalar(Math.random() * 0.5 + 0.2); // Bubbles rise up
-                particle.velocity.add(new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.1,
-                    (Math.random() - 0.5) * 0.1,
-                    (Math.random() - 0.5) * 0.1
-                ));
-
-                scene.add(particle);
-
-                let lifetime = 1.5; // Bubbles last for 1.5 seconds
-                const decayRate = 1 / (lifetime * 20); // 20 updates per second approx
-
-                const interval = setInterval(() => {
-                    lifetime -= 0.05;
-                    if (lifetime <= 0) {
-                        scene.remove(particle);
-                        particle.geometry.dispose();
-                        particle.material.dispose();
-                        clearInterval(interval);
-                    } else {
-                        particle.position.add(particle.velocity.clone().multiplyScalar(0.05));
-                        particle.material.opacity -= decayRate;
-                        particle.scale.multiplyScalar(1.01); // Bubbles expand as they rise
-                    }
-                }, 50);
-            }
-        }
-
-        function createSplashEffect(position, velocity) {
-            const particleCount = 15;
-            const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
-            const particleMaterial = new THREE.MeshBasicMaterial({ color: 0x88ccff });
-
-            const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
-
-            for (let i = 0; i < particleCount; i++) {
-                const particle = new THREE.Mesh(particleGeometry.clone(), particleMaterial.clone());
-                particle.position.copy(position);
-
-                // Splash particles should go up and out
-                const splashVector = new THREE.Vector3(
-                    (Math.random() - 0.5) * 2,
-                    Math.random() * 1.5 + 0.5, // Mostly upward
-                    (Math.random() - 0.5) * 2
-                ).normalize().multiplyScalar(Math.random() * 1.5 + 0.5);
-
-                // Orient the splash relative to the player's up direction
-                const tangent = new THREE.Vector3().crossVectors(playerUp, velocity.clone().normalize() || player.getWorldDirection(new THREE.Vector3())).normalize();
-                const bitangent = new THREE.Vector3().crossVectors(playerUp, tangent).normalize();
-                
-                particle.velocity = playerUp.clone().multiplyScalar(splashVector.y)
-                                    .add(tangent.clone().multiplyScalar(splashVector.x))
-                                    .add(bitangent.clone().multiplyScalar(splashVector.z));
-
-                // Add some of the player's velocity to the splash
-                particle.velocity.add(velocity.clone().multiplyScalar(0.2));
-
-                scene.add(particle);
-
-                let lifetime = 1.0;
-                const decayRate = 1 / (lifetime * 20);
-
-                const interval = setInterval(() => {
-                    lifetime -= 0.05;
-                    if (lifetime <= 0) {
-                        scene.remove(particle);
-                        particle.geometry.dispose();
-                        particle.material.dispose();
-                        clearInterval(interval);
-                    } else {
-                        // Apply gravity to the splash particles
-                        const gravityDirection = dominantBodyPosition.clone().sub(particle.position).normalize();
-                        particle.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength * 0.05));
-                        particle.position.add(particle.velocity.clone().multiplyScalar(0.05));
-                        particle.material.opacity -= decayRate * 2;
-                        particle.material.transparent = true;
-                    }
-                }, 50);
-            }
-        }
-
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -1800,7 +1464,7 @@
             if (isFirstPersonView) {
                 player.body.visible = false;
                 player.head.visible = false;
-                
+
                 // Position torch at camera and point it in camera's direction
                 if (torchLight) {
                     torchLight.position.copy(camera.position);
@@ -1815,7 +1479,7 @@
             } else {
                 player.body.visible = true;
                 player.head.visible = true;
-                
+
                 // Position torch at player's head and point it in head's direction
                 if (torchLight) {
                     torchLight.position.copy(headPosition);
@@ -1841,13 +1505,34 @@
         function animate() {
             requestAnimationFrame(animate);
             const delta = Math.min(clock.getDelta(), 0.1); // Clamp delta to avoid physics glitches
+            const moonVelocity = new THREE.Vector3();
+
+            // --- Moon Orbit Logic ---
+            if (marchingCubesMeshMoon) {
+                const orbitSpeed = 0.1; // Adjust for faster/slower orbit
+                const elapsedTime = clock.getElapsedTime();
+
+                moonPreviousPosition.copy(moonPosition);
+
+                moonPosition.set(
+                    Math.cos(elapsedTime * orbitSpeed) * MOON_ORBIT_DISTANCE,
+                    Math.sin(elapsedTime * orbitSpeed * 0.5) * 20, // Add some gentle bobbing on the Y-axis
+                    Math.sin(elapsedTime * orbitSpeed) * MOON_ORBIT_DISTANCE
+                );
+                marchingCubesMeshMoon.position.copy(moonPosition);
+
+                if (delta > 0) {
+                    moonVelocity.subVectors(moonPosition, moonPreviousPosition).divideScalar(delta);
+                }
+            }
 
             if (isLocked && player) {
                 // --- Player Update Logic ---
                 const distToPlanet = player.position.distanceTo(planetCenter);
-                const distToMoon = marchingCubesMeshMoon ? player.position.distanceTo(marchingCubesMeshMoon.position) : Infinity;
+                const distToMoon = player.position.distanceTo(marchingCubesMeshMoon.position);
 
                 let dominantBody, dominantBodyRadius;
+                let onMoon = false; // Flag to check if player is on the moon
                 dominantBodyPosition = planetCenter; // Initialize with planetCenter
                 if (distToPlanet < distToMoon) {
                     dominantBody = marchingCubesMesh;
@@ -1857,26 +1542,7 @@
                     dominantBody = marchingCubesMeshMoon;
                     dominantBodyPosition = marchingCubesMeshMoon.position;
                     dominantBodyRadius = MOON_RADIUS;
-                }
-
-                // --- Update Location Info ---
-                const altitude = player.position.distanceTo(dominantBodyPosition) - dominantBodyRadius;
-                const relativePlayerPos = player.position.clone().sub(dominantBodyPosition);
-                const r = relativePlayerPos.length();
-                // Latitude: angle from the equatorial plane (XZ plane). In radians.
-                const latitude = Math.asin(relativePlayerPos.y / r);
-                // Longitude: angle around the Y axis from the X axis. In radians.
-                const longitude = Math.atan2(relativePlayerPos.z, relativePlayerPos.x);
-                const currentBodyName = (distToPlanet < distToMoon) ? 'Planet' : 'Moon';
-
-                if (locationInfoDiv) {
-                    locationInfoDiv.innerHTML = `
-                        <b>Location</b><br>
-                        Body: ${currentBodyName}<br>
-                        Lat: ${latitude.toFixed(2)} rad<br>
-                        Lon: ${longitude.toFixed(2)} rad<br>
-                        Alt: ${altitude.toFixed(2)} m
-                    `;
+                    onMoon = true;
                 }
 
                 const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
@@ -1894,34 +1560,6 @@
                 const distToWaterCenter = player.position.distanceTo(planetCenter);
                 const isInWater = distToWaterCenter < waterRadius;
                 const maxWaterSpeed = playerSettings.speed * 0.5; // Half of the normal speed
-
-                // Water effects
-                const headPosition = new THREE.Vector3();
-                player.head.getWorldPosition(headPosition);
-                const isHeadUnderwater = headPosition.distanceTo(planetCenter) < waterRadius;
-
-                if (isInWater) {
-                    if (!wasInWater) { // Just entered water
-                        if (clock.getElapsedTime() - lastSplashTime > 0.2) {
-                            createSplashEffect(player.position, player.velocity);
-                            lastSplashTime = clock.getElapsedTime();
-                        }
-                    } else if (player.velocity.length() > 0.5 && clock.getElapsedTime() - lastSplashTime > 0.1) { // Moving in water
-                        createSplashEffect(player.position, player.velocity);
-                        lastSplashTime = clock.getElapsedTime();
-                    }
-
-                    if (isHeadUnderwater && clock.getElapsedTime() - lastBubbleTime > 0.5) { // Head underwater
-                        createBubbleEffect(headPosition);
-                        lastBubbleTime = clock.getElapsedTime();
-                    }
-                } else if (wasInWater) { // Just exited water
-                    if (clock.getElapsedTime() - lastSplashTime > 0.2) {
-                        createSplashEffect(player.position, player.velocity);
-                        lastSplashTime = clock.getElapsedTime();
-                    }
-                }
-                wasInWater = isInWater;
 
                 // Swimming Animation
                 const targetRotation = new THREE.Quaternion();
@@ -1983,7 +1621,10 @@
                         horizontalComponent.lerp(targetVelocity, 0.2);
                     }
                 } else if (!isInWater) {
-                    horizontalComponent.lerp(new THREE.Vector3(), 0.1);
+                    // When not moving, slow down to match the platform's velocity
+                    let platformVelocity = onMoon ? moonVelocity : new THREE.Vector3(0, 0, 0);
+                    const platformHorizontalVelocity = platformVelocity.clone().projectOnPlane(playerUp);
+                    horizontalComponent.lerp(platformHorizontalVelocity, 0.1);
                 }
                 if (!isInWater) {
                     player.velocity.copy(horizontalComponent).add(verticalComponent);
@@ -2036,34 +1677,6 @@
                 const newUp = player.position.clone().sub(dominantBodyPosition).normalize();
                 const correction = new THREE.Quaternion().setFromUnitVectors(playerCurrentUp, newUp);
                 player.quaternion.slerp(correction.multiply(player.quaternion), 0.2);
-
-                // --- Health and Damage Check ---
-                const currentTime = clock.getElapsedTime();
-                if (player.onGround && currentTime - player.lastDamageTime > 0.5) { // Cooldown of 0.5s to prevent rapid damage
-                    // We use the 'intersects' from the ground collision check which already includes all ground objects.
-                    if (intersects.length > 0) {
-                        const intersection = intersects[0];
-                        const intersectedObject = intersection.object;
-
-                        let groundMaterialId = null;
-
-                        if (intersectedObject === marchingCubesMesh || intersectedObject === marchingCubesMeshMoon) {
-                            // It's the procedural terrain
-                            const groundPoint = intersection.point;
-                            const groundNormal = intersection.face.normal;
-                            const onMoon = dominantBody === marchingCubesMeshMoon;
-                            const groundMaterial = getMaterialAtPoint(groundPoint, groundNormal, onMoon);
-                            groundMaterialId = groundMaterial.id;
-                        } else if (cubes.includes(intersectedObject)) {
-                            // It's a placed block, check its stored material ID
-                            groundMaterialId = intersectedObject.userData.materialId;
-                        }
-
-                        if (groundMaterialId === 'lava') {
-                            takeDamage(15); // Apply damage if standing on lava
-                        }
-                    }
-                }
             }
 
             updateCamera();

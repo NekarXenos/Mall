@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voxel Planet Miner - Relative Physics (Fixed)</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+    <!-- Include Simplex Noise library for terrain generation -->
+    <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #000000; /* Darker space background */
+            color: #e0e0e0;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #message-box {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1.2em;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+            display: none; /* Initially hidden */
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 200;
+            color: white;
+            font-size: 2em;
+            cursor: pointer;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin-left: -10px;
+            margin-top: -10px;
+            border: 2px solid white;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.2);
+            z-index: 100;
+        }
+        #mobile-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 0 20px;
+            box-sizing: border-box;
+            z-index: 150;
+            pointer-events: none;
+        }
+        #joystick-area, #action-buttons-area {
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #joystick-base {
+            width: 100px;
+            height: 100px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            touch-action: none;
+        }
+        #joystick-thumb {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            position: absolute;
+            touch-action: none;
+        }
+        .action-button {
+            background-color: #007bff;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2em;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            transition: background-color 0.2s ease-in-out;
+        }
+        .action-button:active {
+            background-color: #0056b3;
+        }
+        #inventory-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            background-color: rgba(31, 41, 55, 0.8);
+            padding: 8px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            z-index: 10;
+        }
+        #inventory-slots {
+            display: flex;
+            gap: 8px;
+            padding: 0 10px;
+            overflow-x: auto;
+        }
+        .inventory-slot {
+            width: 50px;
+            height: 50px;
+            background-color: #374151;
+            border: 2px solid #4B5563;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+            text-transform: capitalize;
+            flex-shrink: 0;
+        }
+        .inventory-slot.selected {
+            border-color: #facc15;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(250, 204, 21, 0.5);
+        }
+        .slot-color-preview {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .slot-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: rgba(0,0,0,0.6);
+            text-align: center;
+            padding: 4px 0;
+            z-index: 1;
+        }
+        .slot-name {
+            font-size: 0.65em;
+        }
+        .slot-count {
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        #location-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(31, 41, 55, 0.8);
+            padding: 10px 15px;
+            border-radius: 12px;
+            color: #e0e0e0;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9em;
+            text-align: left;
+            line-height: 1.5;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            z-index: 10;
+            display: none; /* Initially hidden */
+        }
+        #health-bar-container {
+            position: absolute;
+            bottom: 90px; /* Adjusted to be above inventory */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            height: 25px;
+            background-color: rgba(31, 41, 55, 0.8);
+            border-radius: 12px;
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            overflow: hidden;
+            z-index: 100;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: none; /* Initially hidden */
+        }
+
+        #health-bar-fill {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to right, #e11d48, #f43f5e);
+            border-radius: 8px;
+            transition: width 0.2s ease-out;
+        }
+
+        #health-bar-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+        }
+        #damage-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 0, 0, 0.5);
+            z-index: 9999;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s ease-out;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="inventory-bar">
+        <div id="inventory-slots">
+            <!-- Slots will be generated by JS -->
+        </div>
+    </div>
+
+    <div id="location-info"></div>
+
+    <div id="health-bar-container">
+        <div id="health-bar-fill" style="width:100%;"></div>
+        <span id="health-bar-text">100 / 100</span>
+    </div>
+
+    <div id="message-box">Click or tap to play!</div>
+    <div id="overlay">Click to start</div>
+    <div id="crosshair"></div>
+
+    <div id="damage-overlay"></div>
+
+    <div id="mobile-controls">
+        <div id="joystick-area">
+            <div id="joystick-base">
+                <div id="joystick-thumb"></div>
+            </div>
+        </div>
+        <div id="action-buttons-area">
+            <button id="mine-button" class="action-button">MINE</button>
+            <button id="build-button" class="action-button">BUILD</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+
+        // --- Material Definitions ---
+        const MATERIALS = {
+            GRASS:     { id: 'grass',     color: new THREE.Color(0x335010), buildable: true },
+            SOIL:      { id: 'soil',      color: new THREE.Color(0x332208), buildable: true },
+            SAND:      { id: 'sand',      color: new THREE.Color(0xD2B48C), buildable: true },
+            ROCK:      { id: 'rock',      color: new THREE.Color(0x222222), buildable: true },
+            ANEMONE:   { id: 'anemone',   color: new THREE.Color(0x4169E1), buildable: true },
+            LAVA:      { id: 'lava',      color: new THREE.Color(0xFF4500), emissive: new THREE.Color(0xdd3300), buildable: true },
+            MOON_ROCK: { id: 'moon_rock', color: new THREE.Color(0x8c8c8c), buildable: true },
+            MOON_SAND: { id: 'moon_sand', color: new THREE.Color(0xbebebe), buildable: true },
+            DEFAULT:   { id: 'default',   color: new THREE.Color(0xff00ff) }
+        };
+
+        // --- Marching Cubes Data ---
+        const EdgeVertexIndices = [[0,1],[1,3],[3,2],[2,0],[4,5],[5,7],[7,6],[6,4],[0,4],[1,5],[3,7],[2,6]];
+        const TriangleTable = [[-1],[0,3,8,-1],[0,9,1,-1],[3,8,1,1,8,9,-1],[2,11,3,-1],[8,0,11,11,0,2,-1],[3,2,11,1,0,9,-1],[11,1,2,11,9,1,11,8,9,-1],[1,10,2,-1],[0,3,8,2,1,10,-1],[10,2,9,9,2,0,-1],[8,2,3,8,10,2,8,9,10,-1],[11,3,10,10,3,1,-1],[10,0,1,10,8,0,10,11,8,-1],[9,3,0,9,11,3,9,10,11,-1],[8,9,11,11,9,10,-1],[4,8,7,-1],[7,4,3,3,4,0,-1],[4,8,7,0,9,1,-1],[1,4,9,1,7,4,1,3,7,-1],[8,7,4,11,3,2,-1],[4,11,7,4,2,11,4,0,2,-1],[0,9,1,8,7,4,11,3,2,-1],[7,4,11,11,4,2,2,4,9,2,9,1,-1],[4,8,7,2,1,10,-1],[7,4,3,3,4,0,10,2,1,-1],[10,2,9,9,2,0,7,4,8,-1],[10,2,3,10,3,4,3,7,4,9,10,4,-1],[1,10,3,3,10,11,4,8,7,-1],[10,11,1,11,7,4,1,11,4,1,4,0,-1],[7,4,8,9,3,0,9,11,3,9,10,11,-1],[7,4,11,4,9,11,9,10,11,-1],[9,4,5,-1],[9,4,5,8,0,3,-1],[4,5,0,0,5,1,-1],[5,8,4,5,3,8,5,1,3,-1],[9,4,5,11,3,2,-1],[2,11,0,0,11,8,5,9,4,-1],[4,5,0,0,5,1,11,3,2,-1],[5,1,4,1,2,11,4,1,11,4,11,8,-1],[1,10,2,5,9,4,-1],[9,4,5,0,3,8,2,1,10,-1],[2,5,10,2,4,5,2,0,4,-1],[10,2,5,5,2,4,4,2,3,4,3,8,-1],[11,3,10,10,3,1,4,5,9,-1],[4,5,9,10,0,1,10,8,0,10,11,8,-1],[11,3,0,11,0,5,0,4,5,10,11,5,-1],[4,5,8,5,10,8,10,11,8,-1],[8,7,9,9,7,5,-1],[3,9,0,3,5,9,3,7,5,-1],[7,0,8,7,1,0,7,5,1,-1],[7,5,3,3,5,1,-1],[5,9,7,7,9,8,2,11,3,-1],[2,11,7,2,7,9,7,5,9,0,2,9,-1],[2,11,3,7,0,8,7,1,0,7,5,1,-1],[2,11,1,11,7,1,7,5,1,-1],[8,7,9,9,7,5,2,1,10,-1],[10,2,1,3,9,0,3,5,9,3,7,5,-1],[7,5,8,5,10,2,8,5,2,8,2,0,-1],[10,2,5,2,3,5,3,7,5,-1],[8,7,5,8,5,9,11,3,10,3,1,10,-1],[5,11,7,10,11,5,1,9,0,-1],[11,5,10,7,5,11,8,3,0,-1],[5,11,7,10,11,5,-1],[6,7,11,-1],[7,11,6,3,8,0,-1],[6,7,11,0,9,1,-1],[9,1,8,8,1,3,6,7,11,-1],[3,2,7,7,2,6,-1],[0,7,8,0,6,7,0,2,6,-1],[6,7,2,2,7,3,9,1,0,-1],[6,7,8,6,8,1,8,9,1,2,6,1,-1],[11,6,7,10,2,1,-1],[3,8,0,11,6,7,10,2,1,-1],[0,9,2,2,9,10,7,11,6,-1],[6,7,11,8,2,3,8,10,2,8,9,10,-1],[7,10,6,7,1,10,7,3,1,-1],[8,0,7,7,0,6,6,0,1,6,1,10,-1],[7,3,6,3,0,9,6,3,9,6,9,10,-1],[6,7,10,7,8,10,8,9,10,-1],[11,6,8,8,6,4,-1],[6,3,11,6,0,3,6,4,0,-1],[11,6,8,8,6,4,1,0,9,-1],[1,3,9,3,11,6,9,3,6,9,6,4,-1],[2,8,3,2,4,8,2,6,4,-1],[4,0,6,6,0,2,-1],[9,1,0,2,8,3,2,4,8,2,6,4,-1],[9,1,4,1,2,4,2,6,4,-1],[4,8,6,6,8,11,1,10,2,-1],[1,10,2,6,3,11,6,0,3,6,4,0,-1],[11,6,4,11,4,8,10,2,9,2,0,9,-1],[10,4,9,6,4,10,11,2,3,-1],[4,8,3,4,3,10,3,1,10,6,4,10,-1],[1,10,0,10,6,0,6,4,0,-1],[4,10,6,9,10,4,0,8,3,-1],[4,10,6,9,10,4,-1],[6,7,11,4,5,9,-1],[4,5,9,7,11,6,3,8,0,-1],[1,0,5,5,0,4,11,6,7,-1],[11,6,7,5,8,4,5,3,8,5,1,3,-1],[3,2,7,7,2,6,9,4,5,-1],[5,9,4,0,7,8,0,6,7,0,2,6,-1],[3,2,6,3,6,7,1,0,5,0,4,5,-1],[6,1,2,5,1,6,4,7,8,-1],[10,2,1,6,7,11,4,5,9,-1],[0,3,8,4,5,9,11,6,7,10,2,1,-1],[7,11,6,2,5,10,2,4,5,2,0,4,-1],[8,4,7,5,10,6,3,11,2,-1],[9,4,5,7,10,6,7,1,10,7,3,1,-1],[10,6,5,7,8,4,1,9,0,-1],[4,3,0,7,3,4,6,5,10,-1],[10,6,5,8,4,7,-1],[9,6,5,9,11,6,9,8,11,-1],[11,6,3,3,6,0,0,6,5,0,5,9,-1],[11,6,5,11,5,0,5,1,0,8,11,0,-1],[11,6,3,6,5,3,5,1,3,-1],[9,8,5,8,3,2,5,8,2,6,5,2,-1],[5,9,6,9,0,6,0,2,6,-1],[1,6,5,2,6,1,3,0,8,-1],[1,6,5,2,6,1,-1],[2,1,10,9,6,5,9,11,6,9,8,11,-1],[9,0,1,3,11,2,5,10,6,-1],[11,0,8,2,0,11,10,6,5,-1],[3,11,2,5,10,6,-1],[1,8,3,9,8,1,5,10,6,-1],[6,5,10,0,1,9,-1],[8,3,0,5,10,6,-1],[6,5,10,-1],[10,5,6,-1],[0,3,8,6,10,5,-1],[10,5,6,9,1,0,-1],[3,8,1,1,8,9,6,10,5,-1],[2,11,3,6,10,5,-1],[8,0,11,11,0,2,5,6,10,-1],[1,0,9,2,11,3,6,10,5,-1],[5,6,10,11,1,2,11,9,1,11,8,9,-1],[5,6,1,1,6,2,-1],[5,6,1,1,6,2,8,0,3,-1],[6,9,5,6,0,9,6,2,0,-1],[6,2,5,2,3,8,5,2,8,5,8,9,-1],[3,6,11,3,5,6,3,1,5,-1],[8,0,1,8,1,6,1,5,6,11,8,6,-1],[11,3,6,6,3,5,5,3,0,5,0,9,-1],[5,6,9,6,11,9,11,8,9,-1],[5,6,10,7,4,8,-1],[0,3,4,4,3,7,10,5,6,-1],[5,6,10,4,8,7,0,9,1,-1],[6,10,5,1,4,9,1,7,4,1,3,7,-1],[7,4,8,6,10,5,2,11,3,-1],[10,5,6,4,11,7,4,2,11,4,0,2,-1],[4,8,7,6,10,5,3,2,11,1,0,9,-1],[1,2,10,11,7,6,9,5,4,-1],[2,1,6,6,1,5,8,7,4,-1],[0,3,7,0,7,4,2,1,6,1,5,6,-1],[8,7,4,6,9,5,6,0,9,6,2,0,-1],[7,2,3,6,2,7,5,4,9,-1],[4,8,7,3,6,11,3,5,6,3,1,5,-1],[5,0,1,4,0,5,7,6,11,-1],[9,5,4,6,11,7,0,8,3,-1],[11,7,6,9,5,4,-1],[6,10,4,4,10,9,-1],[6,10,4,4,10,9,3,8,0,-1],[0,10,1,0,6,10,0,4,6,-1],[6,10,1,6,1,8,1,3,8,4,6,8,-1],[9,4,10,10,4,6,3,2,11,-1],[2,11,8,2,8,0,6,10,4,10,9,4,-1],[11,3,2,0,10,1,0,6,10,0,4,6,-1],[6,8,4,11,8,6,2,10,1,-1],[4,1,9,4,2,1,4,6,2,-1],[3,8,0,4,1,9,4,2,1,4,6,2,-1],[6,2,4,4,2,0,-1],[3,8,2,8,4,2,4,6,2,-1],[4,6,9,6,11,3,9,6,3,9,3,1,-1],[8,6,11,4,6,8,9,0,1,-1],[11,3,6,3,0,6,0,4,6,-1],[8,6,11,4,6,8,-1],[10,7,6,10,8,7,10,9,8,-1],[3,7,0,7,6,10,0,7,10,0,10,9,-1],[6,10,7,7,10,8,8,10,1,8,1,0,-1],[6,10,7,10,1,7,1,3,7,-1],[3,2,11,10,7,6,10,8,7,10,9,8,-1],[9,2,10,0,2,9,8,4,7,-1],[0,8,3,7,6,11,1,2,10,-1],[7,6,11,1,2,10,-1],[2,1,9,2,9,7,9,8,7,6,2,7,-1],[2,7,6,3,7,2,0,1,9,-1],[8,7,0,7,6,0,6,2,0,-1],[7,2,3,6,2,7,-1],[8,1,9,3,1,8,11,7,6,-1],[11,7,6,1,9,0,-1],[6,11,7,0,8,3,-1],[11,7,6,-1],[7,11,5,5,11,10,-1],[10,5,11,11,5,7,0,3,8,-1],[7,11,5,5,11,10,0,9,1,-1],[7,11,10,7,10,5,3,8,1,8,9,1,-1],[5,2,10,5,3,2,5,7,3,-1],[5,7,10,7,8,0,10,7,0,10,0,2,-1],[0,9,1,5,2,10,5,3,2,5,7,3,-1],[9,7,8,5,7,9,10,1,2,-1],[1,11,2,1,7,11,1,5,7,-1],[8,0,3,1,11,2,1,7,11,1,5,7,-1],[7,11,2,7,2,9,2,0,9,5,7,9,-1],[7,9,5,8,9,7,3,11,2,-1],[3,1,7,7,1,5,-1],[8,0,7,0,1,7,1,5,7,-1],[0,9,3,9,5,3,5,7,3,-1],[9,7,8,5,7,9,-1],[8,5,4,8,10,5,8,11,10,-1],[0,3,11,0,11,5,11,10,5,4,0,5,-1],[1,0,9,8,5,4,8,10,5,8,11,10,-1],[10,3,11,1,3,10,9,5,4,-1],[3,2,8,8,2,4,4,2,10,4,10,5,-1],[10,5,2,5,4,2,4,0,2,-1],[5,4,9,8,3,0,10,1,2,-1],[2,10,1,4,9,5,-1],[8,11,4,11,2,1,4,11,1,4,1,5,-1],[0,5,4,1,5,0,2,3,11,-1],[0,11,2,8,11,0,4,9,5,-1],[5,4,9,2,3,11,-1],[4,8,5,8,3,5,3,1,5,-1],[0,5,4,1,5,0,-1],[5,4,9,3,0,8,-1],[5,4,9,-1],[11,4,7,11,9,4,11,10,9,-1],[0,3,8,11,4,7,11,9,4,11,10,9,-1],[11,10,7,10,1,0,7,10,0,7,0,4,-1],[3,10,1,11,10,3,7,8,4,-1],[3,2,10,3,10,4,10,9,4,7,3,4,-1],[9,2,10,0,2,9,8,4,7,-1],[3,4,7,0,4,3,1,2,10,-1],[7,8,4,10,1,2,-1],[7,11,4,4,11,9,9,11,2,9,2,1,-1],[1,9,0,4,7,8,2,3,11,-1],[7,11,4,11,2,4,2,0,4,-1],[4,7,8,2,3,11,-1],[9,4,1,4,7,1,7,3,1,-1],[7,8,4,1,9,0,-1],[3,4,7,0,4,3,-1],[7,8,4,-1],[11,10,8,8,10,9,-1],[0,3,9,3,11,9,11,10,9,-1],[1,0,10,0,8,10,8,11,10,-1],[10,3,11,1,3,10,-1],[3,2,8,2,10,8,10,9,8,-1],[9,2,10,0,2,9,-1],[8,3,0,10,1,2,-1],[2,10,1,-1],[2,1,11,1,9,11,9,8,11,-1],[11,2,3,9,0,1,-1],[11,0,8,2,0,11,-1],[3,11,2,-1],[1,8,3,9,8,1,-1],[1,9,0,-1],[8,3,0,-1],[-1]];
+
+        // --- Core Scene Variables ---
+        let scene, camera, renderer, raycaster;
+        let planetGroup, moonGroup;
+        let marchingCubesMesh, marchingCubesMeshMoon;
+        let waterMesh;
+        let torchLight;
+
+        // --- Inventory & Building ---
+        let inventory = {};
+        const buildableMaterials = [];
+        let selectedMaterialIndex = 0;
+        let planetCubes, moonCubes;
+        const builtCubeMaterials = {};
+
+        // --- Foliage ---
+        let grassLODs = [], anemoneLODs = [];
+        const GRASS_LOD_DISTANCES = [50, 100, 150];
+        const GRASS_LOD_BLADES = [3, 2, 1];
+        const MAX_GRASS_PER_LOD = 20000;
+        let voxelToGrassMap = new Map(), voxelToAnemoneMap = new Map();
+
+        // --- Player & Controls ---
+        let player;
+        const clock = new THREE.Clock();
+        const thirdPersonCameraOffset = new THREE.Vector3(0, 3, 8);
+        let isFirstPersonView = true;
+        const playerSettings = {
+            height: 1.8, // Player's total height
+            speed: 5.0,
+            gravityStrength: 0.05,
+            jumpStrength: 4,
+            sensitivity: 0.002,
+            maxHealth: 100
+        };
+        const keys = { w: false, a: false, s: false, d: false, space: false, c: false, ctrl: false, arrowLeft: false, arrowRight: false };
+        let isLocked = false;
+        
+        // --- Physics State ---
+        let lastPlayerDominantBody = null;
+        let lastDominantBodyMatrix = new THREE.Matrix4();
+        let wasInWater = false;
+        let lastSplashTime = 0;
+        let lastBubbleTime = 0;
+
+        // --- Mobile Controls ---
+        let mobileJoystickTouchId = -1;
+        let joystickCenter = new THREE.Vector2();
+        const joystickRadius = 50;
+        const joystickBase = document.getElementById('joystick-base');
+        const joystickThumb = document.getElementById('joystick-thumb');
+        const mineButton = document.getElementById('mine-button');
+        const buildButton = document.getElementById('build-button');
+        const mobileControls = document.getElementById('mobile-controls');
+
+        // --- World Parameters ---
+        const GRID_SIZE = 100, BLOCK_SIZE = 1, PLANET_RADIUS_FACTOR = 0.8, ISO_LEVEL = 0.5;
+        const PLANET_RADIUS = GRID_SIZE / 2 * BLOCK_SIZE * PLANET_RADIUS_FACTOR;
+        const WATER_LEVEL_OFFSET = -10;
+        const GRID_SIZE_MOON = 20, MOON_RADIUS_FACTOR = 0.9;
+        const MOON_ORBIT_DISTANCE = GRID_SIZE * BLOCK_SIZE * 0.9;
+        const MOON_RADIUS = GRID_SIZE_MOON / 2 * BLOCK_SIZE * MOON_RADIUS_FACTOR;
+
+        let voxelData = [], voxelDataMoon = [];
+        const simplex = new SimplexNoise();
+        const initialNoiseScale = 0.02, noiseStrength = 0.5, octaves = 6, lacunarity = 2.0, persistence = 0.5;
+
+        // --- DOM Elements ---
+        const overlay = document.getElementById('overlay');
+        const messageBox = document.getElementById('message-box');
+        let canvas, locationInfoDiv;
+
+        function generateMarchingCubesGeometry(grid, threshold, gridSize, blockSize) {
+            const vertices = [];
+            const normals = []; 
+            const indices = [];
+            const resolution = gridSize;
+
+            function interpolateVertex(p1, p2, val1, val2, threshold) {
+                const mu = (threshold - val1) / (val2 - val1);
+                return p1.clone().lerp(p2, mu);
+            }
+
+            for (let x = 0; x < resolution - 1; x++) {
+                for (let y = 0; y < resolution - 1; y++) {
+                    for (let z = 0; z < resolution - 1; z++) {
+                        const cubeValues = new Array(8);
+                        const cubeCorners = new Array(8);
+                        let cubeIndex = 0;
+
+                        for (let i = 0; i < 8; i++) {
+                            const x_offset = (i & 1), y_offset = (i & 2) >> 1, z_offset = (i & 4) >> 2;
+                            const gx = x + x_offset, gy = y + y_offset, gz = z + z_offset;
+                            cubeValues[i] = grid[gx][gy][gz];
+                            cubeCorners[i] = new THREE.Vector3(
+                                (gx - gridSize / 2 + 0.5) * blockSize,
+                                (gy - gridSize / 2 + 0.5) * blockSize,
+                                (gz - gridSize / 2 + 0.5) * blockSize
+                            );
+                            if (cubeValues[i] < threshold) cubeIndex |= (1 << i);
+                        }
+
+                        const triangles = TriangleTable[cubeIndex];
+                        if (triangles[0] === -1) continue;
+
+                        for (let i = 0; triangles[i] !== -1; i += 3) {
+                            const edge1Index = triangles[i], edge2Index = triangles[i+1], edge3Index = triangles[i+2];
+                            const v1a_idx = EdgeVertexIndices[edge1Index][0], v1b_idx = EdgeVertexIndices[edge1Index][1];
+                            const v2a_idx = EdgeVertexIndices[edge2Index][0], v2b_idx = EdgeVertexIndices[edge2Index][1];
+                            const v3a_idx = EdgeVertexIndices[edge3Index][0], v3b_idx = EdgeVertexIndices[edge3Index][1];
+
+                            const p1 = interpolateVertex(cubeCorners[v1a_idx], cubeCorners[v1b_idx], cubeValues[v1a_idx], cubeValues[v1b_idx], threshold);
+                            const p2 = interpolateVertex(cubeCorners[v2a_idx], cubeCorners[v2b_idx], cubeValues[v2a_idx], cubeValues[v2b_idx], threshold);
+                            const p3 = interpolateVertex(cubeCorners[v3a_idx], cubeCorners[v3b_idx], cubeValues[v3a_idx], cubeValues[v3b_idx], threshold);
+                            
+                            const currentVertexCount = vertices.length;
+                            vertices.push(p1, p2, p3);
+                            indices.push(currentVertexCount, currentVertexCount + 1, currentVertexCount + 2);
+
+                            const ab = new THREE.Vector3().subVectors(p2, p1);
+                            const ac = new THREE.Vector3().subVectors(p3, p1);
+                            const normal = new THREE.Vector3().crossVectors(ab, ac).normalize();
+                            
+                            // Invert the normal vector before pushing it to the array
+                            normal.negate();
+
+                            normals.push(normal, normal, normal);
+                        }
+                    }
+                }
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            if (vertices.length > 0) {
+                const flatVertices = vertices.flatMap(v => [v.x, v.y, v.z]);
+                const flatNormals = normals.flatMap(v => [v.x, v.y, v.z]);
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(flatVertices, 3));
+                geometry.setAttribute('normal', new THREE.Float32BufferAttribute(flatNormals, 3));
+                geometry.setIndex(indices);
+            }
+            return geometry;
+        }
+        
+        function getMaterialAtPoint(worldPoint, surfaceNormal, onMoon, bodyGroup) {
+            const localPoint = bodyGroup.worldToLocal(worldPoint.clone());
+            const center = new THREE.Vector3(0,0,0);
+            const radius = onMoon ? MOON_RADIUS : PLANET_RADIUS;
+            
+            // 1. Calculate depth from the "true" noise-defined surface
+            const terrainNoise = getRidgedMultifractalNoise(localPoint.x, localPoint.y, localPoint.z, simplex, initialNoiseScale, noiseStrength, octaves, lacunarity, persistence);
+            const distSurface = (1.0 + terrainNoise - ISO_LEVEL) * radius;
+            const distCenter = localPoint.length();
+            const depth = distSurface - distCenter;
+
+            // 2. Handle subsurface materials first based on depth
+            if (onMoon) {
+                if (depth > 5) return MATERIALS.LAVA;
+                if (depth > 2) return MATERIALS.MOON_ROCK;
+            } else {
+                if (depth > 25) return MATERIALS.LAVA;
+                if (depth > 3) return MATERIALS.ROCK;
+                if (depth >= 0) return MATERIALS.SOIL;
+            }
+
+            // 3. Handle surface materials
+            const localUp = localPoint.clone().normalize();
+            const worldUp = localUp.clone().transformDirection(bodyGroup.matrixWorld);
+            const dot = surfaceNormal.dot(worldUp);
+            const slope = 1.0 - dot; // 0 = flat, 1 = vertical. No abs needed as dot should be > 0 for surfaces.
+            
+            if (onMoon) {
+                return slope > 0.4 ? MATERIALS.MOON_ROCK : MATERIALS.MOON_SAND;
+            }
+
+            // Planet surface logic
+            const waterRadius = PLANET_RADIUS + WATER_LEVEL_OFFSET;
+            const heightAboveWater = distCenter - waterRadius;
+
+            // Steep areas are rock
+            if (slope > 0.5) {
+                return MATERIALS.ROCK;
+            }
+
+            if (heightAboveWater < -1.0) { // Deep underwater
+                const underwaterPattern = simplex.noise3D(localPoint.x * 2, localPoint.y * 2, localPoint.z * 2);
+                if (underwaterPattern > 0.3) return MATERIALS.ANEMONE;
+                return MATERIALS.SAND;
+            }
+
+            if (Math.abs(heightAboveWater) <= 1.0) { // Shoreline is sand
+                return MATERIALS.SAND;
+            }
+
+            if (heightAboveWater > 1.0) { // Above shoreline is grass
+                return MATERIALS.GRASS;
+            }
+
+            return MATERIALS.SOIL; // Fallback for shallow water or just above shoreline
+        }
+
+        function getRidgedMultifractalNoise(x, y, z, noiseGenerator, scale, strength, numOctaves, lac, pers) {
+            let totalNoise = 0, amplitude = 1, frequency = scale, maxAmplitudeSum = 0;
+            for (let i = 0; i < numOctaves; i++) {
+                let n = 1.0 - Math.abs(noiseGenerator.noise3D(x * frequency, y * frequency, z * frequency));
+                n *= n;
+                totalNoise += n * amplitude;
+                maxAmplitudeSum += amplitude;
+                amplitude *= pers;
+                frequency *= lac;
+            }
+            return (totalNoise / maxAmplitudeSum) * strength;
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            scene.fog = new THREE.Fog(0x000000, 150, 800);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            canvas = renderer.domElement;
+            locationInfoDiv = document.getElementById('location-info');
+
+            planetGroup = new THREE.Group();
+            scene.add(planetGroup);
+            moonGroup = new THREE.Group();
+            scene.add(moonGroup);
+
+            const ambientLight = new THREE.AmbientLight(0xcccccc, 0.8);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(150, 150, 150);
+            scene.add(directionalLight);
+
+            const sunGeometry = new THREE.SphereGeometry(20, 32, 32);
+            const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffffee, fog: false });
+            const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            sun.position.copy(directionalLight.position).normalize().multiplyScalar(1000);
+            scene.add(sun);
+            
+            torchLight = new THREE.SpotLight(0xffffff, 0, 50, Math.PI / 6, 0.5, 2);
+            torchLight.castShadow = true;
+            scene.add(torchLight);
+            torchLight.target = new THREE.Object3D();
+            scene.add(torchLight.target);
+
+            raycaster = new THREE.Raycaster();
+
+            for (const key in MATERIALS) {
+                const mat = MATERIALS[key];
+                if (mat.buildable) {
+                    inventory[mat.id] = 0;
+                    buildableMaterials.push(mat.id);
+                    const materialOptions = { color: mat.color, roughness: 0.8 };
+                    if (mat.emissive) {
+                        materialOptions.emissive = mat.emissive;
+                        materialOptions.emissiveIntensity = 1.0;
+                    }
+                    builtCubeMaterials[mat.id] = new THREE.MeshStandardMaterial(materialOptions);
+                }
+            }
+
+            setupFoliage(); 
+            generatePlanet();
+            generateMoon();
+            createWaterLayer();
+
+            planetCubes = new THREE.Group();
+            planetGroup.add(planetCubes);
+            moonCubes = new THREE.Group();
+            moonGroup.add(moonCubes);
+            
+            createPlayer();
+            setupEventListeners();
+            setupInventoryUI();
+
+            if (isMobileDevice()) {
+                mobileControls.style.display = 'flex';
+                setupMobileControls();
+                messageBox.textContent = "Tap joystick to move, drag right side to look, tap buttons to interact!";
+            } else {
+                mobileControls.style.display = 'none';
+                messageBox.textContent = "WASD: Move, Space: Jump, Mouse: Look, Click: Interact, Arrows: Switch, L: Teleport, T: Torch, V: View";
+            }
+        }
+        
+        function setupEventListeners() {
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            document.addEventListener('pointerlockchange', onPointerLockChange);
+            
+            overlay.addEventListener('click', () => {
+                const request = canvas.requestPointerLock();
+                if (request && typeof request.catch === 'function') {
+                    request.catch(err => console.warn("Pointer lock request failed.", err));
+                }
+            });
+
+            document.addEventListener('mousedown', onMouseDownDesktop);
+            document.addEventListener('contextmenu', (e) => e.preventDefault());
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function createWaterLayer() {
+            const waterGeometry = new THREE.SphereGeometry(PLANET_RADIUS + WATER_LEVEL_OFFSET, 64, 64);
+            const waterMaterial = new THREE.MeshStandardMaterial({
+                color: 0x0077ff,
+                transparent: true,
+                opacity: 0.7,
+                roughness: 0.1,
+                metalness: 0.9,
+                side: THREE.DoubleSide
+            });
+            waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+            planetGroup.add(waterMesh);
+        }
+
+        function createPlayer() {
+            player = new THREE.Group();
+            player.velocity = new THREE.Vector3();
+            player.onGround = false;
+            player.health = playerSettings.maxHealth;
+            player.lastDamageTime = 0;
+
+            const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x5588ff });
+            player.body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            player.body.castShadow = true;
+            player.body.position.y = playerSettings.height / 2 - 0.3;
+            player.add(player.body);
+
+            const headGeometry = new THREE.DodecahedronGeometry(0.5, 0);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffccaa });
+            player.head = new THREE.Mesh(headGeometry, headMaterial);
+            player.head.castShadow = true;
+            player.head.position.y = playerSettings.height - 0.4;
+            player.add(player.head);
+            
+            // The group's origin is at the player's feet
+            player.position.set(0, PLANET_RADIUS + playerSettings.height, 0);
+            
+            const initialUp = player.position.clone().normalize();
+            player.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), initialUp);
+            scene.add(player);
+        }
+
+        function onMouseDownDesktop(event) {
+            if (!isLocked) return;
+            event.preventDefault();
+            if (event.button === 0) mineBlockAtCrosshair();
+            else if (event.button === 1) firePowerLaser();
+            else if (event.button === 2) placeBlockAtCrosshair();
+        }
+
+        function createGrassPatchGeometry(bladeCount) {
+            const patchGeometry = new THREE.BufferGeometry();
+            const vertices = [];
+            for (let i = 0; i < bladeCount; i++) {
+                const baseWidth = 0.01;
+                const height = THREE.MathUtils.randFloat(0.1, 0.5);
+                const horizontalOffset = THREE.MathUtils.randFloat(0.05, 0.1);
+                const angle = Math.random() * Math.PI * 2;
+                const offsetX = Math.cos(angle) * horizontalOffset;
+                const offsetZ = Math.sin(angle) * horizontalOffset;
+                const v1 = new THREE.Vector3(offsetX - baseWidth / 2, 0, offsetZ);
+                const v2 = new THREE.Vector3(offsetX + baseWidth / 2, 0, offsetZ);
+                const v3 = new THREE.Vector3(offsetX, height, offsetZ);
+                vertices.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, v3.x, v3.y, v3.z);
+            }
+            patchGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            patchGeometry.computeVertexNormals();
+            return patchGeometry;
+        }
+
+        function setupFoliage() {
+            const grassMaterial = new THREE.MeshStandardMaterial({ color: 0x00cc44, side: THREE.DoubleSide });
+            for (let i = 0; i < GRASS_LOD_DISTANCES.length; i++) {
+                const lodMesh = new THREE.InstancedMesh(createGrassPatchGeometry(GRASS_LOD_BLADES[i]), grassMaterial, MAX_GRASS_PER_LOD);
+                lodMesh.name = `Grass_LOD_${i}`;
+                lodMesh.count = 0;
+                planetGroup.add(lodMesh);
+                grassLODs.push(lodMesh);
+            }
+
+            const anemoneMaterial = new THREE.MeshStandardMaterial({ color: 0x4169E1, side: THREE.DoubleSide });
+            for (let i = 0; i < GRASS_LOD_DISTANCES.length; i++) {
+                const lodMesh = new THREE.InstancedMesh(createGrassPatchGeometry(GRASS_LOD_BLADES[i]), anemoneMaterial, MAX_GRASS_PER_LOD);
+                lodMesh.name = `Anemone_LOD_${i}`;
+                lodMesh.count = 0;
+                planetGroup.add(lodMesh);
+                anemoneLODs.push(lodMesh);
+            }
+        }
+        
+        function isMobileDevice() {
+            return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        }
+
+        function setupMobileControls() {
+            joystickBase.addEventListener('touchstart', onJoystickStart, { passive: false });
+            document.addEventListener('touchmove', onJoystickMove, { passive: false });
+            document.addEventListener('touchend', onJoystickEnd, { passive: false });
+            mineButton.addEventListener('click', mineBlockAtCrosshair);
+            buildButton.addEventListener('click', placeBlockAtCrosshair);
+        }
+
+        function onJoystickStart(event) {
+            event.preventDefault();
+            if (mobileJoystickTouchId === -1) {
+                const touch = event.changedTouches[0];
+                const rect = joystickBase.getBoundingClientRect();
+                joystickCenter.set(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                mobileJoystickTouchId = touch.identifier;
+            }
+        }
+
+        function onJoystickMove(event) {
+            event.preventDefault();
+            for (let touch of event.changedTouches) {
+                if (touch.identifier === mobileJoystickTouchId) {
+                    let dx = touch.clientX - joystickCenter.x;
+                    let dy = touch.clientY - joystickCenter.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance > joystickRadius) {
+                        dx *= joystickRadius / distance;
+                        dy *= joystickRadius / distance;
+                    }
+                    joystickThumb.style.transform = `translate(${dx}px, ${dy}px)`;
+                    keys.w = dy < -20;
+                    keys.s = dy > 20;
+                    keys.a = dx < -20;
+                    keys.d = dx > 20;
+                }
+            }
+        }
+
+        function onJoystickEnd(event) {
+            for (let touch of event.changedTouches) {
+                if (touch.identifier === mobileJoystickTouchId) {
+                    joystickThumb.style.transform = `translate(0, 0)`;
+                    mobileJoystickTouchId = -1;
+                    keys.w = keys.a = keys.s = keys.d = false;
+                }
+            }
+        }
+
+        function setupInventoryUI() {
+            updateInventoryUI();
+        }
+
+        function updateInventoryUI() {
+            const slotsContainer = document.getElementById('inventory-slots');
+            slotsContainer.innerHTML = ''; 
+
+            buildableMaterials.forEach((matId, index) => {
+                const mat = Object.values(MATERIALS).find(m => m.id === matId);
+                if (!mat) return;
+
+                const slot = document.createElement('div');
+                slot.className = 'inventory-slot';
+                slot.id = `slot-${matId}`;
+
+                slot.innerHTML = `
+                    <div class="slot-color-preview" style="background-color: #${mat.color.getHexString()}"></div>
+                    <div class="slot-info">
+                        <div class="slot-name">${mat.id.replace('_', ' ')}</div>
+                        <div class="slot-count" id="count-${matId}">${inventory[matId]}</div>
+                    </div>
+                `;
+
+                if (index === selectedMaterialIndex) {
+                    slot.classList.add('selected');
+                }
+
+                slot.onclick = () => selectMaterialById(matId);
+                slotsContainer.appendChild(slot);
+            });
+
+            const selectedSlot = document.querySelector('.inventory-slot.selected');
+            if (selectedSlot) {
+                selectedSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }
+
+        function selectMaterial(index) {
+            selectedMaterialIndex = (index + buildableMaterials.length) % buildableMaterials.length;
+            updateInventoryUI();
+        }
+        function selectPrevMaterial() { selectMaterial(selectedMaterialIndex - 1); }
+        function selectNextMaterial() { selectMaterial(selectedMaterialIndex + 1); }
+        function selectMaterialById(matId) {
+            const index = buildableMaterials.findIndex(id => id === matId);
+            if (index !== -1) selectMaterial(index);
+        }
+
+        function onKeyDown(event) {
+            if (event.code.startsWith('Digit')) {
+                const index = parseInt(event.key) - 1;
+                if (index >= 0 && index < 9 && index < buildableMaterials.length) {
+                    selectMaterial(index);
+                }
+                return;
+            }
+
+            switch (event.code) {
+                case 'KeyW': keys.w = true; break;
+                case 'KeyA': keys.a = true; break;
+                case 'KeyS': keys.s = true; break;
+                case 'KeyD': keys.d = true; break;
+                case 'Space':
+                    keys.space = true;
+                    if (player && player.onGround) {
+                        const dominantBodyPos = new THREE.Vector3();
+                        lastPlayerDominantBody.getWorldPosition(dominantBodyPos);
+                        const upDirection = player.position.clone().sub(dominantBodyPos).normalize();
+                        player.velocity.add(upDirection.multiplyScalar(playerSettings.jumpStrength));
+                        player.onGround = false;
+                    }
+                    break;
+                case 'KeyC': keys.c = true; break;
+                case 'ControlLeft': case 'ControlRight': keys.ctrl = true; break;
+                case 'ArrowLeft': keys.arrowLeft = true; selectPrevMaterial(); break;
+                case 'ArrowRight': keys.arrowRight = true; selectNextMaterial(); break;
+                case 'KeyL':
+                    if (!moonGroup) break;
+                    const planetPos = new THREE.Vector3(); planetGroup.getWorldPosition(planetPos);
+                    const moonPos = new THREE.Vector3(); moonGroup.getWorldPosition(moonPos);
+
+                    let targetGroup, targetRadius;
+                    if (player.position.distanceTo(planetPos) > player.position.distanceTo(moonPos)) {
+                        targetGroup = planetGroup;
+                        targetRadius = PLANET_RADIUS;
+                        messageBox.textContent = "Teleported to Planet";
+                    } else {
+                        targetGroup = moonGroup;
+                        targetRadius = MOON_RADIUS;
+                        messageBox.textContent = "Teleported to Moon";
+                    }
+                    
+                    const targetWorldPos = new THREE.Vector3();
+                    targetGroup.getWorldPosition(targetWorldPos);
+                    const targetWorldQuat = new THREE.Quaternion();
+                    targetGroup.getWorldQuaternion(targetWorldQuat);
+                    const targetUp = new THREE.Vector3(0, 1, 0).applyQuaternion(targetWorldQuat);
+                    player.position.copy(targetWorldPos).add(targetUp.multiplyScalar(targetRadius + playerSettings.height));
+
+                    player.velocity.set(0, 0, 0);
+                    player.onGround = false;
+                    lastPlayerDominantBody = null;
+                    messageBox.style.display = 'block';
+                    setTimeout(() => messageBox.style.display = 'none', 1500);
+                    break;
+                case 'KeyT':
+                    torchLight.intensity = torchLight.intensity === 0 ? 1 : 0;
+                    messageBox.textContent = `Torch ${torchLight.intensity === 1 ? 'ON' : 'OFF'}`;
+                    messageBox.style.display = 'block';
+                    setTimeout(() => messageBox.style.display = 'none', 1500);
+                    break;
+            }
+        }
+
+        function onKeyUp(event) {
+            switch (event.code) {
+                case 'KeyW': keys.w = false; break;
+                case 'KeyA': keys.a = false; break;
+                case 'KeyS': keys.s = false; break;
+                case 'KeyD': keys.d = false; break;
+                case 'Space': keys.space = false; break;
+                case 'KeyC': keys.c = false; break;
+                case 'ControlLeft': case 'ControlRight': keys.ctrl = false; break;
+                case 'KeyV': isFirstPersonView = !isFirstPersonView; break;
+                case 'ArrowLeft': keys.arrowLeft = false; break;
+                case 'ArrowRight': keys.arrowRight = false; break;
+            }
+        }
+
+        function onMouseMove(event) {
+            if (!isLocked || !player || !lastPlayerDominantBody) return;
+            const movementX = event.movementX || 0;
+            const movementY = event.movementY || 0;
+            
+            const dominantBodyPos = new THREE.Vector3();
+            lastPlayerDominantBody.getWorldPosition(dominantBodyPos);
+            const playerUp = player.position.clone().sub(dominantBodyPos).normalize();
+
+            const yawDelta = -movementX * playerSettings.sensitivity;
+            const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(playerUp, yawDelta);
+            player.quaternion.premultiply(yawQuaternion);
+
+            const pitchDelta = -movementY * playerSettings.sensitivity;
+            player.head.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.head.rotation.x + pitchDelta));
+        }
+
+        function onPointerLockChange() {
+            isLocked = document.pointerLockElement === canvas;
+            overlay.style.display = isLocked ? 'none' : 'flex';
+            if(isLocked) {
+                messageBox.style.display = 'block';
+                setTimeout(() => messageBox.style.display = 'none', 2000);
+            }
+            if (locationInfoDiv) locationInfoDiv.style.display = isLocked ? 'block' : 'none';
+            document.getElementById('health-bar-container').style.display = isLocked ? 'block' : 'none';
+            if (isLocked) {
+                document.addEventListener('mousemove', onMouseMove, false);
+            } else {
+                document.removeEventListener('mousemove', onMouseMove, false);
+            }
+        }
+        
+        function updateHealthUI() {
+            if (!player) return;
+            const healthPercentage = (player.health / playerSettings.maxHealth) * 100;
+            document.getElementById('health-bar-fill').style.width = `${healthPercentage}%`;
+            document.getElementById('health-bar-text').textContent = `${Math.ceil(player.health)} / ${playerSettings.maxHealth}`;
+        }
+
+        function takeDamage(amount) {
+            if (!player || player.health <= 0) return;
+            player.health -= amount;
+            player.lastDamageTime = clock.getElapsedTime();
+            const damageOverlay = document.getElementById('damage-overlay');
+            damageOverlay.style.opacity = 1;
+            setTimeout(() => { damageOverlay.style.opacity = 0; }, 250);
+            if (player.health <= 0) {
+                player.health = 0;
+                respawnPlayer();
+            }
+            updateHealthUI();
+        }
+
+        function respawnPlayer() {
+            messageBox.textContent = "You have perished! Respawning...";
+            messageBox.style.display = 'block';
+            player.health = playerSettings.maxHealth;
+            player.velocity.set(0, 0, 0);
+            Object.keys(inventory).forEach(k => inventory[k] = 0);
+            updateInventoryUI();
+            
+            const targetGroup = planetGroup;
+            const targetRadius = PLANET_RADIUS;
+            const targetWorldPos = new THREE.Vector3();
+            targetGroup.getWorldPosition(targetWorldPos);
+            const targetWorldQuat = new THREE.Quaternion();
+            targetGroup.getWorldQuaternion(targetWorldQuat);
+            const targetUp = new THREE.Vector3(0, 1, 0).applyQuaternion(targetWorldQuat);
+            player.position.copy(targetWorldPos).add(targetUp.multiplyScalar(targetRadius + playerSettings.height));
+            
+            player.onGround = false;
+            lastPlayerDominantBody = null;
+            setTimeout(() => { if (isLocked) messageBox.style.display = 'none'; }, 2000);
+            updateHealthUI();
+        }
+
+        function mineBlockAtCrosshair() {
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects([planetGroup, moonGroup], true);
+            if (intersects.length > 0) {
+                const intersected = intersects[0];
+                const miningRayDir = raycaster.ray.direction;
+                const offsetWorldPoint = intersected.point.clone().add(miningRayDir.clone().multiplyScalar(-BLOCK_SIZE * 0.25));
+
+                let hitGroup = null, targetGrid, targetGridSize, updateFunction, onMoon = false;
+                let hitCubes = null;
+
+                intersected.object.traverseAncestors((ancestor) => {
+                    if (ancestor === planetGroup) {
+                        hitGroup = planetGroup; targetGrid = voxelData; targetGridSize = GRID_SIZE;
+                        updateFunction = updateMarchingCubesMesh; hitCubes = planetCubes; onMoon = false;
+                    } else if (ancestor === moonGroup) {
+                        hitGroup = moonGroup; targetGrid = voxelDataMoon; targetGridSize = GRID_SIZE_MOON;
+                        updateFunction = updateMarchingCubesMoonMesh; hitCubes = moonCubes; onMoon = true;
+                    }
+                });
+
+                if (!hitGroup) return;
+
+                if (intersected.object.isMesh && (intersected.object.name === 'planet_terrain' || intersected.object.name === 'moon_terrain')) {
+                    const localPoint = hitGroup.worldToLocal(offsetWorldPoint.clone());
+                    const halfTargetGrid = targetGridSize / 2;
+                    const gridX = Math.floor(localPoint.x / BLOCK_SIZE + halfTargetGrid);
+                    const gridY = Math.floor(localPoint.y / BLOCK_SIZE + halfTargetGrid);
+                    const gridZ = Math.floor(localPoint.z / BLOCK_SIZE + halfTargetGrid);
+
+                    if (gridX >= 0 && gridX < targetGridSize && gridY >= 0 && gridY < targetGridSize && gridZ >= 0 && gridZ < targetGridSize) {
+                        targetGrid[gridX][gridY][gridZ] = 0;
+                        updateFunction();
+                        
+                        const minedMaterial = getMaterialAtPoint(offsetWorldPoint, intersected.face.normal, onMoon, hitGroup);
+                        if (minedMaterial.buildable) {
+                            inventory[minedMaterial.id]++;
+                            updateInventoryUI();
+                        }
+                        createMiningEffect(intersected.point, minedMaterial);
+                    }
+                } else if (intersected.object.parent === hitCubes) {
+                    const minedMaterialId = intersected.object.userData.materialId;
+                    if (minedMaterialId && inventory[minedMaterialId] !== undefined) {
+                        inventory[minedMaterialId]++;
+                        updateInventoryUI();
+                    }
+                    const builtMaterial = Object.values(MATERIALS).find(m => m.id === minedMaterialId) || MATERIALS.ROCK;
+                    createMiningEffect(intersected.point, builtMaterial);
+
+                    hitCubes.remove(intersected.object);
+                    intersected.object.geometry.dispose();
+                }
+            }
+        }
+
+        function createChamferedBlockGeometry(width, height, depth) {
+            const w = width / 2, h = height / 2, d = depth / 2;
+            const points = [];
+            const corners = [
+                new THREE.Vector3(w, h, d),   new THREE.Vector3(w, h, -d),
+                new THREE.Vector3(w, -h, d),  new THREE.Vector3(w, -h, -d),
+                new THREE.Vector3(-w, h, d),  new THREE.Vector3(-w, h, -d),
+                new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
+            ];
+            corners.forEach(corner => {
+                const sx = Math.sign(corner.x), sy = Math.sign(corner.y), sz = Math.sign(corner.z);
+                const chamferX = Math.random() * w/2, chamferY = Math.random() * h/2, chamferZ = Math.random() * d/2;
+                points.push(new THREE.Vector3(corner.x - sx * chamferX, corner.y, corner.z));
+                points.push(new THREE.Vector3(corner.x, corner.y - sy * chamferY, corner.z));
+                points.push(new THREE.Vector3(corner.x, corner.y, corner.z - sz * chamferZ));
+            });
+            return new ConvexGeometry(points);
+        }
+
+        function placeBlockAtCrosshair() {
+            const materialIdToBuild = buildableMaterials[selectedMaterialIndex];
+            if (inventory[materialIdToBuild] <= 0) return;
+            
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects([planetGroup, moonGroup], true);
+
+            if (intersects.length > 0) {
+                const intersected = intersects[0];
+                const hitPoint = intersected.point;
+                const faceNormal = intersected.face.normal;
+                const newWorldPosition = hitPoint.clone().add(faceNormal.clone().multiplyScalar(BLOCK_SIZE / 2));
+                
+                if (newWorldPosition.distanceTo(player.position) < BLOCK_SIZE) return;
+
+                let hitGroup = null, hitCubes = null;
+                intersected.object.traverseAncestors((ancestor) => {
+                    if (ancestor === planetGroup) { hitGroup = planetGroup; hitCubes = planetCubes; }
+                    else if (ancestor === moonGroup) { hitGroup = moonGroup; hitCubes = moonCubes; }
+                });
+                if (!hitGroup) return;
+
+                const newCube = new THREE.Mesh(createChamferedBlockGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), builtCubeMaterials[materialIdToBuild]);
+                
+                const newLocalPosition = hitGroup.worldToLocal(newWorldPosition.clone());
+                newCube.position.copy(newLocalPosition);
+                
+                const groupWorldPos = new THREE.Vector3();
+                hitGroup.getWorldPosition(groupWorldPos);
+                const localCenter = hitGroup.worldToLocal(groupWorldPos);
+                newCube.lookAt(localCenter);
+
+                const randomAxis = new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize();
+                const randomAngle = Math.random() * Math.PI * 2;
+                newCube.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(randomAxis, randomAngle));
+
+                newCube.userData.materialId = materialIdToBuild;
+                hitCubes.add(newCube);
+                inventory[materialIdToBuild]--;
+                updateInventoryUI();
+            }
+        }
+        
+        function createLaserBeamEffect(ray) {
+            const beamLength = 1000;
+            const startPoint = ray.origin;
+            const endPoint = ray.origin.clone().add(ray.direction.clone().multiplyScalar(beamLength));
+
+            const beamGeometry = new THREE.CylinderGeometry(0.1, 0.1, beamLength, 8);
+            const beamMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff0000,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending,
+                fog: false
+            });
+            const beamMesh = new THREE.Mesh(beamGeometry, beamMaterial);
+
+            const midPoint = new THREE.Vector3().addVectors(startPoint, endPoint).multiplyScalar(0.5);
+            beamMesh.position.copy(midPoint);
+            beamMesh.lookAt(endPoint);
+            beamMesh.rotateX(Math.PI / 2);
+
+            scene.add(beamMesh);
+
+            setTimeout(() => {
+                if (beamMesh.parent) {
+                    scene.remove(beamMesh);
+                    beamMesh.geometry.dispose();
+                    beamMesh.material.dispose();
+                }
+            }, 500);
+        }
+
+        function firePowerLaser() {
+            for (const matId in inventory) {
+                inventory[matId] = 0;
+            }
+            updateInventoryUI();
+            messageBox.textContent = "Inventory Cleared! Firing Laser!";
+            messageBox.style.display = 'block';
+            setTimeout(() => messageBox.style.display = 'none', 2000);
+
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            createLaserBeamEffect(raycaster.ray);
+
+            const intersects = raycaster.intersectObjects([planetGroup, moonGroup], true);
+            if (intersects.length === 0) return;
+
+            const intersected = intersects[0];
+            const laserRay = raycaster.ray;
+
+            let hitGroup = null, targetGrid, targetGridSize, updateFunction;
+            intersected.object.traverseAncestors((ancestor) => {
+                if (ancestor === planetGroup) {
+                    hitGroup = planetGroup; targetGrid = voxelData; targetGridSize = GRID_SIZE;
+                    updateFunction = updateMarchingCubesMesh;
+                } else if (ancestor === moonGroup) {
+                    hitGroup = moonGroup; targetGrid = voxelDataMoon; targetGridSize = GRID_SIZE_MOON;
+                    updateFunction = updateMarchingCubesMoonMesh;
+                }
+            });
+
+            if (!hitGroup) return;
+
+            const laserRadius = 2.0;
+            const laserRadiusSq = laserRadius * laserRadius;
+            const halfGrid = targetGridSize / 2;
+            const localVoxelPos = new THREE.Vector3();
+            const worldVoxelPos = new THREE.Vector3();
+
+            for (let x = 0; x < targetGridSize; x++) {
+                for (let y = 0; y < targetGridSize; y++) {
+                    for (let z = 0; z < targetGridSize; z++) {
+                        localVoxelPos.set(
+                            (x - halfGrid + 0.5) * BLOCK_SIZE,
+                            (y - halfGrid + 0.5) * BLOCK_SIZE,
+                            (z - halfGrid + 0.5) * BLOCK_SIZE
+                        );
+                        worldVoxelPos.copy(localVoxelPos).applyMatrix4(hitGroup.matrixWorld);
+                        const distSq = laserRay.distanceSqToPoint(worldVoxelPos);
+                        if (distSq < laserRadiusSq) {
+                            targetGrid[x][y][z] = 0;
+                        }
+                    }
+                }
+            }
+            updateFunction();
+        }
+
+        function generatePlanet() {
+            const halfGrid = GRID_SIZE / 2;
+            voxelData = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(0)));
+            for (let x = 0; x < GRID_SIZE; x++) {
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    for (let z = 0; z < GRID_SIZE; z++) {
+                        const wx = (x - halfGrid + 0.5) * BLOCK_SIZE;
+                        const wy = (y - halfGrid + 0.5) * BLOCK_SIZE;
+                        const wz = (z - halfGrid + 0.5) * BLOCK_SIZE;
+                        const dist = Math.sqrt(wx*wx + wy*wy + wz*wz);
+                        const terrainNoise = getRidgedMultifractalNoise(wx, wy, wz, simplex, initialNoiseScale, noiseStrength, octaves, lacunarity, persistence);
+                        const normalizedDist = dist / PLANET_RADIUS;
+                        voxelData[x][y][z] = (1.0 - normalizedDist) + terrainNoise;
+                    }
+                }
+            }
+            updateMarchingCubesMesh();
+        }
+
+        function generateMoon() {
+            const moonInitialPos = new THREE.Vector3(1, 1, 1).normalize().negate().setLength(MOON_ORBIT_DISTANCE);
+            moonGroup.position.copy(moonInitialPos);
+
+            const halfGridMoon = GRID_SIZE_MOON / 2;
+            voxelDataMoon = Array(GRID_SIZE_MOON).fill(0).map(() => Array(GRID_SIZE_MOON).fill(0).map(() => Array(GRID_SIZE_MOON).fill(0)));
+            for (let x = 0; x < GRID_SIZE_MOON; x++) {
+                for (let y = 0; y < GRID_SIZE_MOON; y++) {
+                    for (let z = 0; z < GRID_SIZE_MOON; z++) {
+                        const wx = (x - halfGridMoon + 0.5) * BLOCK_SIZE;
+                        const wy = (y - halfGridMoon + 0.5) * BLOCK_SIZE;
+                        const wz = (z - halfGridMoon + 0.5) * BLOCK_SIZE;
+                        const dist = Math.sqrt(wx*wx + wy*wy + wz*wz);
+                        const terrainNoise = getRidgedMultifractalNoise(wx, wy, wz, simplex, 0.05, 0.3, 5, 2.2, 0.4);
+                        const normalizedDist = dist / MOON_RADIUS;
+                        voxelDataMoon[x][y][z] = (1.0 - normalizedDist) + terrainNoise;
+                    }
+                }
+            }
+            updateMarchingCubesMoonMesh();
+        }
+
+        function updateMarchingCubesMesh() {
+            if (marchingCubesMesh) {
+                marchingCubesMesh.geometry.dispose();
+                planetGroup.remove(marchingCubesMesh);
+            }
+            const geometry = generateMarchingCubesGeometry(voxelData, ISO_LEVEL, GRID_SIZE, BLOCK_SIZE);
+            if (geometry.attributes.position) {
+                const positions = geometry.attributes.position.array;
+                const normals = geometry.attributes.normal.array;
+                const colors = [];
+                const vertex = new THREE.Vector3(), normal = new THREE.Vector3();
+
+                for (let i = 0; i < positions.length / 3; i++) {
+                    vertex.fromArray(positions, i * 3);
+                    normal.fromArray(normals, i * 3);
+                    const worldVertex = vertex.clone().applyMatrix4(planetGroup.matrixWorld);
+                    const worldNormal = normal.clone().transformDirection(planetGroup.matrixWorld);
+                    const material = getMaterialAtPoint(worldVertex, worldNormal, false, planetGroup);
+                    colors.push(material.color.r, material.color.g, material.color.b);
+                }
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            }
+            const material = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.2, vertexColors: true, side: THREE.DoubleSide,
+                shadowSide: THREE.BackSide, flatShading: true });
+            marchingCubesMesh = new THREE.Mesh(geometry, material);
+            marchingCubesMesh.name = "planet_terrain";
+            planetGroup.add(marchingCubesMesh);
+            populateFoliage();
+        }
+        
+        function populateFoliage() {
+            grassLODs.forEach(lod => lod.count = 0);
+            anemoneLODs.forEach(lod => lod.count = 0);
+            voxelToGrassMap.clear();
+            voxelToAnemoneMap.clear();
+
+            const dummy = new THREE.Object3D();
+            let grassInstanceIndex = 0;
+            let anemoneInstanceIndex = 0;
+
+            if(!marchingCubesMesh || !marchingCubesMesh.geometry.attributes.position) return;
+
+            const positions = marchingCubesMesh.geometry.attributes.position;
+            const normals = marchingCubesMesh.geometry.attributes.normal;
+            const colors = marchingCubesMesh.geometry.attributes.color;
+            const grassColor = MATERIALS.GRASS.color;
+            const anemoneColor = MATERIALS.ANEMONE.color;
+
+            for (let i = 0; i < positions.count; i++) {
+                const r = colors.getX(i), g = colors.getY(i), b = colors.getZ(i);
+                const isGrass = Math.abs(r - grassColor.r) < 0.01 && Math.abs(g - grassColor.g) < 0.01;
+                const isAnemone = Math.abs(r - anemoneColor.r) < 0.01 && Math.abs(g - anemoneColor.g) < 0.01 && Math.abs(b - anemoneColor.b) < 0.01;
+
+                if ((isGrass || isAnemone) && Math.random() > 0.95) {
+                    const pos = new THREE.Vector3().fromBufferAttribute(positions, i);
+                    const normal = new THREE.Vector3().fromBufferAttribute(normals, i);
+                    
+                    dummy.position.copy(pos);
+                    dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+                    dummy.updateMatrix();
+
+                    if (isAnemone && anemoneInstanceIndex < MAX_GRASS_PER_LOD) {
+                         anemoneLODs.forEach(lod => lod.setMatrixAt(anemoneInstanceIndex, dummy.matrix));
+                         anemoneInstanceIndex++;
+                    } else if (isGrass && grassInstanceIndex < MAX_GRASS_PER_LOD) {
+                         grassLODs.forEach(lod => lod.setMatrixAt(grassInstanceIndex, dummy.matrix));
+                         grassInstanceIndex++;
+                    }
+                }
+            }
+            grassLODs.forEach(lod => { lod.count = grassInstanceIndex; lod.instanceMatrix.needsUpdate = true; });
+            anemoneLODs.forEach(lod => { lod.count = anemoneInstanceIndex; lod.instanceMatrix.needsUpdate = true; });
+        }
+
+
+        function updateMarchingCubesMoonMesh() {
+            if (marchingCubesMeshMoon) {
+                marchingCubesMeshMoon.geometry.dispose();
+                moonGroup.remove(marchingCubesMeshMoon);
+            }
+            const geometry = generateMarchingCubesGeometry(voxelDataMoon, ISO_LEVEL, GRID_SIZE_MOON, BLOCK_SIZE);
+            if (geometry.attributes.position) {
+                const positions = geometry.attributes.position.array;
+                const normals = geometry.attributes.normal.array;
+                const colors = [];
+                const vertex = new THREE.Vector3(), normal = new THREE.Vector3();
+
+                for (let i = 0; i < positions.length / 3; i++) {
+                    vertex.fromArray(positions, i * 3);
+                    normal.fromArray(normals, i * 3);
+                    const worldVertex = vertex.clone().applyMatrix4(moonGroup.matrixWorld);
+                    const worldNormal = normal.clone().transformDirection(moonGroup.matrixWorld);
+                    const material = getMaterialAtPoint(worldVertex, worldNormal, true, moonGroup);
+                    colors.push(material.color.r, material.color.g, material.color.b);
+                }
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            }
+            const material = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0.1, vertexColors: true });
+            marchingCubesMeshMoon = new THREE.Mesh(geometry, material);
+            marchingCubesMeshMoon.name = "moon_terrain";
+            moonGroup.add(marchingCubesMeshMoon);
+        }
+
+        function createMiningEffect(position, minedMaterial) {
+            const particleCount = 10;
+            const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+            const particleMaterial = new THREE.MeshBasicMaterial({ color: minedMaterial.color });
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+                particle.position.copy(position);
+                particle.velocity = new THREE.Vector3((Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5);
+                scene.add(particle);
+                setTimeout(() => {
+                    scene.remove(particle);
+                    particle.geometry.dispose();
+                    particle.material.dispose();
+                }, 500 + Math.random() * 500);
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function updateCamera() {
+            if (!player) return;
+            
+            const headPosition = new THREE.Vector3();
+            player.head.getWorldPosition(headPosition);
+
+            if (isFirstPersonView) {
+                player.body.visible = false;
+                player.head.visible = false;
+                
+                const headQuaternion = new THREE.Quaternion();
+                player.head.getWorldQuaternion(headQuaternion);
+                camera.position.copy(headPosition);
+                camera.quaternion.copy(headQuaternion);
+
+            } else {
+                player.body.visible = true;
+                player.head.visible = true;
+                
+                const headQuaternion = new THREE.Quaternion();
+                player.head.getWorldQuaternion(headQuaternion);
+                const offset = thirdPersonCameraOffset.clone().applyQuaternion(headQuaternion);
+                const desiredCameraPosition = headPosition.clone().add(offset);
+                
+                camera.position.lerp(desiredCameraPosition, 0.15);
+                camera.lookAt(headPosition);
+            }
+
+            if (torchLight) {
+                torchLight.position.copy(camera.position);
+                const targetPos = new THREE.Vector3();
+                camera.getWorldDirection(targetPos);
+                torchLight.target.position.copy(camera.position).add(targetPos);
+                torchLight.target.updateMatrixWorld();
+                torchLight.visible = (torchLight.intensity > 0);
+            }
+
+            if (lastPlayerDominantBody) {
+                const dominantPos = new THREE.Vector3();
+                lastPlayerDominantBody.getWorldPosition(dominantPos);
+                camera.up.copy(player.position).sub(dominantPos).normalize();
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.1);
+
+            // --- Celestial Body Motion ---
+            planetGroup.rotation.y += 0.0005;
+            moonGroup.position.applyAxisAngle(new THREE.Vector3(0.1, 1, 0).normalize(), 0.0008);
+            moonGroup.rotation.y -= 0.001;
+            planetGroup.updateMatrixWorld(true);
+            moonGroup.updateMatrixWorld(true);
+
+            if (isLocked && player) {
+                // --- 1. Determine Dominant Body ---
+                const planetWorldPos = new THREE.Vector3(); planetGroup.getWorldPosition(planetWorldPos);
+                const moonWorldPos = new THREE.Vector3(); moonGroup.getWorldPosition(moonWorldPos);
+                const distToPlanet = player.position.distanceTo(planetWorldPos);
+                const distToMoon = marchingCubesMeshMoon ? player.position.distanceTo(moonWorldPos) : Infinity;
+
+                let dominantBodyGroup, dominantBodyPosition;
+                let isWithinGravity = true;
+                const planetGravityRadius = PLANET_RADIUS * 2.5;
+                const moonGravityRadius = MOON_RADIUS * 2.5;
+
+                if (distToPlanet < planetGravityRadius && distToPlanet < distToMoon) {
+                    dominantBodyGroup = planetGroup;
+                    dominantBodyPosition = planetWorldPos;
+                } else if (distToMoon < moonGravityRadius) {
+                    dominantBodyGroup = moonGroup;
+                    dominantBodyPosition = moonWorldPos;
+                } else {
+                    dominantBodyGroup = null;
+                    isWithinGravity = false;
+                }
+
+                // --- 2. Stick Player to Dominant Body's Frame of Reference ---
+                if (isWithinGravity) {
+                    if (lastPlayerDominantBody !== dominantBodyGroup && dominantBodyGroup) {
+                        lastDominantBodyMatrix.copy(dominantBodyGroup.matrixWorld);
+                    }
+                    if (dominantBodyGroup) {
+                        const currentDominantBodyMatrix = dominantBodyGroup.matrixWorld;
+                        const transformDelta = new THREE.Matrix4().multiplyMatrices(currentDominantBodyMatrix, new THREE.Matrix4().copy(lastDominantBodyMatrix).invert());
+                        
+                        player.position.applyMatrix4(transformDelta);
+                        const rotationDelta = new THREE.Quaternion().setFromRotationMatrix(transformDelta);
+                        player.velocity.applyQuaternion(rotationDelta);
+                        
+                        lastDominantBodyMatrix.copy(currentDominantBodyMatrix);
+                    }
+                }
+                lastPlayerDominantBody = dominantBodyGroup;
+
+                // --- 3. Player Physics (Movement, Gravity, Collision) ---
+                const playerUp = isWithinGravity ? player.position.clone().sub(dominantBodyPosition).normalize() : new THREE.Vector3(0, 1, 0);
+                const gravityDirection = isWithinGravity ? dominantBodyPosition.clone().sub(player.position).normalize() : new THREE.Vector3();
+                
+                if (!player.onGround) {
+                    player.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength));
+                }
+                
+                const moveDirection = new THREE.Vector3();
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
+                if (keys.w) moveDirection.add(forward);
+                if (keys.s) moveDirection.sub(forward);
+                if (keys.a) moveDirection.add(right.clone().multiplyScalar(-1));
+                if (keys.d) moveDirection.add(right);
+
+                const verticalComponent = player.velocity.clone().projectOnVector(playerUp);
+                let horizontalComponent = player.velocity.clone().sub(verticalComponent);
+
+                if (moveDirection.lengthSq() > 0) {
+                    const projectedMove = moveDirection.projectOnPlane(playerUp).normalize();
+                    const targetVelocity = projectedMove.multiplyScalar(playerSettings.speed);
+                    horizontalComponent.lerp(targetVelocity, 0.2);
+                } else {
+                     horizontalComponent.lerp(new THREE.Vector3(), 0.1);
+                }
+                player.velocity.copy(horizontalComponent).add(verticalComponent);
+
+                player.position.add(player.velocity.clone().multiplyScalar(delta));
+
+                player.onGround = false;
+                if (isWithinGravity) {
+                    const groundObjects = [dominantBodyGroup];
+                    const rayOrigin = player.position.clone().add(playerUp.clone().multiplyScalar(playerSettings.height / 2));
+                    raycaster.set(rayOrigin, gravityDirection);
+                    const intersects = raycaster.intersectObjects(groundObjects, true);
+
+                    if (intersects.length > 0) {
+                        const intersection = intersects[0];
+                        const distanceToGround = intersection.distance;
+                        
+                        if (distanceToGround < (playerSettings.height / 2) + 0.1) {
+                            player.onGround = true;
+                            const penetrationDepth = (playerSettings.height / 2) - distanceToGround;
+                            player.position.add(playerUp.clone().multiplyScalar(penetrationDepth + 0.01));
+
+                            const verticalVel = player.velocity.dot(playerUp);
+                            if (verticalVel < 0) {
+                                player.velocity.sub(playerUp.clone().multiplyScalar(verticalVel));
+                            }
+                        }
+                    }
+                }
+
+                const playerCurrentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);
+                const correction = new THREE.Quaternion().setFromUnitVectors(playerCurrentUp, playerUp);
+                player.quaternion.premultiply(correction);
+            }
+
+            updateCamera();
+            updateFoliageLODs();
+            renderer.render(scene, camera);
+        }
+
+        function updateFoliageLODs() {
+            if (!player || !lastPlayerDominantBody) return;
+
+            const foliageTypes = [
+                { lods: grassLODs, map: voxelToGrassMap },
+                { lods: anemoneLODs, map: voxelToAnemoneMap }
+            ];
+            
+            const playerPos = lastPlayerDominantBody.worldToLocal(player.position.clone());
+            const tempMatrix = new THREE.Matrix4();
+            const instancePos = new THREE.Vector3();
+
+            foliageTypes.forEach(type => {
+                if (type.lods.length === 0 || type.lods[0].count === 0) return;
+                type.lods.forEach(lod => lod.count = 0);
+
+                for(let i = 0; i < type.lods[0].count; i++) {
+                    type.lods[0].getMatrixAt(i, tempMatrix);
+                    instancePos.setFromMatrixPosition(tempMatrix);
+                    if (tempMatrix.elements[0] === 0) continue;
+
+                    const dist = playerPos.distanceTo(instancePos);
+                    let lodIndex = -1;
+                    for (let j = 0; j < GRASS_LOD_DISTANCES.length; j++) {
+                        if (dist < GRASS_LOD_DISTANCES[j]) {
+                            lodIndex = j;
+                            break;
+                        }
+                    }
+                    if (lodIndex !== -1) {
+                        const targetLOD = type.lods[lodIndex];
+                        targetLOD.setMatrixAt(targetLOD.count, tempMatrix);
+                        targetLOD.count++;
+                    }
+                }
+                type.lods.forEach(lod => lod.instanceMatrix.needsUpdate = true);
+            });
+        }
+
+        window.onload = function() {
+            init();
+            animate();
+        };
+    </script>
+</body>
+</html>
