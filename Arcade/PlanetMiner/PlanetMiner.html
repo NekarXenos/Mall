@@ -1497,21 +1497,130 @@
             updateMarchingCubesMesh();
         }
 
+        let moonBlobs = []; // To store the properties of the alien blobs
+        let moonCraters = []; // To store properties for craters
+
         function generateMoon() {
-            moonPosition.set(1, 1, 1).normalize().negate().setLength(MOON_ORBIT_DISTANCE);
+            const lightDirForMoonPlacement = new THREE.Vector3(1, 1, 1).normalize();
+            moonPosition.copy(lightDirForMoonPlacement).negate().setLength(MOON_ORBIT_DISTANCE);
+
             const halfGridMoon = GRID_SIZE_MOON / 2;
+
+            // --- New Alien Landscape Generation ---
+            // 1. Define the properties for the surface blobs and craters if they haven't been created yet.
+            if (moonBlobs.length === 0) {
+                const numBlobs = 5; // 5;
+                for (let i = 0; i < numBlobs; i++) {
+                    // Create a random direction vector from the center of the moon.
+                    const randomDirection = new THREE.Vector3(
+                        Math.random() * 2 - 1,
+                        Math.random() * 2 - 1,
+                        Math.random() * 2 - 1
+                    ).normalize();
+                    
+                    // The center of the blob will be on the surface of the main moon sphere.
+                    const blobCenter = randomDirection.clone().multiplyScalar((MOON_RADIUS/2) - 1);
+
+                    // Give each blob a random radius, e.g., between 20% and 40% of the moon's radius.
+                    const blobRadius = MOON_RADIUS * (Math.random() * 0.3 + 0.2);
+
+                    moonBlobs.push({ center: blobCenter, radius: blobRadius });
+
+                                        // Create a corresponding crater for each blob
+                    // "at a radius of (1+ (The radius at which the blob-spheres are placed))"
+                    // This is interpreted as placing the crater center 1 unit further out along the same direction.
+                    const craterCenter = randomDirection.clone().multiplyScalar((MOON_RADIUS/2)); // -1 + 1 = 0
+                    const craterRadius = blobRadius * 0.3; // Craters are slightly smaller than the hills they are in
+                    moonCraters.push({ center: craterCenter, radius: craterRadius });
+                }
+
+                // --- New, Uniform Crater Generation ---
+                moonCraters = []; // Reset craters
+                const numCraters = 25; // More craters for a pockmarked look
+                const maxAttemptsPerCrater = 20; // How many times to try placing a single crater
+
+                for (let i = 0; i < numCraters; i++) {
+                    for (let attempt = 0; attempt < maxAttemptsPerCrater; attempt++) {
+                        const randomDirection = new THREE.Vector3(
+                            Math.random() * 2 - 1,
+                            Math.random() * 2 - 1,
+                            Math.random() * 2 - 1
+                        ).normalize();
+
+                        // Place crater center on the surface of the main moon sphere.
+                        const craterCenter = randomDirection.clone().multiplyScalar(MOON_RADIUS / 2);
+
+                        // Give each crater a random radius
+                        const craterRadius = MOON_RADIUS * (Math.random() * 0.15 + 0.05); // 5% to 20% of moon radius
+
+                        // Check for overlaps with existing craters
+                        let overlaps = false;
+                        for (const existingCrater of moonCraters) {
+                            const distance = craterCenter.distanceTo(existingCrater.center);
+                            // Add a small buffer to space them out a bit
+                            if (distance < craterRadius + existingCrater.radius + (BLOCK_SIZE * 2)) {
+                                overlaps = true;
+                                break;
+                            }
+                        }
+
+                        if (!overlaps) {
+                            moonCraters.push({ center: craterCenter, radius: craterRadius });
+                            break; // Exit attempt loop and move to next crater
+                        }
+                    }
+                }
+            }
+
+            // 2. Generate the voxel data based on the new spherical-blob model.
             for (let x = 0; x < GRID_SIZE_MOON; x++) {
                 voxelDataMoon[x] = [];
                 for (let y = 0; y < GRID_SIZE_MOON; y++) {
                     voxelDataMoon[x][y] = [];
                     for (let z = 0; z < GRID_SIZE_MOON; z++) {
-                        const wx = (x - halfGridMoon + 0.5) * BLOCK_SIZE;
-                        const wy = (y - halfGridMoon + 0.5) * BLOCK_SIZE;
-                        const wz = (z - halfGridMoon + 0.5) * BLOCK_SIZE;
-                        const dist = Math.sqrt(wx*wx + wy*wy + wz*wz);
-                        const terrainNoise = getRidgedMultifractalNoise(wx, wy, wz, simplex, 0.05, 0.3, 5, 2.2, 0.4);
-                        const normalizedDist = dist / MOON_RADIUS;
-                        voxelDataMoon[x][y][z] = (1.0 - normalizedDist) + terrainNoise;
+                        // Calculate the world position of the current voxel relative to the moon's local origin (0,0,0).
+                        const worldX = (x - halfGridMoon + 0.5) * BLOCK_SIZE;
+                        const worldY = (y - halfGridMoon + 0.5) * BLOCK_SIZE;
+                        const worldZ = (z - halfGridMoon + 0.5) * BLOCK_SIZE;
+
+                        // --- Density Calculation ---
+                        // a. Calculate density contribution from the main moon sphere.
+                        // Density is 1.0 at the center, and 0.0 at the radius.
+                        const distFromMainCenter = Math.sqrt(worldX**2 + worldY**2 + worldZ**2);
+                        let finalDensity = 1.0 - (distFromMainCenter / MOON_RADIUS);
+
+                        // b. For each blob, calculate its density and merge it with the main sphere's density (Union operation).
+                        for (const blob of moonBlobs) {
+                            const distFromBlobCenter = Math.sqrt(
+                                (worldX - blob.center.x)**2 +
+                                (worldY - blob.center.y)**2 +
+                                (worldZ - blob.center.z)**2
+                            );
+                            const blobDensity = 1.0 - (distFromBlobCenter / blob.radius);
+                            
+                            // Using Math.max results in a smooth union of the two shapes (hills).
+                            finalDensity = Math.max(finalDensity, blobDensity);
+                        }
+
+                        // c. Post-blob function: For each crater, subtract its density to carve into the surface.
+                        for (const crater of moonCraters) {
+                            const distFromCraterCenter = Math.sqrt(
+                                (worldX - crater.center.x)**2 +
+                                (worldY - crater.center.y)**2 +
+                                (worldZ - crater.center.z)**2
+                            );
+                            const craterDensity = 1.0 - (distFromCraterCenter / crater.radius);
+
+                            // If inside the crater sphere, subtract its density.
+                            // This is a subtraction operation, creating craters.
+                            if (craterDensity > 0) {
+                                finalDensity -= craterDensity;
+                            }
+                        }
+                        
+                        // Assign the final calculated density to the voxel grid.
+                        // The marching cubes algorithm will create a surface where this value equals ISO_LEVEL.
+                        voxelDataMoon[x][y][z] = finalDensity;
                     }
                 }
             }
