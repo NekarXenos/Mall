@@ -1384,12 +1384,34 @@
                 const lookAtTarget = newCube.position.clone().add(surfaceUp); // Look "up" from the surface
                 newCube.lookAt(lookAtTarget);
 
-                // Apply random rotation
-                const axes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+                // Apply random rotation  // to be modified
+                 const axes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
                 const randomAxis = axes[Math.floor(Math.random() * 3)];
                 const randomAngle = (Math.floor(Math.random() * 4)) * Math.PI / 2; // 0, 90, 180, 270 degrees
                 const randomRotation = new THREE.Quaternion().setFromAxisAngle(randomAxis, randomAngle);
-                newCube.quaternion.multiply(randomRotation);
+                newCube.quaternion.multiply(randomRotation); 
+                
+                // --- New Orientation Logic ---
+                // 1. Determine the cube's +Y axis ("up"). It must point away from the celestial body's center.
+                const celestialCenter = onMoon ? moonPosition : planetCenter;
+                const newY = newPosition.clone().sub(celestialCenter).normalize();
+
+                // 2. Determine the cube's -Z axis ("forward"). It must point towards the player,
+                // but constrained to the local horizontal plane (perpendicular to the "up" vector).
+                const lookDir = player.position.clone().sub(newPosition);
+                const newNegZ = lookDir.projectOnPlane(newY).normalize();
+
+                // 3. Create a full orthonormal basis from these two vectors.
+                const newZ = newNegZ.clone().negate(); // +Z is opposite of "forward"
+                const newX = new THREE.Vector3().crossVectors(newY, newZ); // Y x Z = X (right-handed coordinate system)
+
+                // 4. Create a rotation matrix from the basis vectors and set the cube's quaternion.
+                const rotationMatrix = new THREE.Matrix4();
+                rotationMatrix.makeBasis(newX, newY, newZ);
+                newCube.quaternion.setFromRotationMatrix(rotationMatrix);
+                // --- End of New Orientation Logic ---
+
+
 
                 newCube.userData.materialId = materialIdToBuild; // Store material ID
 
@@ -2193,8 +2215,7 @@
                 player.position.add(player.velocity.clone().multiplyScalar(delta));
 
                 // 4. Collision detection and response (only if not in water)
-                // The original code had this commented out, I will keep it commented.
-                // if (!isInWater) {
+
                 const groundObjects = [marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes);
                 const rayOrigin = player.position.clone().add(playerUp.clone().multiplyScalar(-playerSettings.height * 0.5));
                 raycaster.set(rayOrigin, gravityDirection);
