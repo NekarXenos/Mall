@@ -1,0 +1,2346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voxel Planet Miner - Advanced Materials (Improved Physics)</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+    <!-- Include Simplex Noise library for terrain generation -->
+    <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
+    
+    <!-- Vertex Shader for the Methane Planet's Atmosphere -->
+    <script id="vertexShader" type="x-shader/x-vertex">
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+        void main() {
+            vNormal = normalize(normalMatrix * normal);
+            vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    </script>
+
+    <!-- Fragment Shader for Methane Planet's Rayleigh Scattering -->
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+        
+        uniform vec3 uSunPosition;
+        uniform vec3 uPlanetColor;
+        uniform float uAtmospherePower;
+        uniform float uScatteringPower;
+
+        void main() {
+            vec3 viewDirection = normalize(-vPosition);
+            vec3 lightDirection = normalize(uSunPosition - vPosition);
+
+            float rim = 1.0 - dot(viewDirection, vNormal);
+            rim = pow(rim, uAtmospherePower);
+            rim = smoothstep(0.0, 1.0, rim);
+
+            float diffuse = max(0.0, dot(vNormal, lightDirection));
+
+            float scatterAngle = dot(lightDirection, viewDirection);
+            float scatter = (1.0 + pow(scatterAngle, 2.0)) / 2.0;
+            scatter = pow(scatter, uScatteringPower);
+
+            vec3 atmosphereColor = uPlanetColor * rim * scatter;
+            vec3 surfaceColor = uPlanetColor * diffuse * 0.4;
+
+            gl_FragColor = vec4(surfaceColor + atmosphereColor, 1.0);
+        }
+    </script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        } 
+        #message-box {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1.2em;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 200;
+            color: white;
+            font-size: 2em;
+            cursor: pointer;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin-left: -10px;
+            margin-top: -10px;
+            border: 2px solid white;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.2);
+            z-index: 100;
+        }
+        #mobile-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 0 20px;
+            box-sizing: border-box;
+            z-index: 150;
+            pointer-events: none;
+        }
+        #joystick-area, #action-buttons-area {
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #joystick-base {
+            width: 100px;
+            height: 100px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            touch-action: none;
+        }
+        #joystick-thumb {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            position: absolute;
+            touch-action: none;
+        }
+        .action-button {
+            background-color: #007bff;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2em;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            transition: background-color 0.2s ease-in-out;
+        }
+        .action-button:active {
+            background-color: #0056b3;
+        }
+        #inventory-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            background-color: rgba(31, 41, 55, 0.8);
+            padding: 8px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            z-index: 10;
+        }
+        #inventory-slots {
+            display: flex;
+            gap: 8px;
+            padding: 0 10px;
+        }
+        .inventory-slot {
+            width: 50px;
+            height: 50px;
+            background-color: #374151;
+            border: 2px solid #4B5563;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+            text-transform: capitalize;
+        }
+        .inventory-slot.selected {
+            border-color: #facc15;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(250, 204, 21, 0.5);
+        }
+        .slot-color-preview {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .slot-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: rgba(0,0,0,0.6);
+            text-align: center;
+            padding: 4px 0;
+            z-index: 1;
+        }
+        .slot-name {
+            font-size: 0.65em;
+        }
+        .slot-count {
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .material-switch {
+            background-color: #4B5563;
+            border: none;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            border-radius: 8px;
+            width: 40px;
+            height: 60px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .material-switch:hover {
+            background-color: #6B7280;
+        }
+        #game-info {
+            display: none;
+        }
+        #health-bar-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            transform: none;
+            width: 300px;
+            height: 25px;
+            background-color: rgba(31, 41, 55, 0.8);
+            border-radius: 12px;
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            overflow: hidden;
+            z-index: 100;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: none; /* Initially hidden */
+        }
+
+        #health-bar-fill {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to right, #e11d48, #f43f5e);
+            border-radius: 8px;
+            transition: width 0.2s ease-out;
+        }
+
+        #health-bar-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+        }
+        #damage-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 0, 0, 0.5);
+            z-index: 9999;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s ease-out;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div style="position: absolute; top: 10px; left: 10px; z-index: 999;">
+        <a href="../Arcade.html" style="color: white; text-decoration: none; background-color: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px;">Back to Arcade</a>
+    </div>
+
+    <!-- New Inventory Bar -->
+    <div id="inventory-bar">
+        <div id="inventory-slots">
+            <!-- Slots will be generated by JS -->
+        </div>
+    </div>
+
+    <div id="health-bar-container">
+        <div id="health-bar-fill" style="width:100%;"></div>
+        <span id="health-bar-text">100 / 100</span>
+    </div>
+
+    <div id="damage-overlay"></div>
+
+    <div id="message-box">Click or tap to play!</div>
+    <div id="overlay">Click to start</div>
+    <div id="crosshair"></div>
+
+    <div id="mobile-controls">
+        <div id="joystick-area">
+            <div id="joystick-base">
+                <div id="joystick-thumb"></div>
+            </div>
+        </div>
+        <div id="action-buttons-area">
+            <button id="mine-button" class="action-button">MINE</button>
+            <button id="build-button" class="action-button">BUILD</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+
+        // --- Material Definitions ---
+        const MATERIALS = {
+            // Planet Surface
+            GRASS:     { id: 'grass',     color: new THREE.Color(0x335010), buildable: true },
+            SOIL:      { id: 'soil',      color: new THREE.Color(0x332208), buildable: true },
+            SAND:      { id: 'sand',      color: new THREE.Color(0xD2B48C), buildable: true },
+            ROCK:      { id: 'rock',      color: new THREE.Color(0x222222), buildable: true },
+            // Underwater
+            SEAWEED:   { id: 'seaweed',   color: new THREE.Color(0x2E8B57) }, // Still defined, but won't be used for generation
+            ANEMONE:   { id: 'anemone',   color: new THREE.Color(0x4169E1), buildable: true },
+            // Subsurface
+            LAVA:      { id: 'lava',      color: new THREE.Color(0xFF4500), emissive: new THREE.Color(0xdd3300), buildable: true },
+            // Moon
+            MOON_ROCK: { id: 'moon_rock', color: new THREE.Color(0x8c8c8c), buildable: true },
+            MOON_SAND: { id: 'moon_sand', color: new THREE.Color(0xbebebe), buildable: true },
+            // Methane Moon
+            BROWN_ROCK: { id: 'brown_rock', color: new THREE.Color(0x654321), buildable: true },
+            DARK_ROCK:  { id: 'dark_rock',  color: new THREE.Color(0x4d3319), buildable: true },
+            // Default/Error
+            DEFAULT:   { id: 'default',   color: new THREE.Color(0xff00ff) }
+        };
+
+        // Lookup Tables for Marching Cubes
+         const EdgeVertexIndices = [[0, 1], [1, 3], [3, 2], [2, 0], [4, 5], [5, 7], [7, 6], [6, 4], [0, 4], [1, 5], [3, 7], [2, 6]];
+        const TriangleTable = [[-1], [0, 3, 8, -1], [0, 9, 1, -1], [3, 8, 1, 1, 8, 9, -1], [2, 11, 3, -1], [8, 0, 11, 11, 0, 2, -1], [3, 2, 11, 1, 0, 9, -1], [11, 1, 2, 11, 9, 1, 11, 8, 9, -1], [1, 10, 2, -1], [0, 3, 8, 2, 1, 10, -1], [10, 2, 9, 9, 2, 0, -1], [8, 2, 3, 8, 10, 2, 8, 9, 10, -1], [11, 3, 10, 10, 3, 1, -1], [10, 0, 1, 10, 8, 0, 10, 11, 8, -1], [9, 3, 0, 9, 11, 3, 9, 10, 11, -1], [8, 9, 11, 11, 9, 10, -1], [4, 8, 7, -1], [7, 4, 3, 3, 4, 0, -1], [4, 8, 7, 0, 9, 1, -1], [1, 4, 9, 1, 7, 4, 1, 3, 7, -1], [8, 7, 4, 11, 3, 2, -1], [4, 11, 7, 4, 2, 11, 4, 0, 2, -1], [0, 9, 1, 8, 7, 4, 11, 3, 2, -1], [7, 4, 11, 11, 4, 2, 2, 4, 9, 2, 9, 1, -1], [4, 8, 7, 2, 1, 10, -1], [7, 4, 3, 3, 4, 0, 10, 2, 1, -1], [10, 2, 9, 9, 2, 0, 7, 4, 8, -1], [10, 2, 3, 10, 3, 4, 3, 7, 4, 9, 10, 4, -1], [1, 10, 3, 3, 10, 11, 4, 8, 7, -1], [10, 11, 1, 11, 7, 4, 1, 11, 4, 1, 4, 0, -1], [7, 4, 8, 9, 3, 0, 9, 11, 3, 9, 10, 11, -1], [7, 4, 11, 4, 9, 11, 9, 10, 11, -1], [9, 4, 5, -1], [9, 4, 5, 8, 0, 3, -1], [4, 5, 0, 0, 5, 1, -1], [5, 8, 4, 5, 3, 8, 5, 1, 3, -1], [9, 4, 5, 11, 3, 2, -1], [2, 11, 0, 0, 11, 8, 5, 9, 4, -1], [4, 5, 0, 0, 5, 1, 11, 3, 2, -1], [5, 1, 4, 1, 2, 11, 4, 1, 11, 4, 11, 8, -1], [1, 10, 2, 5, 9, 4, -1], [9, 4, 5, 0, 3, 8, 2, 1, 10, -1], [2, 5, 10, 2, 4, 5, 2, 0, 4, -1], [10, 2, 5, 5, 2, 4, 4, 2, 3, 4, 3, 8, -1], [11, 3, 10, 10, 3, 1, 4, 5, 9, -1], [4, 5, 9, 10, 0, 1, 10, 8, 0, 10, 11, 8, -1], [11, 3, 0, 11, 0, 5, 0, 4, 5, 10, 11, 5, -1], [4, 5, 8, 5, 10, 8, 10, 11, 8, -1], [8, 7, 9, 9, 7, 5, -1], [3, 9, 0, 3, 5, 9, 3, 7, 5, -1], [7, 0, 8, 7, 1, 0, 7, 5, 1, -1], [7, 5, 3, 3, 5, 1, -1], [5, 9, 7, 7, 9, 8, 2, 11, 3, -1], [2, 11, 7, 2, 7, 9, 7, 5, 9, 0, 2, 9, -1], [2, 11, 3, 7, 0, 8, 7, 1, 0, 7, 5, 1, -1], [2, 11, 1, 11, 7, 1, 7, 5, 1, -1], [8, 7, 9, 9, 7, 5, 2, 1, 10, -1], [10, 2, 1, 3, 9, 0, 3, 5, 9, 3, 7, 5, -1], [7, 5, 8, 5, 10, 2, 8, 5, 2, 8, 2, 0, -1], [10, 2, 5, 2, 3, 5, 3, 7, 5, -1], [8, 7, 5, 8, 5, 9, 11, 3, 10, 3, 1, 10, -1], [5, 11, 7, 10, 11, 5, 1, 9, 0, -1], [11, 5, 10, 7, 5, 11, 8, 3, 0, -1], [5, 11, 7, 10, 11, 5, -1], [6, 7, 11, -1], [7, 11, 6, 3, 8, 0, -1], [6, 7, 11, 0, 9, 1, -1], [9, 1, 8, 8, 1, 3, 6, 7, 11, -1], [3, 2, 7, 7, 2, 6, -1], [0, 7, 8, 0, 6, 7, 0, 2, 6, -1], [6, 7, 2, 2, 7, 3, 9, 1, 0, -1], [6, 7, 8, 6, 8, 1, 8, 9, 1, 2, 6, 1, -1], [11, 6, 7, 10, 2, 1, -1], [3, 8, 0, 11, 6, 7, 10, 2, 1, -1], [0, 9, 2, 2, 9, 10, 7, 11, 6, -1], [6, 7, 11, 8, 2, 3, 8, 10, 2, 8, 9, 10, -1], [7, 10, 6, 7, 1, 10, 7, 3, 1, -1], [8, 0, 7, 7, 0, 6, 6, 0, 1, 6, 1, 10, -1], [7, 3, 6, 3, 0, 9, 6, 3, 9, 6, 9, 10, -1], [6, 7, 10, 7, 8, 10, 8, 9, 10, -1], [11, 6, 8, 8, 6, 4, -1], [6, 3, 11, 6, 0, 3, 6, 4, 0, -1], [11, 6, 8, 8, 6, 4, 1, 0, 9, -1], [1, 3, 9, 3, 11, 6, 9, 3, 6, 9, 6, 4, -1], [2, 8, 3, 2, 4, 8, 2, 6, 4, -1], [4, 0, 6, 6, 0, 2, -1], [9, 1, 0, 2, 8, 3, 2, 4, 8, 2, 6, 4, -1], [9, 1, 4, 1, 2, 4, 2, 6, 4, -1], [4, 8, 6, 6, 8, 11, 1, 10, 2, -1], [1, 10, 2, 6, 3, 11, 6, 0, 3, 6, 4, 0, -1], [11, 6, 4, 11, 4, 8, 10, 2, 9, 2, 0, 9, -1], [10, 4, 9, 6, 4, 10, 11, 2, 3, -1], [4, 8, 3, 4, 3, 10, 3, 1, 10, 6, 4, 10, -1], [1, 10, 0, 10, 6, 0, 6, 4, 0, -1], [4, 10, 6, 9, 10, 4, 0, 8, 3, -1], [4, 10, 6, 9, 10, 4, -1], [6, 7, 11, 4, 5, 9, -1], [4, 5, 9, 7, 11, 6, 3, 8, 0, -1], [1, 0, 5, 5, 0, 4, 11, 6, 7, -1], [11, 6, 7, 5, 8, 4, 5, 3, 8, 5, 1, 3, -1], [3, 2, 7, 7, 2, 6, 9, 4, 5, -1], [5, 9, 4, 0, 7, 8, 0, 6, 7, 0, 2, 6, -1], [3, 2, 6, 3, 6, 7, 1, 0, 5, 0, 4, 5, -1], [6, 1, 2, 5, 1, 6, 4, 7, 8, -1], [10, 2, 1, 6, 7, 11, 4, 5, 9, -1], [0, 3, 8, 4, 5, 9, 11, 6, 7, 10, 2, 1, -1], [7, 11, 6, 2, 5, 10, 2, 4, 5, 2, 0, 4, -1], [8, 4, 7, 5, 10, 6, 3, 11, 2, -1], [9, 4, 5, 7, 10, 6, 7, 1, 10, 7, 3, 1, -1], [10, 6, 5, 7, 8, 4, 1, 9, 0, -1], [4, 3, 0, 7, 3, 4, 6, 5, 10, -1], [10, 6, 5, 8, 4, 7, -1], [9, 6, 5, 9, 11, 6, 9, 8, 11, -1], [11, 6, 3, 3, 6, 0, 0, 6, 5, 0, 5, 9, -1], [11, 6, 5, 11, 5, 0, 5, 1, 0, 8, 11, 0, -1], [11, 6, 3, 6, 5, 3, 5, 1, 3, -1], [9, 8, 5, 8, 3, 2, 5, 8, 2, 6, 5, 2, -1], [5, 9, 6, 9, 0, 6, 0, 2, 6, -1], [1, 6, 5, 2, 6, 1, 3, 0, 8, -1], [1, 6, 5, 2, 6, 1, -1], [2, 1, 10, 9, 6, 5, 9, 11, 6, 9, 8, 11, -1], [9, 0, 1, 3, 11, 2, 5, 10, 6, -1], [11, 0, 8, 2, 0, 11, 10, 6, 5, -1], [3, 11, 2, 5, 10, 6, -1], [1, 8, 3, 9, 8, 1, 5, 10, 6, -1], [6, 5, 10, 0, 1, 9, -1], [8, 3, 0, 5, 10, 6, -1], [6, 5, 10, -1], [10, 5, 6, -1], [0, 3, 8, 6, 10, 5, -1], [10, 5, 6, 9, 1, 0, -1], [3, 8, 1, 1, 8, 9, 6, 10, 5, -1], [2, 11, 3, 6, 10, 5, -1], [8, 0, 11, 11, 0, 2, 5, 6, 10, -1], [1, 0, 9, 2, 11, 3, 6, 10, 5, -1], [5, 6, 10, 11, 1, 2, 11, 9, 1, 11, 8, 9, -1], [5, 6, 1, 1, 6, 2, -1], [5, 6, 1, 1, 6, 2, 8, 0, 3, -1], [6, 9, 5, 6, 0, 9, 6, 2, 0, -1], [6, 2, 5, 2, 3, 8, 5, 2, 8, 5, 8, 9, -1], [3, 6, 11, 3, 5, 6, 3, 1, 5, -1], [8, 0, 1, 8, 1, 6, 1, 5, 6, 11, 8, 6, -1], [11, 3, 6, 6, 3, 5, 5, 3, 0, 5, 0, 9, -1], [5, 6, 9, 6, 11, 9, 11, 8, 9, -1], [5, 6, 10, 7, 4, 8, -1], [0, 3, 4, 4, 3, 7, 10, 5, 6, -1], [5, 6, 10, 4, 8, 7, 0, 9, 1, -1], [6, 10, 5, 1, 4, 9, 1, 7, 4, 1, 3, 7, -1], [7, 4, 8, 6, 10, 5, 2, 11, 3, -1], [10, 5, 6, 4, 11, 7, 4, 2, 11, 4, 0, 2, -1], [4, 8, 7, 6, 10, 5, 3, 2, 11, 1, 0, 9, -1], [1, 2, 10, 11, 7, 6, 9, 5, 4, -1], [2, 1, 6, 6, 1, 5, 8, 7, 4, -1], [0, 3, 7, 0, 7, 4, 2, 1, 6, 1, 5, 6, -1], [8, 7, 4, 6, 9, 5, 6, 0, 9, 6, 2, 0, -1], [7, 2, 3, 6, 2, 7, 5, 4, 9, -1], [4, 8, 7, 3, 6, 11, 3, 5, 6, 3, 1, 5, -1], [5, 0, 1, 4, 0, 5, 7, 6, 11, -1], [9, 5, 4, 6, 11, 7, 0, 8, 3, -1], [11, 7, 6, 9, 5, 4, -1], [6, 10, 4, 4, 10, 9, -1], [6, 10, 4, 4, 10, 9, 3, 8, 0, -1], [0, 10, 1, 0, 6, 10, 0, 4, 6, -1], [6, 10, 1, 6, 1, 8, 1, 3, 8, 4, 6, 8, -1], [9, 4, 10, 10, 4, 6, 3, 2, 11, -1], [2, 11, 8, 2, 8, 0, 6, 10, 4, 10, 9, 4, -1], [11, 3, 2, 0, 10, 1, 0, 6, 10, 0, 4, 6, -1], [6, 8, 4, 11, 8, 6, 2, 10, 1, -1], [4, 1, 9, 4, 2, 1, 4, 6, 2, -1], [3, 8, 0, 4, 1, 9, 4, 2, 1, 4, 6, 2, -1], [6, 2, 4, 4, 2, 0, -1], [3, 8, 2, 8, 4, 2, 4, 6, 2, -1], [4, 6, 9, 6, 11, 3, 9, 6, 3, 9, 3, 1, -1], [8, 6, 11, 4, 6, 8, 9, 0, 1, -1], [11, 3, 6, 3, 0, 6, 0, 4, 6, -1], [8, 6, 11, 4, 6, 8, -1], [10, 7, 6, 10, 8, 7, 10, 9, 8, -1], [3, 7, 0, 7, 6, 10, 0, 7, 10, 0, 10, 9, -1], [6, 10, 7, 7, 10, 8, 8, 10, 1, 8, 1, 0, -1], [6, 10, 7, 10, 1, 7, 1, 3, 7, -1], [3, 2, 11, 10, 7, 6, 10, 8, 7, 10, 9, 8, -1], [9, 2, 10, 0, 2, 9, 8, 4, 7, -1], [0, 8, 3, 7, 6, 11, 1, 2, 10, -1], [7, 6, 11, 1, 2, 10, -1], [2, 1, 9, 2, 9, 7, 9, 8, 7, 6, 2, 7, -1], [2, 7, 6, 3, 7, 2, 0, 1, 9, -1], [8, 7, 0, 7, 6, 0, 6, 2, 0, -1], [7, 2, 3, 6, 2, 7, -1], [8, 1, 9, 3, 1, 8, 11, 7, 6, -1], [11, 7, 6, 1, 9, 0, -1], [6, 11, 7, 0, 8, 3, -1], [11, 7, 6, -1], [7, 11, 5, 5, 11, 10, -1], [10, 5, 11, 11, 5, 7, 0, 3, 8, -1], [7, 11, 5, 5, 11, 10, 0, 9, 1, -1], [7, 11, 10, 7, 10, 5, 3, 8, 1, 8, 9, 1, -1], [5, 2, 10, 5, 3, 2, 5, 7, 3, -1], [5, 7, 10, 7, 8, 0, 10, 7, 0, 10, 0, 2, -1], [0, 9, 1, 5, 2, 10, 5, 3, 2, 5, 7, 3, -1], [9, 7, 8, 5, 7, 9, 10, 1, 2, -1], [1, 11, 2, 1, 7, 11, 1, 5, 7, -1], [8, 0, 3, 1, 11, 2, 1, 7, 11, 1, 5, 7, -1], [7, 11, 2, 7, 2, 9, 2, 0, 9, 5, 7, 9, -1], [7, 9, 5, 8, 9, 7, 3, 11, 2, -1], [3, 1, 7, 7, 1, 5, -1], [8, 0, 7, 0, 1, 7, 1, 5, 7, -1], [0, 9, 3, 9, 5, 3, 5, 7, 3, -1], [9, 7, 8, 5, 7, 9, -1], [8, 5, 4, 8, 10, 5, 8, 11, 10, -1], [0, 3, 11, 0, 11, 5, 11, 10, 5, 4, 0, 5, -1], [1, 0, 9, 8, 5, 4, 8, 10, 5, 8, 11, 10, -1], [10, 3, 11, 1, 3, 10, 9, 5, 4, -1], [3, 2, 8, 8, 2, 4, 4, 2, 10, 4, 10, 5, -1], [10, 5, 2, 5, 4, 2, 4, 0, 2, -1], [5, 4, 9, 8, 3, 0, 10, 1, 2, -1], [2, 10, 1, 4, 9, 5, -1], [8, 11, 4, 11, 2, 1, 4, 11, 1, 4, 1, 5, -1], [0, 5, 4, 1, 5, 0, 2, 3, 11, -1], [0, 11, 2, 8, 11, 0, 4, 9, 5, -1], [5, 4, 9, 2, 3, 11, -1], [4, 8, 5, 8, 3, 5, 3, 1, 5, -1], [0, 5, 4, 1, 5, 0, -1], [5, 4, 9, 3, 0, 8, -1], [5, 4, 9, -1], [11, 4, 7, 11, 9, 4, 11, 10, 9, -1], [0, 3, 8, 11, 4, 7, 11, 9, 4, 11, 10, 9, -1], [11, 10, 7, 10, 1, 0, 7, 10, 0, 7, 0, 4, -1], [3, 10, 1, 11, 10, 3, 7, 8, 4, -1], [3, 2, 10, 3, 10, 4, 10, 9, 4, 7, 3, 4, -1], [9, 2, 10, 0, 2, 9, 8, 4, 7, -1], [3, 4, 7, 0, 4, 3, 1, 2, 10, -1], [7, 8, 4, 10, 1, 2, -1], [7, 11, 4, 4, 11, 9, 9, 11, 2, 9, 2, 1, -1], [1, 9, 0, 4, 7, 8, 2, 3, 11, -1], [7, 11, 4, 11, 2, 4, 2, 0, 4, -1], [4, 7, 8, 2, 3, 11, -1], [9, 4, 1, 4, 7, 1, 7, 3, 1, -1], [7, 8, 4, 1, 9, 0, -1], [3, 4, 7, 0, 4, 3, -1], [7, 8, 4, -1], [11, 10, 8, 8, 10, 9, -1], [0, 3, 9, 3, 11, 9, 11, 10, 9, -1], [1, 0, 10, 0, 8, 10, 8, 11, 10, -1], [10, 3, 11, 1, 3, 10, -1], [3, 2, 8, 2, 10, 8, 10, 9, 8, -1], [9, 2, 10, 0, 2, 9, -1], [8, 3, 0, 10, 1, 2, -1], [2, 10, 1, -1], [2, 1, 11, 1, 9, 11, 9, 8, 11, -1], [11, 2, 3, 9, 0, 1, -1], [11, 0, 8, 2, 0, 11, -1], [3, 11, 2, -1], [1, 8, 3, 9, 8, 1, -1], [1, 9, 0, -1], [8, 3, 0, -1], [-1]];
+
+        // Marching Cubes utility function
+        function generateMarchingCubesGeometry(grid, threshold, gridSize, blockSize, centerOffset = new THREE.Vector3(0,0,0)) {
+            const vertices = [];
+            const indices = [];
+            const resolution = gridSize;
+
+            // Function to get interpolated vertex position
+            function interpolateVertex(p1, p2, val1, val2, threshold) {
+                const mu = (threshold - val1) / (val2 - val1);
+                return new THREE.Vector3(
+                    p1.x + mu * (p2.x - p1.x),
+                    p1.y + mu * (p2.y - p1.y),
+                    p1.z + mu * (p2.z - p1.z)
+                );
+            }
+
+            for (let x = 0; x < resolution - 1; x++) {
+                for (let y = 0; y < resolution - 1; y++) {
+                    for (let z = 0; z < resolution - 1; z++) {
+                        const cubeValues = new Array(8);
+                        const cubeCorners = new Array(8);
+                        let cubeIndex = 0;
+
+                        for (let i = 0; i < 8; i++) {
+                            const x_offset = (i & 1);
+                            const y_offset = (i & 2) >> 1;
+                            const z_offset = (i & 4) >> 2;
+                            const gx = x + x_offset, gy = y + y_offset, gz = z + z_offset;
+                            cubeValues[i] = grid[gx][gy][gz];
+                            cubeCorners[i] = new THREE.Vector3(
+                                (gx - gridSize / 2 + 0.5) * blockSize,
+                                (gy - gridSize / 2 + 0.5) * blockSize,
+                                (gz - gridSize / 2 + 0.5) * blockSize
+                            );
+                            if (cubeValues[i] < threshold) cubeIndex |= (1 << i);
+                        }
+
+                        const triangles = TriangleTable[cubeIndex];
+                        if (triangles[0] === -1) continue;
+
+                        for (let i = 0; triangles[i] !== -1; i += 3) {
+                            const edge1Index = triangles[i], edge2Index = triangles[i+1], edge3Index = triangles[i+2];
+                            const v1a_idx = EdgeVertexIndices[edge1Index][0], v1b_idx = EdgeVertexIndices[edge1Index][1];
+                            const v2a_idx = EdgeVertexIndices[edge2Index][0], v2b_idx = EdgeVertexIndices[edge2Index][1];
+                            const v3a_idx = EdgeVertexIndices[edge3Index][0], v3b_idx = EdgeVertexIndices[edge3Index][1];
+
+                            const p1 = interpolateVertex(cubeCorners[v1a_idx], cubeCorners[v1b_idx], cubeValues[v1a_idx], cubeValues[v1b_idx], threshold);
+                            const p2 = interpolateVertex(cubeCorners[v2a_idx], cubeCorners[v2b_idx], cubeValues[v2a_idx], cubeValues[v2b_idx], threshold);
+                            const p3 = interpolateVertex(cubeCorners[v3a_idx], cubeCorners[v3b_idx], cubeValues[v3a_idx], cubeValues[v3b_idx], threshold);
+                            
+                            // --- FIX FOR VISUAL HOLES ---
+                            // This section ensures all triangles have a consistent "winding order" so they face the correct direction.
+                            // Since the terrain material uses THREE.BackSide, all triangle normals must point INWARD.
+                            
+                            // 1. Calculate the normal of the generated triangle to see which way it's facing.
+                            const cb = new THREE.Vector3().subVectors(p3, p2);
+                            const ab = new THREE.Vector3().subVectors(p1, p2);
+                            const normal = new THREE.Vector3().crossVectors(cb, ab); // No need to normalize for a dot product check
+
+                            // 2. Get a vector from the celestial body's center to the triangle's center.
+                            const triCenter = new THREE.Vector3().add(p1).add(p2).add(p3).multiplyScalar(1/3);
+                            const centerToTri = triCenter.clone().sub(centerOffset);
+
+                            // 3. Add the vertices to the buffer.
+                            const currentVertexCount = vertices.length / 3;
+                            vertices.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z, p3.x, p3.y, p3.z);
+
+                            // 4. Check if the normal is pointing outwards (dot product > 0). If so, reverse the triangle winding in the index buffer.
+                            /* if (normal.dot(centerToTri) > 0) {
+                                // This triangle is facing the wrong way (outwards), so we add its indices in a reversed order to "flip" it.
+                                indices.push(currentVertexCount, currentVertexCount + 2, currentVertexCount + 1);
+                            } else { */
+                                // This triangle is facing the correct way (inwards).
+                                indices.push(currentVertexCount, currentVertexCount + 1, currentVertexCount + 2);
+                            //}
+                        }
+                    }
+                }
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            if (vertices.length > 0) {
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                geometry.setIndex(indices);
+                // computeVertexNormals calculates smooth normals based on the corrected triangle winding, fixing lighting issues.
+                geometry.computeVertexNormals(); 
+            }
+            return geometry;
+        }
+
+        // Set up basic Three.js scene components
+        let scene, camera, renderer, raycaster;
+        let marchingCubesMesh, marchingCubesMeshMoon;
+        let waterMesh;
+        let torchLight; // Global variable for the torch spotlight
+
+        // --- Methane Planet System ---
+        let methanePlanet, methaneRings, methaneMoon, methanePlanetPivot;
+        let methaneMoonVoxelData = [];
+        let methaneMoonPosition = new THREE.Vector3();
+        let methaneMoonRelativePosition = new THREE.Vector3(); // For stable orbit calculation
+        let methaneMoonCubeParent;
+
+        // --- Inventory & Building ---
+        let inventory = {};
+        const buildableMaterials = [];
+        let selectedMaterialIndex = 0;
+        let cubes = [];
+        let cubeParent, moonCubeParent;
+        let moonRotation = new THREE.Quaternion();
+        const builtCubeMaterials = {};
+
+        // --- Grass Instancing & LOD ---
+        let grassLODs = []; // Will hold our InstancedMesh objects
+        const GRASS_LOD_DISTANCES = [50, 100, 150]; // Distances for LOD switching
+        const GRASS_LOD_BLADES = [3, 2, 1]; // Blades per patch for each LOD
+        const MAX_GRASS_PER_LOD = 20000; // Max instances per LOD mesh
+        let voxelToGrassMap = new Map(); // Maps voxel coords to instance index
+
+        let anemoneLODs = [];
+        let voxelToAnemoneMap = new Map();
+
+        // --- Player, Camera, and Controls ---
+        let player;
+        const clock = new THREE.Clock();
+        const thirdPersonCameraOffset = new THREE.Vector3(0, 3, 8);
+        let isFirstPersonView = true;
+        const playerSettings = {
+            height: 2,
+            speed: 5.0,
+            gravityStrength: 0.1,
+            jumpStrength: 5,
+            sensitivity: 0.002,
+            maxHealth: 100
+        };
+        const planetCenter = new THREE.Vector3(0, 0, 0);
+        let dominantBodyPosition = planetCenter;
+        const keys = { w: false, a: false, s: false, d: false, space: false, c: false, ctrl: false, arrowLeft: false, arrowRight: false };
+        let isLocked = false;
+
+        // --- Particle Systems ---
+        let bubbleParticles = [];
+        let splashParticles = [];
+        let lastBubbleTime = 0;
+        let lastSplashTime = 0;
+        let wasInWater = false;
+
+        // Mobile control variables
+        let mobileJoystickTouchId = -1;
+        let joystickCenter = new THREE.Vector2();
+        const joystickRadius = 50;
+        const joystickBase = document.getElementById('joystick-base');
+        const joystickThumb = document.getElementById('joystick-thumb');
+        const mineButton = document.getElementById('mine-button');
+        const buildButton = document.getElementById('build-button');
+        const mobileControls = document.getElementById('mobile-controls');
+
+        // Voxel grid properties
+        const GRID_SIZE = 100;
+        const BLOCK_SIZE = 1;
+        const PLANET_RADIUS_FACTOR = 0.8;
+        const ISO_LEVEL = 0.5;
+        const PLANET_RADIUS = GRID_SIZE / 2 * BLOCK_SIZE * PLANET_RADIUS_FACTOR;
+        const WATER_LEVEL_OFFSET = -10;
+
+        // Moon properties
+        const GRID_SIZE_MOON = 20;
+        const MOON_RADIUS_FACTOR = 0.9;
+        const MOON_ORBIT_DISTANCE = GRID_SIZE * BLOCK_SIZE * 0.75;
+        const MOON_RADIUS = GRID_SIZE_MOON / 2 * BLOCK_SIZE * MOON_RADIUS_FACTOR;
+
+        // Methane Planet System Properties
+        const METHANE_PLANET_ORBIT_DISTANCE = MOON_ORBIT_DISTANCE * 5; // 375
+        const METHANE_PLANET_RADIUS = 60;
+        const GRID_SIZE_METHANE_MOON = 30;
+        const METHANE_MOON_RADIUS_FACTOR = 0.9;
+        const METHANE_MOON_ORBIT_DISTANCE = METHANE_PLANET_RADIUS * 2; // 120
+        const METHANE_MOON_RADIUS = GRID_SIZE_METHANE_MOON / 2 * BLOCK_SIZE * METHANE_MOON_RADIUS_FACTOR;
+
+
+        let voxelData = [], voxelDataMoon = [];
+        let moonPosition = new THREE.Vector3();
+        const simplex = new SimplexNoise();
+
+        // Noise parameters
+        const initialNoiseScale = 0.02, noiseStrength = 0.5, octaves = 6, lacunarity = 2.0, persistence = 0.5;
+
+        // DOM Elements
+        const overlay = document.getElementById('overlay');
+        const messageBox = document.getElementById('message-box');
+        let canvas;
+
+        /**
+         * Determines the material type for the main planet and its original moon.
+         */
+        function getMaterialAtPoint(worldPoint, surfaceNormal, onMoon = false) {
+            const center = onMoon ? moonPosition : planetCenter;
+            const radius = onMoon ? MOON_RADIUS : PLANET_RADIUS;
+            const waterRadius = PLANET_RADIUS + WATER_LEVEL_OFFSET;
+
+            let terrainNoise;
+            if (onMoon) {
+                const localPoint = worldPoint.clone().sub(moonPosition);
+                terrainNoise = getRidgedMultifractalNoise(localPoint.x, localPoint.y, localPoint.z, simplex, 0.05, 0.3, 5, 2.2, 0.4);
+            } else {
+                terrainNoise = getRidgedMultifractalNoise(worldPoint.x, worldPoint.y, worldPoint.z, simplex, initialNoiseScale, noiseStrength, octaves, lacunarity, persistence);
+            }
+
+            const distSurface = (1.0 + terrainNoise - ISO_LEVEL) * radius;
+            const distCenter = worldPoint.distanceTo(center);
+            const depth = distSurface - distCenter;
+
+            if (onMoon) {
+                if (depth > 7) return MATERIALS.LAVA;
+                if (depth > 2) return MATERIALS.MOON_ROCK;
+                if (depth >= 0) return MATERIALS.MOON_SAND;
+            } else {
+                if (depth > 15) return MATERIALS.LAVA;
+                if (depth > 3) return MATERIALS.ROCK;
+                if (depth >= 0) return MATERIALS.SOIL;
+            }
+
+            const upVector = worldPoint.clone().sub(center).normalize();
+            const slope = 1.0 - Math.abs(surfaceNormal.dot(upVector));
+
+            if (onMoon) {
+                return slope > 0.4 ? MATERIALS.MOON_ROCK : MATERIALS.MOON_SAND;
+            }
+
+            const heightAboveWater = distCenter - waterRadius;
+            const isVertical = slope > 0.7;
+            const isSteep = slope > 0.3;
+
+            if (isVertical || isSteep) {
+                return MATERIALS.ROCK;
+            }
+
+            if (heightAboveWater < -1.0) {
+                const underwaterPattern = simplex.noise3D(worldPoint.x * 2, worldPoint.y * 2, worldPoint.z * 2);
+                if (underwaterPattern < -0.3 || underwaterPattern > 0.3) return MATERIALS.ANEMONE;
+                return MATERIALS.SAND;
+            }
+
+            if (Math.abs(heightAboveWater) <= 1.0) {
+                return MATERIALS.SAND;
+            }
+
+            if (heightAboveWater > 1.0) {
+                return MATERIALS.GRASS;
+            }
+
+            return MATERIALS.SOIL;
+        }
+
+        /**
+         * Determines the material type for the new methane moon.
+         */
+        function getMethaneMoonMaterialAtPoint(worldPoint, surfaceNormal) {
+            const center = methaneMoonPosition; // Use the global position vector of the methane moon
+            const upVector = worldPoint.clone().sub(center).normalize();
+            const slope = 1.0 - Math.abs(surfaceNormal.dot(upVector));
+            const depthNoise = simplex.noise3D(worldPoint.x * 0.1, worldPoint.y * 0.1, worldPoint.z * 0.1);
+
+            if (slope > 0.5 || depthNoise > 0.3) {
+                return MATERIALS.DARK_ROCK;
+            }
+            return MATERIALS.BROWN_ROCK;
+        }
+
+
+        function getRidgedMultifractalNoise(x, y, z, noiseGenerator, scale, strength, numOctaves, lac, pers) {
+            let totalNoise = 0, amplitude = 1, frequency = scale, maxAmplitudeSum = 0;
+            for (let i = 0; i < numOctaves; i++) {
+                let n = 1.0 - Math.abs(noiseGenerator.noise3D(x * frequency, y * frequency, z * frequency));
+                n *= n;
+                totalNoise += n * amplitude;
+                maxAmplitudeSum += amplitude;
+                amplitude *= pers;
+                frequency *= lac;
+            }
+            return (totalNoise / maxAmplitudeSum) * strength;
+        }
+
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            scene.fog = new THREE.Fog(0x1a1a2e, 10, 150);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            canvas = renderer.domElement;
+
+            const ambientLight = new THREE.AmbientLight(0xcccccc, 0.8);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(50, 50, 50);
+            scene.add(directionalLight);
+
+            const sunGeometry = new THREE.SphereGeometry(20, 32, 32);
+            const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffffee, fog: false });
+            const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            sun.position.copy(directionalLight.position).normalize().multiplyScalar(500);
+            scene.add(sun);
+
+            const sunGlowVertexShader = `
+                uniform float pointSize;
+                void main() {
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    gl_PointSize = pointSize;
+                }
+            `;
+
+            const sunGlowFragmentShader = `
+                uniform vec3 glowColor;
+                void main() {
+                    vec2 coord = gl_PointCoord - vec2(0.5);
+                    float d = length(coord);
+                    if (d > 0.5) discard;
+                    vec3 white = vec3(1.0);
+                    vec3 starColor = glowColor;
+                    vec3 finalColor;
+                    float alpha;
+                    if (d <= 0.05) {
+                        float t = d / 0.05;
+                        finalColor = mix(white, starColor, t);
+                        alpha = 1.0;
+                    } else if (d <= 0.25) {
+                        float t = (d - 0.05) / 0.20;
+                        alpha = 1.0 - t * 0.5;
+                        finalColor = starColor;
+                    } else {
+                        float t = (d - 0.25) / 0.25;
+                        alpha = 0.5 - t * 0.5;
+                        finalColor = starColor;
+                    }
+                    gl_FragColor = vec4(finalColor, alpha);
+                }
+            `;
+
+            const glowGeometry = new THREE.BufferGeometry();
+            glowGeometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3));
+
+            const glowMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    pointSize: { value: 100 },
+                    glowColor: { value: new THREE.Color(0xffd2a1) }
+                },
+                vertexShader: sunGlowVertexShader,
+                fragmentShader: sunGlowFragmentShader,
+                blending: THREE.AdditiveBlending,
+                transparent: true,
+                depthTest: true
+            });
+
+            const sunGlow = new THREE.Points(glowGeometry, glowMaterial);
+            sun.add(sunGlow);
+
+            torchLight = new THREE.SpotLight(0xffffff, 0, 50, Math.PI / 6, 0.5, 2);
+            torchLight.castShadow = true;
+            scene.add(torchLight);
+            torchLight.target = new THREE.Object3D();
+            scene.add(torchLight.target);
+
+            raycaster = new THREE.Raycaster();
+
+            for (const key in MATERIALS) {
+                const mat = MATERIALS[key];
+                if (mat.buildable) {
+                    inventory[mat.id] = 0;
+                    buildableMaterials.push(mat.id);
+                    const materialOptions = { color: mat.color, roughness: 0.8 };
+                    if (mat.emissive) {
+                        materialOptions.emissive = mat.emissive;
+                        materialOptions.emissiveIntensity = 1.0;
+                    }
+                    builtCubeMaterials[mat.id] = new THREE.MeshStandardMaterial(materialOptions);
+                }
+            }
+
+            setupFoliage();
+
+            generatePlanet();
+            generateMoon();
+            createMethanePlanet();
+            generateMethaneMoon();
+            createWaterLayer();
+
+            cubeParent = new THREE.Group();
+            scene.add(cubeParent);
+
+            moonCubeParent = new THREE.Group();
+            scene.add(moonCubeParent);
+            
+            methaneMoonCubeParent = new THREE.Group();
+            scene.add(methaneMoonCubeParent);
+            
+            createPlayer();
+            setupEventListeners();
+            setupInventoryUI();
+
+            if (isMobileDevice()) {
+                mobileControls.style.display = 'flex';
+                setupMobileControls();
+                messageBox.textContent = "Tap joystick to move, drag right side to look, tap buttons to interact!";
+            } else {
+                mobileControls.style.display = 'none';
+                messageBox.textContent = "WASD: Move, Space: Jump, Mouse: Look, Click: Interact, Arrow Keys or 1-9: Switch Material, L: Teleport, T: Toggle Torch";
+            }
+        }
+        
+        function setupEventListeners() {
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            document.addEventListener('pointerlockchange', onPointerLockChange);
+            
+            overlay.addEventListener('click', () => {
+                const request = canvas.requestPointerLock();
+                if (request && typeof request.catch === 'function') {
+                    request.catch(err => {
+                        console.warn("Pointer lock request was cancelled or failed.", err);
+                    });
+                }
+            });
+
+            document.addEventListener('mousedown', onMouseDownDesktop);
+            document.addEventListener('contextmenu', (e) => e.preventDefault());
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function createWaterLayer() {
+            const waterGeometry = new THREE.SphereGeometry(PLANET_RADIUS + WATER_LEVEL_OFFSET, 64, 64);
+            const waterMaterial = new THREE.MeshStandardMaterial({
+                color: 0x0077ff,
+                transparent: true,
+                opacity: 0.7,
+                roughness: 0.1,
+                metalness: 0.9,
+                side: THREE.DoubleSide
+            });
+            waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+            waterMesh.position.copy(planetCenter);
+            scene.add(waterMesh);
+        }
+
+        function createPlayer() {
+            player = new THREE.Group();
+            player.velocity = new THREE.Vector3();
+            player.onGround = false;
+            player.health = playerSettings.maxHealth;
+            player.lastDamageTime = 0;
+
+            const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x5588ff });
+            player.body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            player.body.castShadow = true;
+            player.body.position.y = -0.3;
+            player.add(player.body);
+
+            const headGeometry = new THREE.DodecahedronGeometry(0.5, 0);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffccaa });
+            player.head = new THREE.Mesh(headGeometry, headMaterial);
+            player.head.castShadow = true;
+            player.head.position.y = 0.8;
+            player.add(player.head);
+
+            player.position.set(0, PLANET_RADIUS + playerSettings.height, 0);
+            
+            const initialUp = player.position.clone().normalize();
+            player.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), initialUp);
+            scene.add(player);
+        }
+
+        function onMouseDownDesktop(event) {
+            if (!isLocked) return;
+            event.preventDefault();
+            if (event.button === 0) mineBlockAtCrosshair();
+            else if (event.button === 1) firePowerLaser();
+            else if (event.button === 2) placeBlockAtCrosshair();
+        }
+
+        function createGrassPatchGeometry(bladeCount) {
+            const patchGeometry = new THREE.BufferGeometry();
+            const vertices = [];
+
+            for (let i = 0; i < bladeCount; i++) {
+                const baseWidth = 0.01;
+                const height = THREE.MathUtils.randFloat(0.1, 0.5);
+                const horizontalOffset = THREE.MathUtils.randFloat(0.05, 0.1);
+
+                const angle = Math.random() * Math.PI * 2;
+                const offsetX = Math.cos(angle) * horizontalOffset;
+                const offsetZ = Math.sin(angle) * horizontalOffset;
+
+                const v1 = new THREE.Vector3(offsetX - baseWidth / 2, 0, offsetZ);
+                const v2 = new THREE.Vector3(offsetX + baseWidth / 2, 0, offsetZ);
+                const v3 = new THREE.Vector3(offsetX, height, offsetZ);
+
+                vertices.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, v3.x, v3.y, v3.z);
+            }
+
+            patchGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            patchGeometry.computeVertexNormals();
+            return patchGeometry;
+        }
+
+        function setupFoliage() {
+            const grassMaterial = new THREE.MeshStandardMaterial({ color: 0x00cc44, side: THREE.DoubleSide });
+            for (let i = 0; i < GRASS_LOD_DISTANCES.length; i++) {
+                const bladeCount = GRASS_LOD_BLADES[i];
+                const grassPatchGeometry = createGrassPatchGeometry(bladeCount);
+                const lodMesh = new THREE.InstancedMesh(grassPatchGeometry, grassMaterial, MAX_GRASS_PER_LOD);
+                lodMesh.name = `Grass_LOD_${i}`;
+                lodMesh.count = 0;
+                scene.add(lodMesh);
+                grassLODs.push(lodMesh);
+            }
+
+            const anemoneMaterial = new THREE.MeshStandardMaterial({ color: 0x4169E1, side: THREE.DoubleSide });
+            for (let i = 0; i < GRASS_LOD_DISTANCES.length; i++) {
+                const bladeCount = GRASS_LOD_BLADES[i];
+                const anemonePatchGeometry = createGrassPatchGeometry(bladeCount);
+                const lodMesh = new THREE.InstancedMesh(anemonePatchGeometry, anemoneMaterial, MAX_GRASS_PER_LOD);
+                lodMesh.name = `Anemone_LOD_${i}`;
+                lodMesh.count = 0;
+                scene.add(lodMesh);
+                anemoneLODs.push(lodMesh);
+            }
+        }
+        
+        function isMobileDevice() {
+            const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+            return /android|iphone|ipad|ipod|blackberry|windows phone/i.test(userAgent) ||
+                   ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        }
+
+        function setupMobileControls() {
+            joystickBase.addEventListener('touchstart', onJoystickStart, { passive: false });
+            document.addEventListener('touchmove', onJoystickMove, { passive: false });
+            document.addEventListener('touchend', onJoystickEnd, { passive: false });
+            mineButton.addEventListener('click', mineBlockAtCrosshair);
+            buildButton.addEventListener('click', placeBlockAtCrosshair);
+        }
+
+        function onJoystickStart(event) {
+            event.preventDefault();
+            if (mobileJoystickTouchId === -1) {
+                const touch = event.changedTouches[0];
+                const rect = joystickBase.getBoundingClientRect();
+                joystickCenter.set(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                mobileJoystickTouchId = touch.identifier;
+            }
+        }
+
+        function onJoystickMove(event) {
+            event.preventDefault();
+            for (let touch of event.changedTouches) {
+                if (touch.identifier === mobileJoystickTouchId) {
+                    let dx = touch.clientX - joystickCenter.x;
+                    let dy = touch.clientY - joystickCenter.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance > joystickRadius) {
+                        dx *= joystickRadius / distance;
+                        dy *= joystickRadius / distance;
+                    }
+                    joystickThumb.style.transform = `translate(${dx}px, ${dy}px)`;
+                    keys.w = dy < -20;
+                    keys.s = dy > 20;
+                    keys.a = dx < -20;
+                    keys.d = dx > 20;
+                }
+            }
+        }
+
+        function onJoystickEnd(event) {
+            for (let touch of event.changedTouches) {
+                if (touch.identifier === mobileJoystickTouchId) {
+                    joystickThumb.style.transform = `translate(0, 0)`;
+                    mobileJoystickTouchId = -1;
+                    keys.w = keys.a = keys.s = keys.d = false;
+                }
+            }
+        }
+
+        function setupInventoryUI() {
+            updateInventoryUI();
+        }
+
+        function updateInventoryUI() {
+            const selectedId = buildableMaterials[selectedMaterialIndex];
+            const slotsContainer = document.getElementById('inventory-slots');
+            slotsContainer.innerHTML = '';
+
+            buildableMaterials.forEach((matId, index) => {
+                const mat = Object.values(MATERIALS).find(m => m.id === matId);
+                if (!mat) return;
+
+                const slot = document.createElement('div');
+                slot.className = 'inventory-slot';
+                slot.id = `slot-${matId}`;
+
+                slot.innerHTML = `
+                    <div class="slot-color-preview" style="background-color: #${mat.color.getHexString()}"></div>
+                    <div class="slot-info">
+                        <div class="slot-name">${mat.id.replace(/_/g, ' ')}</div>
+                        <div class="slot-count" id="count-${matId}">${inventory[matId]}</div>
+                    </div>
+                `;
+
+                if (index === selectedMaterialIndex) {
+                    slot.classList.add('selected');
+                }
+
+                slot.onclick = () => selectMaterialById(matId);
+                slotsContainer.appendChild(slot);
+            });
+
+            const selectedSlot = document.querySelector('.inventory-slot.selected');
+            if (selectedSlot) {
+                selectedSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }
+
+        function selectMaterial(index) {
+            selectedMaterialIndex = (index + buildableMaterials.length) % buildableMaterials.length;
+            updateInventoryUI();
+        }
+        function selectPrevMaterial() { selectMaterial(selectedMaterialIndex - 1); }
+        function selectNextMaterial() { selectMaterial(selectedMaterialIndex + 1); }
+        function selectMaterialById(matId) {
+            const index = buildableMaterials.findIndex(id => id === matId);
+            if (index !== -1) selectMaterial(index);
+        }
+
+        function onKeyDown(event) {
+            if (event.code.startsWith('Digit')) {
+                const index = parseInt(event.key) - 1;
+                if (index >= 0 && index < 9) {
+                    if (index < buildableMaterials.length) {
+                        selectMaterial(index);
+                    }
+                    return;
+                }
+            }
+
+            switch (event.code) {
+                case 'KeyW': keys.w = true; break;
+                case 'KeyA': keys.a = true; break;
+                case 'KeyS': keys.s = true; break;
+                case 'KeyD': keys.d = true; break;
+                case 'Space':
+                    keys.space = true;
+                    if (player && player.onGround) {
+                        const upDirection = player.position.clone().sub(dominantBodyPosition).normalize();
+                        player.velocity.add(upDirection.multiplyScalar(playerSettings.jumpStrength));
+                        player.onGround = false;
+                    }
+                    break;
+                case 'KeyC': keys.c = true; break;
+                case 'ControlLeft': case 'ControlRight': keys.ctrl = true; break;
+                case 'ArrowLeft': keys.arrowLeft = true; selectPrevMaterial(); break;
+                case 'ArrowRight': keys.arrowRight = true; selectNextMaterial(); break;
+                case 'KeyL': // Teleport between Planet, Moon, and Methane Moon
+                    if (!marchingCubesMeshMoon || !methaneMoon) break;
+
+                    const distToPlanet = player.position.distanceTo(planetCenter);
+                    const distToMoon = player.position.distanceTo(marchingCubesMeshMoon.position);
+                    const distToMethaneMoon = player.position.distanceTo(methaneMoon.position);
+
+                    const upOnMoon = new THREE.Vector3(0, MOON_RADIUS + playerSettings.height, 0).applyQuaternion(marchingCubesMeshMoon.quaternion);
+                    const upOnMethaneMoon = new THREE.Vector3(0, METHANE_MOON_RADIUS + playerSettings.height, 0).applyQuaternion(methaneMoon.quaternion);
+
+                    const destinations = [
+                        { name: "Planet", dist: distToPlanet, pos: new THREE.Vector3(0, PLANET_RADIUS + playerSettings.height, 0) },
+                        { name: "Moon", dist: distToMoon, pos: moonPosition.clone().add(upOnMoon) },
+                        { name: "Methane Moon", dist: distToMethaneMoon, pos: methaneMoon.position.clone().add(upOnMethaneMoon) }
+                    ];
+
+                    let currentBodyIndex = 0;
+                    for (let i = 1; i < destinations.length; i++) {
+                        if (destinations[i].dist < destinations[currentBodyIndex].dist) {
+                            currentBodyIndex = i;
+                        }
+                    }
+
+                    const nextBodyIndex = (currentBodyIndex + 1) % destinations.length;
+                    const targetBody = destinations[nextBodyIndex];
+
+                    player.position.copy(targetBody.pos);
+                    messageBox.textContent = `Teleported to the ${targetBody.name}!`;
+
+                    player.velocity.set(0, 0, 0);
+                    player.onGround = false;
+                    setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
+                    break;
+                case 'KeyT':
+                    if (torchLight.intensity === 0) {
+                        torchLight.intensity = 1;
+                        messageBox.textContent = "Torch ON";
+                    } else {
+                        torchLight.intensity = 0;
+                        messageBox.textContent = "Torch OFF";
+                    }
+                    setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
+                    break;
+            }
+        }
+
+        function onKeyUp(event) {
+            switch (event.code) {
+                case 'KeyW': keys.w = false; break;
+                case 'KeyA': keys.a = false; break;
+                case 'KeyS': keys.s = false; break;
+                case 'KeyD': keys.d = false; break;
+                case 'Space': keys.space = false; break;
+                case 'KeyC': keys.c = false; break;
+                case 'ControlLeft': case 'ControlRight': keys.ctrl = false; break;
+                case 'KeyV': isFirstPersonView = !isFirstPersonView; break;
+                case 'ArrowLeft': keys.arrowLeft = false; break;
+                case 'ArrowRight': keys.arrowRight = false; break;
+            }
+        }
+
+        function onMouseMove(event) {
+            if (!isLocked || !player) return;
+            const movementX = event.movementX || 0;
+            const movementY = event.movementY || 0;
+
+            const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
+            const yawDelta = -movementX * playerSettings.sensitivity;
+            const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(playerUp, yawDelta);
+            player.quaternion.premultiply(yawQuaternion);
+
+            const pitchDelta = -movementY * playerSettings.sensitivity;
+            player.head.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.head.rotation.x + pitchDelta));
+        }
+
+        function onPointerLockChange() {
+            isLocked = document.pointerLockElement === canvas;
+            overlay.style.display = isLocked ? 'none' : 'flex';
+            messageBox.style.display = isLocked ? 'block' : 'none';
+            document.getElementById('health-bar-container').style.display = isLocked ? 'block' : 'none';
+            if (isLocked) {
+                document.addEventListener('mousemove', onMouseMove, false);
+            } else {
+                document.removeEventListener('mousemove', onMouseMove, false);
+            }
+        }
+
+        function updateHealthUI() {
+            if (!player) return;
+            const healthPercentage = (player.health / playerSettings.maxHealth) * 100;
+            document.getElementById('health-bar-fill').style.width = `${healthPercentage}%`;
+            document.getElementById('health-bar-text').textContent = `${Math.ceil(player.health)} / ${playerSettings.maxHealth}`;
+        }
+
+        function takeDamage(amount) {
+            if (!player || player.health <= 0) return;
+
+            player.health -= amount;
+            player.lastDamageTime = clock.getElapsedTime();
+
+            const damageOverlay = document.getElementById('damage-overlay');
+            damageOverlay.style.opacity = 1;
+            setTimeout(() => { damageOverlay.style.opacity = 0; }, 250);
+
+            if (player.health <= 0) {
+                player.health = 0;
+                respawnPlayer();
+            }
+            updateHealthUI();
+        }
+
+        function respawnPlayer() {
+            messageBox.textContent = "You have perished! Respawning...";
+            messageBox.style.display = 'block';
+
+            player.health = playerSettings.maxHealth;
+            player.velocity.set(0, 0, 0);
+            inventory = {};
+            for (const key in MATERIALS) {
+                if (MATERIALS[key].buildable) {
+                    inventory[MATERIALS[key].id] = 0;
+                }
+            }
+            updateInventoryUI();
+
+            player.position.set(0, PLANET_RADIUS + playerSettings.height, 0);
+            const initialUp = player.position.clone().normalize();
+            player.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), initialUp);
+            player.onGround = false;
+
+            setTimeout(() => {
+                if (isLocked) {
+                    messageBox.textContent = "Controls active";
+                }
+            }, 2000);
+
+            updateHealthUI();
+        }
+
+        function mineBlockAtCrosshair() {
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects([marchingCubesMesh, marchingCubesMeshMoon, methaneMoon].filter(mesh => mesh).concat(cubes));
+            if (intersects.length > 0) {
+                const intersected = intersects[0];
+                const intersectionPoint = intersected.point;
+                const intersectedObject = intersected.object;
+                const miningRayDir = raycaster.ray.direction;
+                const offsetWorldPoint = intersectionPoint.clone().add(miningRayDir.clone().multiplyScalar(-BLOCK_SIZE * 0.25));
+
+                let targetGrid, targetGridSize, targetCenterOffset;
+                let isMarchingCubesObject = false;
+                let onMoon = false;
+                let onMethaneMoon = false;
+
+                if (intersectedObject === marchingCubesMesh) {
+                    targetGrid = voxelData;
+                    targetGridSize = GRID_SIZE;
+                    targetCenterOffset = planetCenter;
+                    isMarchingCubesObject = true;
+                } else if (intersectedObject === marchingCubesMeshMoon) {
+                    targetGrid = voxelDataMoon;
+                    targetGridSize = GRID_SIZE_MOON;
+                    targetCenterOffset = marchingCubesMeshMoon.position;
+                    isMarchingCubesObject = true;
+                    onMoon = true;
+                } else if (intersectedObject === methaneMoon) {
+                    targetGrid = methaneMoonVoxelData;
+                    targetGridSize = GRID_SIZE_METHANE_MOON;
+                    targetCenterOffset = methaneMoon.position;
+                    isMarchingCubesObject = true;
+                    onMethaneMoon = true;
+                }
+
+                if (isMarchingCubesObject) {
+                    const localPoint = offsetWorldPoint.clone().sub(targetCenterOffset);
+                    const halfTargetGrid = targetGridSize / 2;
+                    const gridX = Math.floor(localPoint.x / BLOCK_SIZE + halfTargetGrid);
+                    const gridY = Math.floor(localPoint.y / BLOCK_SIZE + halfTargetGrid);
+                    const gridZ = Math.floor(localPoint.z / BLOCK_SIZE + halfTargetGrid);
+
+                    if (gridX >= 0 && gridX < targetGridSize && gridY >= 0 && gridY < targetGridSize && gridZ >= 0 && gridZ < targetGridSize) {
+                        targetGrid[gridX][gridY][gridZ] = 0;
+
+                        let minedMaterial;
+                        if (intersectedObject === marchingCubesMesh) {
+                            updateMarchingCubesMesh();
+                            minedMaterial = getMaterialAtPoint(offsetWorldPoint, intersected.face.normal, false);
+                        } else if (intersectedObject === marchingCubesMeshMoon) {
+                            updateMarchingCubesMoonMesh();
+                            minedMaterial = getMaterialAtPoint(offsetWorldPoint, intersected.face.normal, true);
+                        } else if (intersectedObject === methaneMoon) {
+                            updateMethaneMoonMesh();
+                            minedMaterial = getMethaneMoonMaterialAtPoint(offsetWorldPoint, intersected.face.normal);
+                        }
+                        
+                        if (minedMaterial.buildable) {
+                            inventory[minedMaterial.id]++;
+                            updateInventoryUI();
+                        }
+                        createMiningEffect(intersectionPoint, minedMaterial);
+
+                        const mapKey = `${gridX},${gridY},${gridZ}`;
+                        if (minedMaterial.id === 'grass') {
+                            const instanceId = voxelToGrassMap.get(mapKey);
+                            if (instanceId !== undefined) {
+                                const zeroScaleMatrix = new THREE.Matrix4().scale(new THREE.Vector3(0, 0, 0));
+                                grassLODs.forEach(lod => {
+                                    lod.setMatrixAt(instanceId, zeroScaleMatrix);
+                                    lod.instanceMatrix.needsUpdate = true;
+                                });
+                                voxelToGrassMap.delete(mapKey);
+                            }
+                        } else if (minedMaterial.id === 'anemone') {
+                            const instanceId = voxelToAnemoneMap.get(mapKey);
+                            if (instanceId !== undefined) {
+                                const zeroScaleMatrix = new THREE.Matrix4().scale(new THREE.Vector3(0, 0, 0));
+                                anemoneLODs.forEach(lod => {
+                                    lod.setMatrixAt(instanceId, zeroScaleMatrix);
+                                    lod.instanceMatrix.needsUpdate = true;
+                                });
+                                voxelToAnemoneMap.delete(mapKey);
+                            }
+                        }
+                    }
+                } else if (cubes.includes(intersectedObject)) {
+                    const minedMaterialId = intersectedObject.userData.materialId;
+                    if (minedMaterialId && inventory[minedMaterialId] !== undefined) {
+                        inventory[minedMaterialId]++;
+                        updateInventoryUI();
+                    }
+                    const builtMaterial = Object.values(MATERIALS).find(m => m.id === minedMaterialId) || MATERIALS.ROCK;
+                    createMiningEffect(intersectionPoint, builtMaterial);
+
+                    if (intersectedObject.parent) {
+                        intersectedObject.parent.remove(intersectedObject);
+                    }
+
+                    cubes = cubes.filter(cube => cube.uuid !== intersectedObject.uuid);
+                    intersectedObject.geometry.dispose();
+                    intersectedObject.material.dispose();
+                }
+            }
+        }
+
+        function createChamferedBlockGeometry(width, height, depth) {
+            const w = width / 2;
+            const h = height / 2;
+            const d = depth / 2;
+            const points = [];
+            const getRandomChamfer = (dim) => THREE.MathUtils.randFloat(dim / 10, dim / 3);
+            const corners = [
+                new THREE.Vector3(w, h, d),   new THREE.Vector3(w, h, -d),
+                new THREE.Vector3(w, -h, d),  new THREE.Vector3(w, -h, -d),
+                new THREE.Vector3(-w, h, d),  new THREE.Vector3(-w, h, -d),
+                new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
+            ];
+            corners.forEach(corner => {
+                const sx = Math.sign(corner.x);
+                const sy = Math.sign(corner.y);
+                const sz = Math.sign(corner.z);
+                const chamferX = getRandomChamfer(width);
+                const chamferY = getRandomChamfer(height);
+                const chamferZ = getRandomChamfer(depth);
+                points.push(new THREE.Vector3(corner.x - sx * chamferX, corner.y, corner.z));
+                points.push(new THREE.Vector3(corner.x, corner.y - sy * chamferY, corner.z));
+                points.push(new THREE.Vector3(corner.x, corner.y, corner.z - sz * chamferZ));
+            });
+            return new ConvexGeometry(points);
+        }
+
+        function placeBlockAtCrosshair() {
+            const materialIdToBuild = buildableMaterials[selectedMaterialIndex];
+            if (inventory[materialIdToBuild] <= 0) {
+                messageBox.textContent = `No ${materialIdToBuild.replace(/_/g, ' ')} to place!`;
+                setTimeout(() => { if(isLocked) messageBox.textContent = "Controls active"; }, 1500);
+                return;
+            }
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const objectsToIntersect = [marchingCubesMesh, marchingCubesMeshMoon, methaneMoon].filter(mesh => mesh).concat(cubes);
+            const intersects = raycaster.intersectObjects(objectsToIntersect);
+
+            if (intersects.length > 0) {
+                const intersected = intersects[0];
+                const hitPoint = intersected.point;
+                const faceNormal = intersected.face.normal;
+                const newPosition = hitPoint.clone().add(faceNormal.clone().multiplyScalar(BLOCK_SIZE / 2));
+                
+                const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
+                const playerCenter = player.position.clone().add(playerUp.clone().multiplyScalar(playerSettings.height / 2));
+                const playerRadius = playerSettings.height / 2;
+                const blockRadius = (BLOCK_SIZE * Math.sqrt(3)) / 2;
+                const collisionThreshold = playerRadius + blockRadius;
+                const distanceToPlayerCenter = newPosition.distanceTo(playerCenter);
+
+                if (distanceToPlayerCenter < collisionThreshold) {
+                    player.position.add(playerUp.multiplyScalar(BLOCK_SIZE));
+                    player.onGround = false;
+                }
+
+                const newCubeGeometry = createChamferedBlockGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                const newCube = new THREE.Mesh(newCubeGeometry, builtCubeMaterials[materialIdToBuild]);
+                
+                let onMoon = (intersected.object === marchingCubesMeshMoon) || (intersected.object.parent === moonCubeParent);
+                let onMethaneMoon = (intersected.object === methaneMoon) || (intersected.object.parent === methaneMoonCubeParent);
+                const parent = onMethaneMoon ? methaneMoonCubeParent : (onMoon ? moonCubeParent : cubeParent);
+
+                newCube.position.copy(newPosition);
+
+                let celestialCenter = planetCenter;
+                if (onMoon) celestialCenter = moonPosition;
+                if (onMethaneMoon) celestialCenter = methaneMoonPosition;
+                
+                const newY = newPosition.clone().sub(celestialCenter).normalize();
+                const lookDir = player.position.clone().sub(newPosition);
+                const newNegZ = lookDir.projectOnPlane(newY).normalize();
+                const newZ = newNegZ.clone().negate();
+                const newX = new THREE.Vector3().crossVectors(newY, newZ);
+                const rotationMatrix = new THREE.Matrix4().makeBasis(newX, newY, newZ);
+                newCube.quaternion.setFromRotationMatrix(rotationMatrix);
+
+                newCube.userData.materialId = materialIdToBuild;
+                parent.attach(newCube);
+                cubes.push(newCube);
+                inventory[materialIdToBuild]--;
+                updateInventoryUI();
+            }
+        }
+
+        function createLaserBeamEffect(ray) {
+            const beamLength = 1000;
+            const startPoint = ray.origin;
+            const endPoint = ray.origin.clone().add(ray.direction.clone().multiplyScalar(beamLength));
+            const beamGeometry = new THREE.CylinderGeometry(0.1, 0.1, beamLength, 8);
+            const beamMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff0000,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending,
+                fog: false
+            });
+            const beamMesh = new THREE.Mesh(beamGeometry, beamMaterial);
+            const midPoint = new THREE.Vector3().addVectors(startPoint, endPoint).multiplyScalar(0.5);
+            beamMesh.position.copy(midPoint);
+            beamMesh.lookAt(endPoint);
+            beamMesh.rotateX(Math.PI / 2);
+            scene.add(beamMesh);
+            setTimeout(() => {
+                if (beamMesh.parent) {
+                    scene.remove(beamMesh);
+                    beamMesh.geometry.dispose();
+                    beamMesh.material.dispose();
+                }
+            }, 500);
+        }
+
+        function firePowerLaser() {
+            for (const matId in inventory) {
+                inventory[matId] = 0;
+            }
+            updateInventoryUI();
+            messageBox.textContent = "Inventory Cleared! Firing Laser!";
+            setTimeout(() => { messageBox.textContent = "Controls active"; }, 2000);
+
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects([marchingCubesMesh, marchingCubesMeshMoon, methaneMoon].filter(mesh => mesh));
+            if (intersects.length === 0) {
+                createLaserBeamEffect(raycaster.ray);
+                return;
+            }
+
+            const intersected = intersects[0];
+            const targetObject = intersected.object;
+            const laserRay = raycaster.ray;
+            createLaserBeamEffect(laserRay);
+
+            let targetGrid, targetGridSize, targetCenterOffset, updateFunction;
+
+            if (targetObject === marchingCubesMesh) {
+                targetGrid = voxelData;
+                targetGridSize = GRID_SIZE;
+                targetCenterOffset = planetCenter;
+                updateFunction = updateMarchingCubesMesh;
+            } else if (targetObject === marchingCubesMeshMoon) {
+                targetGrid = voxelDataMoon;
+                targetGridSize = GRID_SIZE_MOON;
+                targetCenterOffset = marchingCubesMeshMoon.position;
+                updateFunction = updateMarchingCubesMoonMesh;
+            } else if (targetObject === methaneMoon) {
+                targetGrid = methaneMoonVoxelData;
+                targetGridSize = GRID_SIZE_METHANE_MOON;
+                targetCenterOffset = methaneMoon.position;
+                updateFunction = updateMethaneMoonMesh;
+            } else {
+                return;
+            }
+
+            const laserRadius = 2.0;
+            const laserRadiusSq = laserRadius * laserRadius;
+            const halfGrid = targetGridSize / 2;
+            const voxelWorldPos = new THREE.Vector3();
+
+            for (let x = 0; x < targetGridSize; x++) {
+                for (let y = 0; y < targetGridSize; y++) {
+                    for (let z = 0; z < targetGridSize; z++) {
+                        voxelWorldPos.set(
+                            (x - halfGrid + 0.5) * BLOCK_SIZE,
+                            (y - halfGrid + 0.5) * BLOCK_SIZE,
+                            (z - halfGrid + 0.5) * BLOCK_SIZE
+                        ).add(targetCenterOffset);
+                        const distSq = laserRay.distanceSqToPoint(voxelWorldPos);
+                        if (distSq < laserRadiusSq) {
+                            targetGrid[x][y][z] = 0;
+                        }
+                    }
+                }
+            }
+            updateFunction();
+        }
+
+        function generatePlanet() {
+            const halfGrid = GRID_SIZE / 2;
+            for (let x = 0; x < GRID_SIZE; x++) {
+                voxelData[x] = [];
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    voxelData[x][y] = [];
+                    for (let z = 0; z < GRID_SIZE; z++) {
+                        const wx = (x - halfGrid + 0.5) * BLOCK_SIZE;
+                        const wy = (y - halfGrid + 0.5) * BLOCK_SIZE;
+                        const wz = (z - halfGrid + 0.5) * BLOCK_SIZE;
+                        const dist = Math.sqrt(wx*wx + wy*wy + wz*wz);
+                        const terrainNoise = getRidgedMultifractalNoise(wx, wy, wz, simplex, initialNoiseScale, noiseStrength, octaves, lacunarity, persistence);
+                        const normalizedDist = dist / PLANET_RADIUS;
+                        voxelData[x][y][z] = (1.0 - normalizedDist) + terrainNoise;
+                    }
+                }
+            }
+            updateMarchingCubesMesh();
+        }
+
+        let moonBlobs = [];
+        let moonCraters = [];
+
+        function generateMoon() {
+            const lightDirForMoonPlacement = new THREE.Vector3(1, 1, 1).normalize();
+            moonPosition.copy(lightDirForMoonPlacement).negate().setLength(MOON_ORBIT_DISTANCE);
+
+            const halfGridMoon = GRID_SIZE_MOON / 2;
+
+            if (moonBlobs.length === 0) {
+                const numBlobs = 5;
+                for (let i = 0; i < numBlobs; i++) {
+                    const randomDirection = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
+                    const blobCenter = randomDirection.clone().multiplyScalar((MOON_RADIUS/2) - 1);
+                    const blobRadius = MOON_RADIUS * (Math.random() * 0.3 + 0.2);
+                    moonBlobs.push({ center: blobCenter, radius: blobRadius });
+                }
+                moonCraters = [];
+                const numCraters = 25;
+                const maxAttemptsPerCrater = 20;
+                for (let i = 0; i < numCraters; i++) {
+                    for (let attempt = 0; attempt < maxAttemptsPerCrater; attempt++) {
+                        const randomDirection = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
+                        const craterCenter = randomDirection.clone().multiplyScalar(MOON_RADIUS / 2);
+                        const craterRadius = MOON_RADIUS * (Math.random() * 0.15 + 0.05);
+                        let overlaps = false;
+                        for (const existingCrater of moonCraters) {
+                            const distance = craterCenter.distanceTo(existingCrater.center);
+                            if (distance < craterRadius + existingCrater.radius + (BLOCK_SIZE * 2)) {
+                                overlaps = true;
+                                break;
+                            }
+                        }
+                        if (!overlaps) {
+                            moonCraters.push({ center: craterCenter, radius: craterRadius });
+                            break;
+                        }
+                    }
+                }
+            }
+
+            for (let x = 0; x < GRID_SIZE_MOON; x++) {
+                voxelDataMoon[x] = [];
+                for (let y = 0; y < GRID_SIZE_MOON; y++) {
+                    voxelDataMoon[x][y] = [];
+                    for (let z = 0; z < GRID_SIZE_MOON; z++) {
+                        const worldX = (x - halfGridMoon + 0.5) * BLOCK_SIZE;
+                        const worldY = (y - halfGridMoon + 0.5) * BLOCK_SIZE;
+                        const worldZ = (z - halfGridMoon + 0.5) * BLOCK_SIZE;
+                        const distFromMainCenter = Math.sqrt(worldX**2 + worldY**2 + worldZ**2);
+                        let finalDensity = 1.0 - (distFromMainCenter / MOON_RADIUS);
+                        for (const blob of moonBlobs) {
+                            const distFromBlobCenter = Math.sqrt((worldX - blob.center.x)**2 + (worldY - blob.center.y)**2 + (worldZ - blob.center.z)**2);
+                            const blobDensity = 1.0 - (distFromBlobCenter / blob.radius);
+                            finalDensity = Math.max(finalDensity, blobDensity);
+                        }
+                        for (const crater of moonCraters) {
+                            const distFromCraterCenter = Math.sqrt((worldX - crater.center.x)**2 + (worldY - crater.center.y)**2 + (worldZ - crater.center.z)**2);
+                            const craterDensity = 1.0 - (distFromCraterCenter / crater.radius);
+                            if (craterDensity > 0) {
+                                finalDensity -= craterDensity;
+                            }
+                        }
+                        voxelDataMoon[x][y][z] = finalDensity;
+                    }
+                }
+            }
+            updateMarchingCubesMoonMesh();
+        }
+
+        function createRingTexture(size) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const context = canvas.getContext('2d');
+            context.fillStyle = 'rgba(0.5,0.5,0.5,0.5)';
+            context.fillRect(0, 0, size, size);
+            for (let i = 0; i < 80000; i++) {
+                const radius = Math.random() * (size / 2 - 20) + (size / 2 * 0.3);
+                const angle = Math.random() * Math.PI * 2;
+                const x = Math.cos(angle) * radius + size / 2;
+                const y = Math.sin(angle) * radius + size / 2;
+                const opacity = Math.random() * 0.4 + 0.1;
+                const brightness = Math.floor(Math.random() * 100 + 155);
+                context.fillStyle = `rgba(${brightness}, ${brightness}, ${brightness}, ${opacity})`;
+                context.beginPath();
+                context.arc(x, y, Math.random() * 1.5, 0, Math.PI * 2);
+                context.fill();
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createMethanePlanet() {
+            methanePlanetPivot = new THREE.Object3D();
+            scene.add(methanePlanetPivot);
+
+            const sunPosition = new THREE.Vector3(500, 500, 500);
+
+            const planetGeometry = new THREE.SphereGeometry(METHANE_PLANET_RADIUS, 64, 64);
+            const shaderMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uSunPosition: { value: sunPosition },
+                    uPlanetColor: { value: new THREE.Color(0.1, 0.4, 0.5) },
+                    uAtmospherePower: { value: 3.0 },
+                    uScatteringPower: { value: 8.0 }
+                },
+                vertexShader: document.getElementById('vertexShader').textContent,
+                fragmentShader: document.getElementById('fragmentShader').textContent,
+            });
+            methanePlanet = new THREE.Mesh(planetGeometry, shaderMaterial);
+            methanePlanet.position.set(METHANE_PLANET_ORBIT_DISTANCE, 0, 0);
+            methanePlanetPivot.add(methanePlanet);
+
+            const ringTexture = createRingTexture(2048);
+            const ringGeometry = new THREE.RingGeometry(METHANE_PLANET_RADIUS * 1.4, METHANE_PLANET_RADIUS * 2.2, 128);
+            const ringMaterial = new THREE.MeshBasicMaterial({
+                map: ringTexture,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 1
+            });
+
+            const pos = ringGeometry.attributes.position;
+            const v3 = new THREE.Vector3();
+            for (let i = 0; i < pos.count; i++){
+                v3.fromBufferAttribute(pos, i);
+                pos.setXYZ(i, v3.x, 0, v3.y);
+            }
+            ringGeometry.computeVertexNormals();
+
+            methaneRings = new THREE.Mesh(ringGeometry, ringMaterial);
+            //methaneRings.rotation.x = Math.PI / 2.5;
+            methanePlanet.add(methaneRings);
+        }
+
+        function generateMethaneMoon() {
+            // This function runs once at the start. We need to calculate the initial world position.
+            const initialPlanetWorldPos = new THREE.Vector3();
+            methanePlanet.getWorldPosition(initialPlanetWorldPos);
+            
+            methaneMoonRelativePosition.set(METHANE_MOON_ORBIT_DISTANCE, 0, 0);
+            methaneMoonPosition.copy(initialPlanetWorldPos).add(methaneMoonRelativePosition);
+
+            const halfGrid = GRID_SIZE_METHANE_MOON / 2;
+            for (let x = 0; x < GRID_SIZE_METHANE_MOON; x++) {
+                methaneMoonVoxelData[x] = [];
+                for (let y = 0; y < GRID_SIZE_METHANE_MOON; y++) {
+                    methaneMoonVoxelData[x][y] = [];
+                    for (let z = 0; z < GRID_SIZE_METHANE_MOON; z++) {
+                        const wx = (x - halfGrid + 0.5) * BLOCK_SIZE;
+                        const wy = (y - halfGrid + 0.5) * BLOCK_SIZE;
+                        const wz = (z - halfGrid + 0.5) * BLOCK_SIZE;
+                        const dist = Math.sqrt(wx*wx + wy*wy + wz*wz);
+                        const terrainNoise = getRidgedMultifractalNoise(wx, wy, wz, simplex, 0.08, 0.6, 6, 2.0, 0.5);
+                        const normalizedDist = dist / METHANE_MOON_RADIUS;
+                        methaneMoonVoxelData[x][y][z] = (1.0 - normalizedDist) + terrainNoise;
+                    }
+                }
+            }
+            updateMethaneMoonMesh();
+        }
+
+        function updateMarchingCubesMesh() {
+            if (marchingCubesMesh) {
+                scene.remove(marchingCubesMesh);
+                marchingCubesMesh.geometry.dispose();
+                marchingCubesMesh.material.dispose();
+            }
+            const geometry = generateMarchingCubesGeometry(voxelData, ISO_LEVEL, GRID_SIZE, BLOCK_SIZE, planetCenter);
+            if (geometry.attributes.position) {
+                const positions = geometry.attributes.position.array;
+                const normals = geometry.attributes.normal.array;
+                const colors = [];
+                const vertex = new THREE.Vector3(), normal = new THREE.Vector3();
+                for (let i = 0; i < positions.length; i += 3) {
+                    vertex.set(positions[i], positions[i+1], positions[i+2]);
+                    normal.set(normals[i], normals[i+1], normals[i+2]);
+                    const material = getMaterialAtPoint(vertex, normal, false);
+                    colors.push(material.color.r, material.color.g, material.color.b);
+                }
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            }
+            const material = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.2, side: THREE.BackSide, vertexColors: true });
+            marchingCubesMesh = new THREE.Mesh(geometry, material);
+            scene.add(marchingCubesMesh);
+            populateFoliage();
+        }
+
+        function populateFoliage() {
+            grassLODs.forEach(lod => lod.count = 0);
+            anemoneLODs.forEach(lod => lod.count = 0);
+            voxelToGrassMap.clear();
+            voxelToAnemoneMap.clear();
+
+            const dummy = new THREE.Object3D();
+            let grassInstanceIndex = 0;
+            let anemoneInstanceIndex = 0;
+
+            const inverseGrassMatrix = new THREE.Matrix4();
+            if (grassLODs.length > 0) {
+                inverseGrassMatrix.copy(grassLODs[0].matrix).invert();
+            }
+            const inverseAnemoneMatrix = new THREE.Matrix4();
+            if (anemoneLODs.length > 0) {
+                inverseAnemoneMatrix.copy(anemoneLODs[0].matrix).invert();
+            }
+
+            const positions = marchingCubesMesh.geometry.attributes.position;
+            const normals = marchingCubesMesh.geometry.attributes.normal;
+            const colors = marchingCubesMesh.geometry.attributes.color;
+            const grassColor = MATERIALS.GRASS.color;
+            const anemoneColor = MATERIALS.ANEMONE.color;
+
+            const halfGrid = GRID_SIZE / 2;
+            const waterRadius = PLANET_RADIUS + WATER_LEVEL_OFFSET;
+
+            for (let i = 0; i < positions.count; i++) {
+                const r = colors.getX(i);
+                const g = colors.getY(i);
+                const b = colors.getZ(i);
+
+                const isGrassColor = Math.abs(r - grassColor.r) < 0.1 && Math.abs(g - grassColor.g) < 0.1;
+                const isAnemoneColor = Math.abs(r - anemoneColor.r) < 0.1 && Math.abs(g - anemoneColor.g) < 0.1 && Math.abs(b - anemoneColor.b) < 0.1;
+
+                if ((isGrassColor || isAnemoneColor) && Math.random() > 0.9) {
+                    const pos = new THREE.Vector3().fromBufferAttribute(positions, i);
+                    const isUnderwater = pos.distanceTo(planetCenter) < waterRadius;
+                    const normal = new THREE.Vector3().fromBufferAttribute(normals, i);
+
+                    const gridX = Math.floor(pos.x / BLOCK_SIZE + halfGrid);
+                    const gridY = Math.floor(pos.y / BLOCK_SIZE + halfGrid);
+                    const gridZ = Math.floor(pos.z / BLOCK_SIZE + halfGrid);
+                    const mapKey = `${gridX},${gridY},${gridZ}`;
+
+                    dummy.position.copy(pos);
+                    dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), normal);
+                    dummy.updateMatrix();
+
+                    if (isUnderwater) {
+                        if (anemoneInstanceIndex < MAX_GRASS_PER_LOD && !voxelToAnemoneMap.has(mapKey)) {
+                            const localMatrix = dummy.matrix.clone().premultiply(inverseAnemoneMatrix);
+                            anemoneLODs.forEach(lod => lod.setMatrixAt(anemoneInstanceIndex, localMatrix));
+                            voxelToAnemoneMap.set(mapKey, anemoneInstanceIndex);
+                            anemoneInstanceIndex++;
+                        }
+                    } else {
+                        if (grassInstanceIndex < MAX_GRASS_PER_LOD && !voxelToGrassMap.has(mapKey)) {
+                            const localMatrix = dummy.matrix.clone().premultiply(inverseGrassMatrix);
+                            grassLODs.forEach(lod => lod.setMatrixAt(grassInstanceIndex, localMatrix));
+                            voxelToGrassMap.set(mapKey, grassInstanceIndex);
+                            grassInstanceIndex++;
+                        }
+                    }
+                }
+            }
+
+            if (grassLODs.length > 0) {
+                grassLODs[0].count = grassInstanceIndex;
+                grassLODs.forEach(lod => lod.instanceMatrix.needsUpdate = true);
+            }
+            if (anemoneLODs.length > 0) {
+                anemoneLODs[0].count = anemoneInstanceIndex;
+                anemoneLODs.forEach(lod => lod.instanceMatrix.needsUpdate = true);
+            }
+        }
+
+        function updateMarchingCubesMoonMesh() {
+            if (marchingCubesMeshMoon) {
+                scene.remove(marchingCubesMeshMoon);
+                if (marchingCubesMeshMoon.geometry) marchingCubesMeshMoon.geometry.dispose();
+                if (marchingCubesMeshMoon.material) marchingCubesMeshMoon.material.dispose();
+            }
+            const geometry = generateMarchingCubesGeometry(voxelDataMoon, ISO_LEVEL, GRID_SIZE_MOON, BLOCK_SIZE, moonPosition);
+            if (geometry.attributes.position) {
+                const positions = geometry.attributes.position.array;
+                const normals = geometry.attributes.normal.array;
+                const colors = [];
+                const vertex = new THREE.Vector3(), normal = new THREE.Vector3(), worldVertex = new THREE.Vector3();
+                for (let i = 0; i < positions.length; i += 3) {
+                    vertex.set(positions[i], positions[i+1], positions[i+2]);
+                    worldVertex.copy(vertex).add(moonPosition);
+                    normal.set(normals[i], normals[i+1], normals[i+2]);
+                    const material = getMaterialAtPoint(worldVertex, normal, true);
+                    colors.push(material.color.r, material.color.g, material.color.b);
+                }
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            }
+            const material = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0.1, side: THREE.BackSide, vertexColors: true });
+            marchingCubesMeshMoon = new THREE.Mesh(geometry, material);
+            marchingCubesMeshMoon.position.copy(moonPosition);
+            scene.add(marchingCubesMeshMoon);
+            const moonLight = new THREE.PointLight(0x6080ff, 0.6, MOON_ORBIT_DISTANCE * 1.2, 1.5);
+            marchingCubesMeshMoon.add(moonLight);
+        }
+        
+        function updateMethaneMoonMesh() {
+            if (methaneMoon) {
+                scene.remove(methaneMoon);
+                if (methaneMoon.geometry) methaneMoon.geometry.dispose();
+                if (methaneMoon.material) methaneMoon.material.dispose();
+            }
+            const geometry = generateMarchingCubesGeometry(methaneMoonVoxelData, ISO_LEVEL, GRID_SIZE_METHANE_MOON, BLOCK_SIZE, methaneMoonPosition);
+            if (geometry.attributes.position) {
+                const positions = geometry.attributes.position.array;
+                const normals = geometry.attributes.normal.array;
+                const colors = [];
+                const vertex = new THREE.Vector3(), normal = new THREE.Vector3(), worldVertex = new THREE.Vector3();
+
+                for (let i = 0; i < positions.length; i += 3) {
+                    vertex.set(positions[i], positions[i+1], positions[i+2]);
+                    worldVertex.copy(vertex).add(methaneMoonPosition);
+                    normal.set(normals[i], normals[i+1], normals[i+2]);
+                    const material = getMethaneMoonMaterialAtPoint(worldVertex, normal);
+                    colors.push(material.color.r, material.color.g, material.color.b);
+                }
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            }
+            const material = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0.1, side: THREE.BackSide, vertexColors: true });
+            methaneMoon = new THREE.Mesh(geometry, material);
+            methaneMoon.position.copy(methaneMoonPosition);
+            scene.add(methaneMoon);
+        }
+
+
+        function createMiningEffect(position, minedMaterial) {
+            const particleCount = 10;
+            const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+            const particleMaterial = new THREE.MeshBasicMaterial({ color: minedMaterial.color });
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+                particle.position.copy(position);
+
+                particle.velocity = new THREE.Vector3((Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5);
+                particle.decay = 0.02;
+
+                scene.add(particle);
+
+                let opacity = 1;
+                const interval = setInterval(() => {
+                    if (opacity <= 0) {
+                        scene.remove(particle);
+                        clearInterval(interval);
+                        particle.geometry.dispose();
+                        particle.material.dispose();
+                    } else {
+                        particle.position.add(particle.velocity);
+                        particle.material.opacity = opacity;
+                        particle.material.transparent = true;
+                        particle.scale.multiplyScalar(0.95);
+                        opacity -= particle.decay;
+                    }
+                }, 50);
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (isMobileDevice()) {
+                const rect = joystickBase.getBoundingClientRect();
+                joystickCenter.set(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            }
+        }
+
+        function updateCamera() {
+            if (!player) return;
+            camera.up.copy(player.position).sub(dominantBodyPosition).normalize();
+            const headPosition = new THREE.Vector3();
+            player.head.getWorldPosition(headPosition);
+
+            if (isFirstPersonView) {
+                player.body.visible = false;
+                player.head.visible = false;
+                
+                if (torchLight) {
+                    torchLight.position.copy(camera.position);
+                    torchLight.target.position.copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(10));
+                    torchLight.target.updateMatrixWorld();
+                }
+
+                const headQuaternion = new THREE.Quaternion();
+                player.head.getWorldQuaternion(headQuaternion);
+                camera.position.copy(headPosition);
+                camera.quaternion.copy(headQuaternion);
+            } else {
+                player.body.visible = true;
+                player.head.visible = true;
+                
+                if (torchLight) {
+                    torchLight.position.copy(headPosition);
+                    torchLight.target.position.copy(headPosition).add(player.head.getWorldDirection(new THREE.Vector3()).multiplyScalar(10));
+                    torchLight.target.updateMatrixWorld();
+                }
+
+                const headQuaternion = new THREE.Quaternion();
+                player.head.getWorldQuaternion(headQuaternion);
+                const offsetFromHead = thirdPersonCameraOffset.clone();
+                offsetFromHead.y -= player.head.position.y;
+                const cameraOffsetRotated = offsetFromHead.clone().applyQuaternion(headQuaternion);
+                const desiredCameraPosition = headPosition.clone().add(cameraOffsetRotated);
+                camera.position.lerp(desiredCameraPosition, 0.15);
+                camera.lookAt(headPosition);
+            }
+            if (torchLight) {
+                torchLight.visible = (torchLight.intensity > 0);
+            }
+        }
+
+        function createBubble() {
+            const bubbleGeometry = new THREE.SphereGeometry(THREE.MathUtils.randFloat(0.02, 0.05), 8, 8);
+            const bubbleMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.6
+            });
+            const bubble = new THREE.Mesh(bubbleGeometry, bubbleMaterial);
+            const headPosition = new THREE.Vector3();
+            player.head.getWorldPosition(headPosition);
+            bubble.position.copy(headPosition).add(new THREE.Vector3((Math.random() - 0.5) * 0.5, -0.2, (Math.random() - 0.5) * 0.5));
+            const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
+            bubble.velocity = playerUp.clone().multiplyScalar(THREE.MathUtils.randFloat(0.5, 1.0));
+            bubble.velocity.add(new THREE.Vector3((Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1));
+            bubble.lifetime = 2;
+            bubble.age = 0;
+            scene.add(bubble);
+            bubbleParticles.push(bubble);
+        }
+
+        function createSplashEffect(position) {
+            const particleCount = 15;
+            const splashGeometry = new THREE.SphereGeometry(0.05, 6, 6);
+            const splashMaterial = new THREE.MeshBasicMaterial({ color: 0x88ccff });
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = new THREE.Mesh(splashGeometry, splashMaterial);
+                particle.position.copy(position);
+                const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
+                const randomDirection = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.5, Math.random() - 0.5).normalize();
+                const splashVector = randomDirection.projectOnPlane(playerUp).normalize();
+                splashVector.add(playerUp.clone().multiplyScalar(THREE.MathUtils.randFloat(0.5, 1.0)));
+                particle.velocity = splashVector.multiplyScalar(THREE.MathUtils.randFloat(1, 3));
+                particle.lifetime = 1.5;
+                particle.age = 0;
+                scene.add(particle);
+                splashParticles.push(particle);
+            }
+        }
+
+        function updateParticles(delta) {
+            const gravityDirection = dominantBodyPosition.clone().sub(player.position).normalize();
+            for (let i = bubbleParticles.length - 1; i >= 0; i--) {
+                const particle = bubbleParticles[i];
+                particle.age += delta;
+                if (particle.age > particle.lifetime) {
+                    scene.remove(particle);
+                    particle.geometry.dispose();
+                    particle.material.dispose();
+                    bubbleParticles.splice(i, 1);
+                } else {
+                    particle.position.add(particle.velocity.clone().multiplyScalar(delta));
+                    particle.material.opacity = 0.6 * (1 - (particle.age / particle.lifetime));
+                }
+            }
+            for (let i = splashParticles.length - 1; i >= 0; i--) {
+                const particle = splashParticles[i];
+                particle.age += delta;
+                if (particle.age > particle.lifetime) {
+                    scene.remove(particle);
+                    particle.geometry.dispose();
+                    particle.material.dispose();
+                    splashParticles.splice(i, 1);
+                } else {
+                    particle.velocity.add(gravityDirection.clone().multiplyScalar(playerSettings.gravityStrength * delta * 5));
+                    particle.position.add(particle.velocity.clone().multiplyScalar(delta));
+                }
+            }
+        }
+
+        // --- FIX FOR FALLING THROUGH CRACKS ---
+        // This function provides a more robust ground check by casting multiple rays.
+        function checkGroundCollision(player, groundObjects, gravityDirection) {
+            const playerCollisionRadius = playerSettings.height / 2;
+            
+            // Define offsets for 5 rays in a cross pattern below the player.
+            const offsets = [
+                new THREE.Vector3(0, 0, 0), // Center
+                new THREE.Vector3(playerCollisionRadius * 0.7, 0, 0), // Forward
+                new THREE.Vector3(-playerCollisionRadius * 0.7, 0, 0),// Backward
+                new THREE.Vector3(0, 0, playerCollisionRadius * 0.7), // Right
+                new THREE.Vector3(0, 0, -playerCollisionRadius * 0.7) // Left
+            ];
+
+            let bestIntersection = null;
+
+            for (const offset of offsets) {
+                // Rotate the offset to match the player's orientation.
+                const rotatedOffset = offset.clone().applyQuaternion(player.quaternion);
+                const rayOrigin = player.position.clone().add(rotatedOffset);
+                raycaster.set(rayOrigin, gravityDirection);
+                const intersects = raycaster.intersectObjects(groundObjects);
+
+                if (intersects.length > 0) {
+                    const intersection = intersects[0];
+                    // We want the intersection that is "highest" (i.e., closest to the player).
+                    if (!bestIntersection || intersection.distance < bestIntersection.distance) {
+                        bestIntersection = intersection;
+                    }
+                }
+            }
+            return bestIntersection;
+        }
+
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.1);
+
+            if (isLocked && player) {
+                const planetRotationSpeed = 0.02;
+                const moonAxialRotationSpeed = 0.1;
+                const methanePlanetAxialSpeed = 0.03;
+                const methaneMoonOrbitSpeed = 0.2;
+                const rotationAxis = new THREE.Vector3(0, 1, 0);
+
+                const planetDeltaRotation = new THREE.Quaternion().setFromAxisAngle(rotationAxis, planetRotationSpeed * delta);
+                const moonAxialDeltaRotation = new THREE.Quaternion().setFromAxisAngle(rotationAxis, moonAxialRotationSpeed * delta);
+                const methanePlanetDeltaRotation = new THREE.Quaternion().setFromAxisAngle(rotationAxis, methanePlanetAxialSpeed * delta);
+                const methaneMoonDeltaOrbit = new THREE.Quaternion().setFromAxisAngle(rotationAxis, methaneMoonOrbitSpeed * delta);
+
+                const oldMoonPosition = moonPosition.clone();
+                const oldMethaneMoonPosition = methaneMoonPosition.clone();
+
+                // --- SCENE OBJECTS UPDATE ---
+                if (marchingCubesMesh) marchingCubesMesh.applyQuaternion(planetDeltaRotation);
+                if (waterMesh) waterMesh.applyQuaternion(planetDeltaRotation);
+                if (cubeParent) cubeParent.applyQuaternion(planetDeltaRotation);
+                grassLODs.forEach(lod => lod.applyQuaternion(planetDeltaRotation));
+                anemoneLODs.forEach(lod => lod.applyQuaternion(planetDeltaRotation));
+
+                if (marchingCubesMeshMoon) {
+                    moonPosition.applyQuaternion(planetDeltaRotation);
+                    marchingCubesMeshMoon.position.copy(moonPosition);
+                    moonCubeParent.position.copy(moonPosition);
+                    marchingCubesMeshMoon.applyQuaternion(moonAxialDeltaRotation);
+                    moonCubeParent.applyQuaternion(moonAxialDeltaRotation);
+                }
+                
+                // --- METHANE PLANET SYSTEM UPDATE ---
+                if (methanePlanetPivot) methanePlanetPivot.applyQuaternion(planetDeltaRotation);
+                if (methanePlanet) methanePlanet.applyQuaternion(methanePlanetDeltaRotation);
+                if (methaneRings) methaneRings.rotation.z -= 0.01 * delta;
+                
+                if (methaneMoon && methanePlanet) {
+                    const methanePlanetWorldPos = new THREE.Vector3();
+                    methanePlanet.getWorldPosition(methanePlanetWorldPos);
+
+                    // Orbit methane moon around the methane planet by rotating its relative position vector
+                    methaneMoonRelativePosition.applyQuaternion(methaneMoonDeltaOrbit);
+                    methaneMoonPosition.copy(methanePlanetWorldPos).add(methaneMoonRelativePosition);
+
+                    // Update the actual objects
+                    methaneMoon.position.copy(methaneMoonPosition);
+                    methaneMoonCubeParent.position.copy(methaneMoonPosition);
+                    methaneMoon.applyQuaternion(moonAxialDeltaRotation);
+                    methaneMoonCubeParent.applyQuaternion(moonAxialDeltaRotation);
+                }
+
+
+                // --- Player Update Logic ---
+                const distToPlanet = player.position.distanceTo(planetCenter);
+                const distToMoon = marchingCubesMeshMoon ? player.position.distanceTo(marchingCubesMeshMoon.position) : Infinity;
+                const distToMethaneMoon = methaneMoon ? player.position.distanceTo(methaneMoon.position) : Infinity;
+
+                let dominantBody, dominantBodyRadius;
+                dominantBodyPosition = planetCenter;
+
+                if (distToPlanet < distToMoon && distToPlanet < distToMethaneMoon) {
+                    // ON PLANET
+                    dominantBody = marchingCubesMesh;
+                    dominantBodyPosition = planetCenter;
+                    dominantBodyRadius = PLANET_RADIUS;
+                    player.position.applyQuaternion(planetDeltaRotation);
+                    player.velocity.applyQuaternion(planetDeltaRotation);
+                    player.quaternion.premultiply(planetDeltaRotation);
+                } else if (distToMoon < distToMethaneMoon) {
+                    // ON ORIGINAL MOON
+                    dominantBody = marchingCubesMeshMoon;
+                    dominantBodyPosition = marchingCubesMeshMoon.position;
+                    dominantBodyRadius = MOON_RADIUS;
+                    const playerRelativePos = player.position.clone().sub(oldMoonPosition);
+                    playerRelativePos.applyQuaternion(moonAxialDeltaRotation);
+                    player.position.copy(moonPosition).add(playerRelativePos);
+                    player.velocity.applyQuaternion(planetDeltaRotation).applyQuaternion(moonAxialDeltaRotation);
+                    player.quaternion.premultiply(planetDeltaRotation).premultiply(moonAxialDeltaRotation);
+                } else if (methaneMoon) {
+                    // ON METHANE MOON
+                    dominantBody = methaneMoon;
+                    dominantBodyPosition = methaneMoon.position;
+                    dominantBodyRadius = METHANE_MOON_RADIUS;
+                    
+                    // Calculate player's position relative to the moon's last position
+                    const playerRelativePos = player.position.clone().sub(oldMethaneMoonPosition);
+
+                    // Apply the moon's own axial rotation to the player's relative position
+                    playerRelativePos.applyQuaternion(moonAxialDeltaRotation);
+
+                    // The player's new absolute position is the moon's new world position plus the rotated relative vector
+                    player.position.copy(methaneMoonPosition).add(playerRelativePos);
+
+                    // The player's velocity and orientation must also be rotated to match the moon's frame of reference.
+                    // This involves the main system's orbit, the moon's orbit around its parent, and the moon's axial spin.
+                    player.velocity.applyQuaternion(planetDeltaRotation)
+                                   .applyQuaternion(methaneMoonDeltaOrbit)
+                                   .applyQuaternion(moonAxialDeltaRotation);
+
+                    player.quaternion.premultiply(planetDeltaRotation)
+                                     .premultiply(methaneMoonDeltaOrbit)
+                                     .premultiply(moonAxialDeltaRotation);
+                }
+
+
+                const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
+                const gravityDirection = dominantBodyPosition.clone().sub(player.position).normalize();
+
+                const distFromSurface = player.position.distanceTo(dominantBodyPosition) - dominantBodyRadius;
+                const l1_distance = MOON_ORBIT_DISTANCE / 2;
+                let gravityFactor = 1.0;
+                if (distFromSurface > 0 && distFromSurface < l1_distance) {
+                    gravityFactor = 1.0 - Math.pow(distFromSurface / l1_distance, 2);
+                }
+
+                const waterRadius = waterMesh.geometry.parameters.radius;
+                const distToWaterCenter = player.position.distanceTo(planetCenter);
+                const isInWater = distToWaterCenter < waterRadius;
+                const maxWaterSpeed = playerSettings.speed * 0.5;
+
+                const now = clock.getElapsedTime();
+                const isIntersectingWater = Math.abs(distToWaterCenter - waterRadius) < 0.5;
+
+                if (isInWater && !isIntersectingWater && now - lastBubbleTime > 0.2) {
+                    createBubble();
+                    lastBubbleTime = now;
+                }
+                const isMovingHorizontally = (keys.w || keys.a || keys.s || keys.d);
+                if (isIntersectingWater && isMovingHorizontally && now - lastSplashTime > 0.1) {
+                    const splashPos = player.position.clone();
+                    const playerUpLocal = player.position.clone().sub(dominantBodyPosition).normalize();
+                    splashPos.sub(playerUpLocal.multiplyScalar(distToWaterCenter - waterRadius));
+                    createSplashEffect(splashPos);
+                    lastSplashTime = now;
+                }
+                wasInWater = isInWater;
+
+                const targetRotation = new THREE.Quaternion();
+                const targetPosition = new THREE.Vector3();
+                if (isInWater && !player.onGround) {
+                    targetRotation.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+                    targetPosition.set(0, 0.8, 0.6);
+                } else {
+                    targetRotation.identity();
+                    targetPosition.set(0, -0.3, 0);
+                }
+                player.body.quaternion.slerp(targetRotation, 0.1);
+                player.body.position.lerp(targetPosition, 0.1);
+
+                if (!player.onGround && !isInWater) {
+                    player.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength * gravityFactor));
+                } else if (isInWater) {
+                    player.velocity.multiplyScalar(0.98);
+                    if (!player.onGround) {
+                        const waterVerticalSpeed = playerSettings.speed * 0.5;
+                        if (keys.space) player.velocity.add(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
+                        if (keys.c || keys.ctrl) player.velocity.sub(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
+                    }
+                    if (player.velocity.length() > maxWaterSpeed) {
+                        player.velocity.normalize().multiplyScalar(maxWaterSpeed);
+                    }
+                }
+
+                const moveDirection = new THREE.Vector3();
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
+                if (keys.w) moveDirection.add(forward);
+                if (keys.s) moveDirection.sub(forward);
+                if (keys.a) moveDirection.add(right.clone().multiplyScalar(-1));
+                if (keys.d) moveDirection.add(right);
+
+                const verticalComponent = player.velocity.clone().projectOnVector(playerUp);
+                const horizontalComponent = player.velocity.clone().sub(verticalComponent);
+
+                if (moveDirection.lengthSq() > 0) {
+                    const projectedMove = moveDirection.projectOnPlane(playerUp).normalize();
+                    const targetVelocity = projectedMove.multiplyScalar(playerSettings.speed);
+                    if (isInWater) {
+                        player.velocity.add(targetVelocity.multiplyScalar(delta));
+                    } else {
+                        horizontalComponent.lerp(targetVelocity, 0.2);
+                    }
+                } else if (!isInWater) {
+                    horizontalComponent.lerp(new THREE.Vector3(), 0.1);
+                }
+                if (!isInWater) {
+                    player.velocity.copy(horizontalComponent).add(verticalComponent);
+                }
+
+                player.position.add(player.velocity.clone().multiplyScalar(delta));
+
+                const groundObjects = [marchingCubesMesh, marchingCubesMeshMoon, methaneMoon].filter(mesh => mesh).concat(cubes);
+                const playerCollisionRadius = playerSettings.height / 2;
+
+                // --- COLLISION LOGIC ---
+                // Use the new multi-ray ground check function.
+                const intersection = checkGroundCollision(player, groundObjects, gravityDirection);
+                const groundStickiness = 0.2;
+                player.onGround = false;
+
+                if (intersection) {
+                    const distanceToGround = intersection.distance;
+                    if (distanceToGround < playerCollisionRadius + groundStickiness) {
+                        const verticalSpeed = player.velocity.dot(playerUp);
+                        if (verticalSpeed < 0.1) {
+                            player.onGround = true;
+                            const penetrationDepth = playerCollisionRadius - distanceToGround;
+                            player.position.add(playerUp.clone().multiplyScalar(penetrationDepth));
+                            const verticalVelocityComponent = playerUp.clone().multiplyScalar(verticalSpeed);
+                            player.velocity.sub(verticalVelocityComponent);
+                            
+                            let groundMaterialId = 'unknown';
+                            const intersectedObject = intersection.object;
+                            if (cubes.includes(intersectedObject)) {
+                                groundMaterialId = intersectedObject.userData.materialId || 'unknown_cube';
+                            } else {
+                                const onMoon = (intersectedObject === marchingCubesMeshMoon);
+                                const onMethaneMoon = (intersectedObject === methaneMoon);
+                                const material = onMethaneMoon ? getMethaneMoonMaterialAtPoint(intersection.point, intersection.face.normal) : getMaterialAtPoint(intersection.point, intersection.face.normal, onMoon);
+                                groundMaterialId = material.id;
+                            }
+                            if (groundMaterialId === 'lava' && clock.getElapsedTime() - player.lastDamageTime > 0.5) {
+                                takeDamage(10);
+                            }
+                        }
+                    }
+                }
+
+                // Ceiling collision check (remains a single raycast upwards)
+                const rayOrigin = player.position.clone();
+                raycaster.set(rayOrigin, playerUp);
+                const ceilingIntersects = raycaster.intersectObjects(groundObjects);
+                if (ceilingIntersects.length > 0) {
+                    const intersection = ceilingIntersects[0];
+                    const distanceToCeiling = intersection.distance;
+                    if (distanceToCeiling < playerCollisionRadius) {
+                        const penetrationDepth = playerCollisionRadius - distanceToCeiling;
+                        player.position.sub(playerUp.clone().multiplyScalar(penetrationDepth));
+                        const verticalSpeed = player.velocity.dot(playerUp);
+                        if (verticalSpeed > 0) {
+                            const upwardVelocityComponent = playerUp.clone().multiplyScalar(verticalSpeed);
+                            player.velocity.sub(upwardVelocityComponent);
+                        }
+                    }
+                }
+                
+                const playerCurrentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);
+                const newUp = player.position.clone().sub(dominantBodyPosition).normalize();
+                const correction = new THREE.Quaternion().setFromUnitVectors(playerCurrentUp, newUp);
+                player.quaternion.slerp(correction.multiply(player.quaternion), 0.2);
+
+                let rescueTargetMesh = null;
+                const distToPlanetCenter = player.position.distanceTo(planetCenter);
+                if (distToPlanetCenter < PLANET_RADIUS + BLOCK_SIZE) {
+                    rescueTargetMesh = marchingCubesMesh;
+                } else {
+                    const distToMoonCenter = marchingCubesMeshMoon ? player.position.distanceTo(marchingCubesMeshMoon.position) : Infinity;
+                    if (marchingCubesMeshMoon && distToMoonCenter < MOON_RADIUS + BLOCK_SIZE) {
+                        rescueTargetMesh = marchingCubesMeshMoon;
+                    } else {
+                        const distToMethaneMoonCenter = methaneMoon ? player.position.distanceTo(methaneMoon.position) : Infinity;
+                        if (methaneMoon && distToMethaneMoonCenter < METHANE_MOON_RADIUS + BLOCK_SIZE) {
+                            rescueTargetMesh = methaneMoon;
+                        }
+                    }
+                }
+
+                if (rescueTargetMesh) {
+                    const originalSide = rescueTargetMesh.material.side;
+                    let needsRescue = false;
+                    raycaster.set(player.position, playerUp);
+                    rescueTargetMesh.material.side = THREE.BackSide;
+                    const intersectsOut = raycaster.intersectObject(rescueTargetMesh);
+                    if (intersectsOut.length > 0) {
+                        needsRescue = true;
+                    }
+                    rescueTargetMesh.material.side = originalSide;
+                    if (needsRescue) {
+                        raycaster.set(dominantBodyPosition, playerUp);
+                        const rescueIntersects = raycaster.intersectObject(rescueTargetMesh);
+                        if (rescueIntersects.length > 0) {
+                            const rescuePoint = rescueIntersects[0].point;
+                            const rescueNormal = rescueIntersects[0].face.normal;
+                            player.position.copy(rescuePoint).add(rescueNormal.multiplyScalar(playerSettings.height / 2));
+                            player.velocity.set(0, 0, 0);
+                            player.onGround = true;
+                            console.warn("Player rescued from inside geometry!");
+                        }
+                    }
+                }
+            }
+
+            updateParticles(delta);
+            updateCamera();
+            updateFoliageLODs();
+            renderer.render(scene, camera);
+        }
+
+        function updateFoliageLODs() {
+            if (!player) return;
+
+            const foliageTypes = [
+                { lods: grassLODs, map: voxelToGrassMap },
+                { lods: anemoneLODs, map: voxelToAnemoneMap }
+            ];
+
+            const playerPos = player.position;
+            const tempMatrix = new THREE.Matrix4();
+            const instancePos = new THREE.Vector3();
+
+            foliageTypes.forEach(type => {
+                if (type.lods.length === 0 || type.map.size === 0) return;
+
+                type.lods.forEach(lod => lod.count = 0);
+
+                type.map.forEach((instanceId, mapKey) => {
+                    type.lods[0].getMatrixAt(instanceId, tempMatrix);
+                    instancePos.setFromMatrixPosition(tempMatrix);
+
+                    if (tempMatrix.elements[0] === 0 && tempMatrix.elements[5] === 0) return;
+
+                    const dist = playerPos.distanceTo(instancePos);
+
+                    let lodIndex = -1;
+                    for (let j = 0; j < GRASS_LOD_DISTANCES.length; j++) {
+                        if (dist < GRASS_LOD_DISTANCES[j]) {
+                            lodIndex = j;
+                            break;
+                        }
+                    }
+
+                    if (lodIndex !== -1) {
+                        const targetLOD = type.lods[lodIndex];
+                        targetLOD.setMatrixAt(targetLOD.count, tempMatrix);
+                        targetLOD.count++;
+                    }
+                });
+
+                type.lods.forEach(lod => {
+                    lod.instanceMatrix.needsUpdate = true;
+                });
+            });
+        }
+
+        window.onload = function() {
+            init();
+            animate();
+        };
+    </script>
+</body>
+</html>

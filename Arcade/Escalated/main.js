@@ -4311,30 +4311,53 @@ function dropLampshade(lampshade) {
         // Check collision with enemies first
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
+            
+            // Get the actual THREE.Group object from the Mobster instance
+            const enemyObject = enemy.getObject ? enemy.getObject() : enemy;
+            
             let enemyBox;
             try {
-                enemyBox = new THREE.Box3().setFromObject(enemy);
+                enemyBox = new THREE.Box3().setFromObject(enemyObject);
                 if (!enemyBox.min || !enemyBox.max || enemyBox.isEmpty()) continue;
             } catch (e) { continue; }
 
             if (lampshadeBox.intersectsBox(enemyBox)) {
-                const enemyTopY = enemy.position.y + ENEMY_SETTINGS.height / 2;
+                const enemyTopY = enemyObject.position.y + 1.7 / 2; // Using mobster height / 2
                 const lampshadeBottomY = lampshade.position.y - lampshadeHeight / 2;
 
                 // Condition: Lampshade's bottom is at or slightly above the enemy's head,
                 // and below a certain threshold above the head (to count as a "landing on" hit)
                 // and also above the enemy's base to ensure it's a top-down hit.
-                if (lampshadeBottomY <= enemyTopY + 0.1 && lampshadeBottomY >= enemy.position.y) {
-                    console.log("Lampshade hit and destroyed enemy during fall:", enemy.name);
+                if (lampshadeBottomY <= enemyTopY + 0.2 && lampshadeBottomY >= enemyObject.position.y - 0.8) {
+                    console.log("Lampshade hit and killed mobster during fall!");
                     playerScore += 150;
                     updateUI();
 
-                    scene.remove(enemy);
-                    const worldObjIndex = worldObjects.indexOf(enemy);
-                    if (worldObjIndex > -1) worldObjects.splice(worldObjIndex, 1);
-                    enemies.splice(i, 1); // Remove from enemies array
+                    // Properly kill the mobster using its own methods
+                    if (enemy.takeDamage && enemy.fallAndDisappear) {
+                        enemy.takeDamage(200); // Enough damage to kill
+                        enemy.fallAndDisappear(); // Trigger death animation
+                    } else {
+                        // Fallback for non-Mobster enemies
+                        scene.remove(enemyObject);
+                        const worldObjIndex = worldObjects.indexOf(enemyObject);
+                        if (worldObjIndex > -1) worldObjects.splice(worldObjIndex, 1);
+                    }
+                    
+                    // Remove from enemies array
+                    enemies.splice(i, 1);
 
-                    scene.remove(lampshade); // Destroy lampshade
+                    // Position lampshade on the mobster's head as a "hat"
+                    lampshade.position.copy(enemyObject.position);
+                    lampshade.position.y = enemyTopY + lampshadeHeight / 2 - 0.1; // Slightly inside the head
+                    
+                    // Make lampshade stay on the mobster briefly before falling
+                    setTimeout(() => {
+                        if (lampshade.parent) {
+                            scene.remove(lampshade); // Remove lampshade after death animation
+                        }
+                    }, 1500); // Wait 1.5 seconds for death animation
+                    
                     animationComplete = true;
                     clearInterval(fallInterval);
                     return; // Exit interval callback
