@@ -10,8 +10,10 @@ export class Mobster {
      * @param {THREE.Scene} scene The scene to add the character to.
      * @param {THREE.Vector3} initialPosition The initial position of the character.
      * @param {number} floorIndex The floor index the mobster is on.
+     * @param {number} patrolMinZ The minimum Z boundary for patrolling.
+     * @param {number} patrolMaxZ The maximum Z boundary for patrolling.
      */
-    constructor(scene, initialPosition = new THREE.Vector3(0, 0, 0), floorIndex = 0) {
+    constructor(scene, initialPosition = new THREE.Vector3(0, 0, 0), floorIndex = 0, patrolMinZ, patrolMaxZ) {
         this.scene = scene;
         this.clock = new THREE.Clock();
         this.lastShotTime = 0;
@@ -50,7 +52,21 @@ export class Mobster {
         this.health = 100; // Add health property
         this.isFalling = false; // State to prevent multiple death animations
 
+        this.patrolDirection = 1;  // 1 for positive Z (forward), -1 for negative Z (backward)
+        this.patrolSpeed = 0.5;    // Adjust speed as needed, units per second
+        this.patrolMinZ = patrolMinZ;  // Minimum Z boundary for patrolling
+        this.patrolMaxZ = patrolMaxZ;  // Maximum Z boundary for patrolling
+        this.isTurning = false;
+        this.turnStartTime = 0;
+        this.turnDuration = 0.5;
+        this.startTurnQuaternion = new THREE.Quaternion();
+        this.endTurnQuaternion = new THREE.Quaternion();
+
         this._createCharacter();
+        // Set initial facing direction based on patrolDirection
+        const initialRotationY = this.patrolDirection === 1 ? 0 : Math.PI;
+        this.characterGroup.rotation.y = initialRotationY;
+
         this.characterGroup.position.copy(initialPosition);
         this.scene.add(this.characterGroup);
     }
@@ -266,24 +282,48 @@ export class Mobster {
      * @param {boolean} isAimedAtByPlayer Whether the player is aiming at this mobster.
      * @param {function} createProjectileFunc The function to create a projectile.
      */
-    update(deltaTime, playerPosition, hasLineOfSight, isAimedAtByPlayer, createProjectileFunc) {
+
+    // Modify the update method to include patrol logic:
+    update(deltaTime, playerPosition, isPlayerVisible, isAimedAtByPlayer, createProjectileFunc) {
         const elapsedTime = this.clock.getElapsedTime();
 
-        if (hasLineOfSight) {
-            // If mobster sees player, it should aim.
+        if (this.isTurning) {
+            this.performTurn(deltaTime);
+        } else if (isPlayerVisible) {
             this.aimAt(playerPosition);
-
-            if (isAimedAtByPlayer) {
-                // If player is also aiming, fire back.
-                this.fireProjectile(playerPosition, createProjectileFunc);
-            }
         } else {
-            // If mobster loses sight, go back to standing.
-            if (this.characterState === 'aiming') {
+            const wasAiming = this.characterState === 'aiming';
+            // Only patrol if patrol boundaries are defined
+            if (this.patrolMinZ !== undefined && this.patrolMaxZ !== undefined) {
+                this.walk(); // Set state to walking
+
+                if (wasAiming) {
+                    // If we just stopped aiming, turn back to patrol direction
+                    const targetRotationY = this.patrolDirection === 1 ? 0 : Math.PI;
+                    this.startTurn(targetRotationY);
+                    return; // Start turning, skip movement for this frame
+                }
+
+                // Continue patrolling
+                this.characterGroup.position.z += this.patrolDirection * this.patrolSpeed * deltaTime;
+
+                // Check boundaries
+                if (this.patrolDirection === 1 && this.characterGroup.position.z >= this.patrolMaxZ) {
+                    this.characterGroup.position.z = this.patrolMaxZ;
+                    this.patrolDirection = -1;
+                    this.startTurn(Math.PI); // Turn to face -Z
+                } else if (this.patrolDirection === -1 && this.characterGroup.position.z <= this.patrolMinZ) {
+                    this.characterGroup.position.z = this.patrolMinZ;
+                    this.patrolDirection = 1;
+                    this.startTurn(0); // Turn to face +Z
+                }
+            } else {
+                // If no patrol boundaries, just stand still.
                 this.stand();
             }
         }
 
+        // Animation logic based on the current state
         switch (this.characterState) {
             case 'walking':
                 this.animationTime += deltaTime * this.walkSpeed;
@@ -347,6 +387,27 @@ export class Mobster {
     stand() {
         if (this.characterState !== 'standing') {
             this.characterState = 'standing';
+        }
+    }
+
+
+    // Add new methods for turning:
+    startTurn(targetRotationY) {
+        this.isTurning = true;
+        this.turnStartTime = this.clock.getElapsedTime();
+        this.startTurnQuaternion.copy(this.characterGroup.quaternion);
+        this.endTurnQuaternion.setFromEuler(new THREE.Euler(0, targetRotationY, 0));
+    }
+
+    performTurn(deltaTime) {
+        const turnTimeElapsed = this.clock.getElapsedTime() - this.turnStartTime;
+        let turnProgress = turnTimeElapsed / this.turnDuration;
+        turnProgress = Math.min(turnProgress, 1); // Clamp progress to 1
+
+        this.characterGroup.quaternion.slerpQuaternions(this.startTurnQuaternion, this.endTurnQuaternion, turnProgress);
+
+        if (turnProgress >= 1) {
+            this.isTurning = false;
         }
     }
 

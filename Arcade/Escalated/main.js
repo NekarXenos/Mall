@@ -601,7 +601,7 @@ function createStandardLamp(x, y, z, floorIndex, lampIdSuffix, sceneRef, lightsA
 }
 
 // --- Enemy Creation ---
-function createEnemy(x, y, z, floorIndex) {
+function createEnemy(x, y, z, floorIndex, patrolMinZ, patrolMaxZ) {
     const scaleFactor = 1.7 / 4.2; // 1.7 / 4.2; // Mobster's desired height / original model height
     const mobsterFeetOffset = 3 * scaleFactor; //  3 * scaleFactor; // Distance from mobster's origin to its feet
     const desiredLift = 0; //1.5; // Additional lift requested by user
@@ -617,7 +617,7 @@ function createEnemy(x, y, z, floorIndex) {
     const adjustedY = floorY + desiredLift + mobsterFeetOffset;
 
     const initialPosition = new THREE.Vector3(x, adjustedY, z);
-    const mobster = new Mobster(scene, initialPosition, floorIndex, worldObjects);
+    const mobster = new Mobster(scene, initialPosition, floorIndex, patrolMinZ, patrolMaxZ);
     enemies.push(mobster);
     // Add individual meshes of the mobster to worldObjects for collision detection
     mobster.getObject().traverse(child => {
@@ -1690,7 +1690,7 @@ function generateWorld() {
                             enemyZ > elevatorShaftZone.minZ - buffer && enemyZ < elevatorShaftZone.maxZ + buffer);
 
                         if (!isInShaft) {
-                            createEnemy(enemyX, floorY, enemyZ, i);
+                            createEnemy(enemyX, floorY, enemyZ, i, basementMinZ, basementMaxZ);
                             break; // Found a valid spot, move to next enemy
                         }
                     } while (attempts < maxAttempts);
@@ -3197,8 +3197,10 @@ function generateWorld() {
 
                 // Wing A Enemies
                 // 1. Corridor Enemy (random Z)
-                const randomCorridorZ_A = Math.random() * totalCorridorLength;
-                createEnemy(SETTINGS.corridorWidth / 2, floorY, randomCorridorZ_A, i);
+                const patrolMinZ_A = 0.5; // Buffer from wall
+                const patrolMaxZ_A = totalCorridorLength - 0.5; // Buffer from wall
+                const randomCorridorZ_A = Math.random() * (patrolMaxZ_A - patrolMinZ_A) + patrolMinZ_A;
+                createEnemy(SETTINGS.corridorWidth / 2, floorY, randomCorridorZ_A, i, patrolMinZ_A, patrolMaxZ_A);
 
                 // 2. Left Room Enemy (random room)
                 const randomLeftRoomIndex_A = Math.floor(Math.random() * SETTINGS.doorsPerSide);
@@ -3215,8 +3217,10 @@ function generateWorld() {
                 // Wing B Enemies
                 // 1. Corridor Enemy (random Z)
                 // B-wing corridor Z ranges from -16 - totalCorridorLength (far end) to -16 (near end)
-                const randomCorridorZ_B = -16 - (Math.random() * totalCorridorLength);
-                createEnemy(SETTINGS.corridorWidth / 2, floorY, randomCorridorZ_B, i);
+                const patrolMinZ_B = -16 - totalCorridorLength + 0.5;
+                const patrolMaxZ_B = -16 - 0.5;
+                const randomCorridorZ_B = Math.random() * (patrolMaxZ_B - patrolMinZ_B) + patrolMinZ_B;
+                createEnemy(SETTINGS.corridorWidth / 2, floorY, randomCorridorZ_B, i, patrolMinZ_B, patrolMaxZ_B);
 
                 // 2. Left Room Enemy (random room)
                 const randomLeftRoomIndex_B = Math.floor(Math.random() * SETTINGS.doorsPerSide);
@@ -5052,6 +5056,7 @@ function updateEnemies(delta) {
         enemy.getObject().getWorldPosition(enemyPosition);
 
         const distanceToPlayer = playerPosition.distanceTo(enemyPosition);
+        let isPlayerVisible = false; // Declare here to ensure it's in scope
 
         if (distanceToPlayer < ENEMY_SETTINGS.activationRadius) {
             // Simple line-of-sight check
@@ -5059,12 +5064,18 @@ function updateEnemies(delta) {
             const raycaster = new THREE.Raycaster(enemyPosition, directionToPlayer, 0, ENEMY_SETTINGS.losMaxDistance);
             const intersects = raycaster.intersectObjects(worldObjects, true);
 
-            let isPlayerVisible = false;
             if (intersects.length > 0) {
                 const firstIntersected = intersects[0].object;
-                // Check if the first intersected object is the player or part of the player
-                if (firstIntersected === playerBox || (firstIntersected.parent && firstIntersected.parent === playerBox)) {
+                // A simple check to see if the ray hit the player's bounding box representation
+                // This needs to be more robust if the player is complex.
+                if (firstIntersected.name.includes("player")) { // Assuming player object or its parts have a name
                     isPlayerVisible = true;
+                } else {
+                    // A fallback check against the global playerBox if names aren't set
+                    const playerBoundingBox = new THREE.Box3().setFromObject(controls.getObject());
+                    if (playerBoundingBox.containsPoint(intersects[0].point)) {
+                        isPlayerVisible = true;
+                    }
                 }
             }
 
@@ -5072,21 +5083,20 @@ function updateEnemies(delta) {
                 enemy.aimAt(playerPosition);
                 const now = clock.getElapsedTime();
                 if (now - enemy.lastShotTime > ENEMY_SETTINGS.fireRate / 1000) {
-                    enemy.shoot();
+                    enemy.shoot(); // This method is for animation/visuals
                     enemy.lastShotTime = now;
 
-                    // Create a projectile from the enemy's gun
-                    const projectileStartPosition = new THREE.Vector3();
-                    enemy.gunGroup.getWorldPosition(projectileStartPosition);
-                    createProjectile(projectileStartPosition, directionToPlayer, false, enemy.getObject());
+                    // Actual projectile creation
+                    createProjectile(new THREE.Vector3().setFromMatrixPosition(enemy.gunGroup.matrixWorld), directionToPlayer, false, enemy.getObject());
                 }
-            } else {
-                enemy.stand();
             }
         } else {
-            enemy.stand();
+            // When player is outside activation radius, they are not visible.
+            isPlayerVisible = false;
         }
-        enemy.update(delta);
+
+        // Always call update, passing the visibility state.
+        enemy.update(delta, playerPosition, isPlayerVisible);
     });
 }
 
