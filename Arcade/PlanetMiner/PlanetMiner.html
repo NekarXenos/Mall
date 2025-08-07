@@ -330,7 +330,118 @@
         import * as THREE from 'three';
         import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 
-        // --- Material Definitions ---
+        const terrainNoise = `
+                // 3D Simplex Noise.
+                //
+                // Author: Ian McEwan, Ashima Arts.
+                //
+                vec3 mod289(vec3 x) {
+                  return x - floor(x * (1.0 / 289.0)) * 289.0;
+                }
+
+                vec4 mod289(vec4 x) {
+                  return x - floor(x * (1.0 / 289.0)) * 289.0;
+                }
+
+                vec4 permute(vec4 x) {
+                     return mod289(((x*34.0)+1.0)*x);
+                }
+
+                vec4 taylorInvSqrt(vec4 r)
+                {
+                  return 1.79284291400159 - 0.85373472095314 * r;
+                }
+
+                float snoise(vec3 v)
+                {
+                  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+                  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+
+                  // First corner
+                  vec3 i  = floor(v + dot(v, C.yyy) );
+                  vec3 x0 =   v - i + dot(i, C.xxx) ;
+
+                  // Other corners
+                  vec3 g = step(x0.yzx, x0.xyz);
+                  vec3 l = 1.0 - g;
+                  vec3 i1 = min( g.xyz, l.zxy );
+                  vec3 i2 = max( g.xyz, l.zxy );
+
+                  vec3 x1 = x0 - i1 + C.xxx;
+                  vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
+                  vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y
+
+                  // Permutations
+                  i = mod289(i);
+                  vec4 p = permute( permute( permute(
+                             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                           + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+                           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+
+                  // Gradients: 7x7 points over a square, mapped onto an octahedron.
+                  // The ring size 17*17 = 289 is close to a multiple of 8.
+                  float n_ = 0.142857142857; // 1.0/7.0
+                  vec3  ns = n_ * D.wyz - D.xzx;
+
+                  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)
+
+                  vec4 x_ = floor(j * ns.z);
+                  vec4 y_ = floor(j - 7.0 * x_);    // mod(j,N)
+
+                  vec4 x = x_ *ns.x + ns.yyyy;
+                  vec4 y = y_ *ns.x + ns.yyyy;
+                  vec4 h = 1.0 - abs(x) - abs(y);
+
+                  vec4 b0 = vec4( x.xy, y.xy );
+                  vec4 b1 = vec4( x.zw, y.zw );
+
+                  vec4 s0 = floor(b0)*2.0 + 1.0;
+                  vec4 s1 = floor(b1)*2.0 + 1.0;
+                  vec4 sh = -step(h, vec4(0.0));
+
+                  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+                  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+                  vec3 p0 = vec3(a0.xy,h.x);
+                  vec3 p1 = vec3(a0.zw,h.y);
+                  vec3 p2 = vec3(a1.xy,h.z);
+                  vec3 p3 = vec3(a1.zw,h.w);
+
+                  //Normalise gradients
+                  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+                  p0 *= norm.x;
+                  p1 *= norm.y;
+                  p2 *= norm.z;
+                  p3 *= norm.w;
+
+                  // Mix final noise value
+                  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                  m = m * m;
+                  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
+                                                dot(p2,x2), dot(p3,x3) ) );
+                }
+
+                float ridgedMultifractal(vec3 p) {
+                    float lacunarity = 2.0;
+                    float gain = 0.5;
+                    float offset = 1.0;
+                    float sum = 0.0;
+                    float freq = 1.0, amp = 0.5;
+                    float prev = 1.0;
+                    for(int i=0; i<6; i++) {
+                        float n = snoise(p * freq);
+                        n = offset - abs(n);
+                        n *= n;
+                        sum += n * amp * prev;
+                        prev = n;
+                        freq *= lacunarity;
+                        amp *= gain;
+                    }
+                    return sum;
+                }
+            `;
+
+        // --- Material Definitions ---''
         const MATERIALS = {
             // Planet Surface
             GRASS: { id: 'grass', color: new THREE.Color(0x335010), buildable: true },
@@ -515,6 +626,14 @@
 
         // Noise parameters
         const initialNoiseScale = 0.02, noiseStrength = 0.5, octaves = 6, lacunarity = 2.0, persistence = 0.5;
+
+        // Water parameters (replaces sliders)
+        const waterSettings = {
+            waveSpeed: 1.5,
+            waveAmplitude: 100,
+            blueFreq: 1.0,
+            greenFreq: 20.0
+        };
 
         // DOM Elements
         const overlay = document.getElementById('overlay');
@@ -774,10 +893,6 @@
             document.addEventListener('mousedown', onMouseDownDesktop);
             document.addEventListener('contextmenu', (e) => e.preventDefault());
             window.addEventListener('resize', onWindowResize);
-
-            // Removed click listeners for prev/next material buttons as they are now keyboard controlled
-            // document.getElementById('prev-material').addEventListener('click', selectPrevMaterial);
-            // document.getElementById('next-material').addEventListener('click', selectNextMaterial);
         }
 
         /**
@@ -786,13 +901,114 @@
         function createWaterLayer() {
             const waterGeometry = new THREE.SphereGeometry(PLANET_RADIUS + WATER_LEVEL_OFFSET, 64, 64);
             const waterMaterial = new THREE.MeshStandardMaterial({
-                color: 0x0077ff, // Blue color for water
+                metalness: 0.9,
+                roughness: 0.3,
                 transparent: true,
-                opacity: 0.7, // Semi-transparent
-                roughness: 0.1, // Low roughness for reflective water
-                metalness: 0.9, // High metalness for reflective water
+                opacity: 0.7,
                 side: THREE.DoubleSide // Render both sides
             });
+
+
+            waterMaterial.onBeforeCompile = shader => {
+                shader.uniforms.time = { value: 0 };
+                shader.uniforms.noiseScale = { value: 2 };
+                shader.uniforms.uWaveSpeed = { value: waterSettings.waveSpeed };
+                shader.uniforms.uWaveAmplitude = { value: waterSettings.waveAmplitude };
+                shader.uniforms.uBlueFreq = { value: waterSettings.blueFreq };
+                shader.uniforms.uGreenFreq = { value: waterSettings.greenFreq };
+
+                // Add simplex noise function to both shaders
+                shader.vertexShader = terrainNoise + shader.vertexShader;
+                shader.fragmentShader = terrainNoise + shader.fragmentShader;
+
+                // Pass noise from vertex to fragment
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <common>',
+                    `
+                    #include <common>
+                    uniform float time;
+                    uniform float noiseScale;
+                    varying float vNoise;
+                    `
+                );
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `
+                    #include <begin_vertex>
+                    vNoise = ridgedMultifractal(normal * noiseScale);
+                    `
+                );
+
+                // --- Fragment Shader Modifications ---
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <common>',
+                    `
+                    #include <common>
+                    uniform float time;
+                    uniform float uWaveSpeed;
+                    uniform float uWaveAmplitude;
+                    uniform float uBlueFreq;
+                    uniform float uGreenFreq;
+                    varying float vNoise;
+                    `
+                );
+
+                // Modify the normal to create the wave effect
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <normal_fragment_maps>',
+                    `
+                    #include <normal_fragment_maps>
+
+                    float t = vNoise;
+                    float freq = mix(uBlueFreq, uGreenFreq, t);
+                    float phase = time * uWaveSpeed;
+                    float wave_height = uWaveAmplitude * sin(vNoise * freq - phase);
+
+                    // Use derivatives to calculate the normal from the height field
+                    vec3 p_dx = dFdx(vViewPosition);
+                    vec3 p_dy = dFdy(vViewPosition);
+                    vec2 h_dx = dFdx(vec2(wave_height, 0.0));
+                    vec2 h_dy = dFdy(vec2(wave_height, 0.0));
+
+                    vec3 n = normal;
+                    n.xy -= vec2(h_dx.x, h_dy.x) * 0.1;
+
+                    normal = normalize(n);
+                    `
+                );
+
+                // Modify the color based on depth and wave crests
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <color_fragment>',
+                    `
+                    #include <color_fragment>
+                    float t_color = vNoise;
+                    vec3 blue = vec3(0.0, 0.2, 0.8);
+                    vec3 green = vec3(0.1, 0.9, 0.3);
+                    vec3 base_color = mix(blue, green, t_color);
+
+                    // --- White Crests ---
+                    // Recalculate the wave sine value to determine the crest
+                    float freq_crest = mix(uBlueFreq, uGreenFreq, vNoise);
+                    float phase_crest = time * uWaveSpeed;
+                    float wave_sine = sin(vNoise * freq_crest - phase_crest); // This value is between -1 and 1
+
+                    // Use smoothstep to create a smooth transition to white at the wave peaks.
+                    // The range (e.g., 0.5 to 1.0) determines how much of the wave top is white.
+                    float crest_factor = smoothstep(0.5, 1.0, wave_sine);
+
+                    vec3 white = vec3(1.0, 1.0, 1.0);
+                    vec3 final_color = mix(base_color, white, crest_factor);
+
+                    diffuseColor.rgb = final_color;
+                    `
+                );
+
+                waterMaterial.userData.shader = shader;
+            };
+
+
+
             waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
             waterMesh.position.copy(planetCenter); // Center the water sphere on the planet
             scene.add(waterMesh);
@@ -2285,6 +2501,14 @@
             updateParticles(delta); // Update bubbles and splashes
             updateCamera();
             updateFoliageLODs(); // New call for foliage LOD logic
+
+            // Update water shader uniforms
+            if (waterMesh && waterMesh.material.userData.shader) {
+                const shader = waterMesh.material.userData.shader;
+                shader.uniforms.time.value = clock.getElapsedTime();
+                // Values are now read from the waterSettings constant and don't need to be updated here
+            }
+
             renderer.render(scene, camera);
         }
 
