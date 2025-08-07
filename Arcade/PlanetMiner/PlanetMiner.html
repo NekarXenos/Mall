@@ -448,6 +448,7 @@
             SOIL: { id: 'soil', color: new THREE.Color(0x332208), buildable: true },
             SAND: { id: 'sand', color: new THREE.Color(0xD2B48C), buildable: true },
             ROCK: { id: 'rock', color: new THREE.Color(0x222222), buildable: true },
+            ICE: { id: 'ice', color: new THREE.Color(0xadd8e6), buildable: true },
             // Underwater
             SEAWEED: { id: 'seaweed', color: new THREE.Color(0x2E8B57) }, // Still defined, but won't be used for generation
             ANEMONE: { id: 'anemone', color: new THREE.Color(0x4169E1), buildable: true },
@@ -688,6 +689,12 @@
                 return slope > 0.4 ? MATERIALS.MOON_ROCK : MATERIALS.MOON_SAND;
             }
 
+            // --- NEW: Polar Ice Cap Logic for Planet ---
+            const poleThreshold = 0.85; // How far from the pole the ice extends. 1.0 is the pole.
+            if (!onMoon && Math.abs(upVector.y) > poleThreshold) {
+                return MATERIALS.ICE;
+            }
+
             // Planet surface logic
             const heightAboveWater = distCenter - waterRadius;
             const isVertical = slope > 0.7; // Very steep, definitely rock
@@ -840,6 +847,13 @@
                     if (mat.emissive) {
                         materialOptions.emissive = mat.emissive;
                         materialOptions.emissiveIntensity = 1.0; // Make it glow
+                    }
+                    // --- NEW: Special properties for ice ---
+                    if (mat.id === 'ice') {
+                        materialOptions.roughness = 0.2;
+                        materialOptions.metalness = 0.1;
+                        materialOptions.transparent = true;
+                        materialOptions.opacity = 0.8;
                     }
                     builtCubeMaterials[mat.id] = new THREE.MeshStandardMaterial(materialOptions);
                 }
