@@ -15,7 +15,8 @@ export class Mobster {
      */
     constructor(scene, initialPosition = new THREE.Vector3(0, 0, 0), floorIndex = 0, patrolMinZ, patrolMaxZ) {
         this.scene = scene;
-        this.clock = new THREE.Clock();
+        //this.clock = new THREE.Clock();
+        this.clock = null; // Will be set from main.js when mobster is created
         this.lastShotTime = 0;
         this.floorIndex = floorIndex;
 
@@ -48,6 +49,8 @@ export class Mobster {
         this.rightLeg = null;
         this.leftCalf = null;
         this.rightCalf = null;
+        this.muzzleFlashLight = null;
+        this.muzzleFlashOffTime = 0;
 
         this.health = 100; // Add health property
         this.isFalling = false; // State to prevent multiple death animations
@@ -220,6 +223,17 @@ export class Mobster {
         this.gunGroup.position.set(0, -1.5, 0.5);
         this.gunGroup.rotation.set(Math.PI / 2, 0, -Math.PI / 12);
 
+        // Muzzle Flash Light (reusable)
+        /* this.muzzleFlashLight = new THREE.PointLight(0xfff7a1, 10, 5, 2);
+        this.muzzleFlashLight.visible = false;
+        this.muzzleFlashLight.position.set(0.5, 0, 1.75); // Position at barrel tip relative to gunGroup
+        this.gunGroup.add(this.muzzleFlashLight);
+ */
+        this.muzzleFlashLight = new THREE.PointLight(0xfff7a1, 0, 5, 2); // Start with intensity=0, no visible=false
+        this.muzzleFlashLight.position.set(0.5, 0, 1.75);
+        this.gunGroup.add(this.muzzleFlashLight);
+
+
         const barrelGeometry = new THREE.CylinderGeometry(0.15, 0.15, 2.5, 6);
         const barrel = new THREE.Mesh(barrelGeometry, gunMaterial);
         barrel.rotation.z = Math.PI / 2;
@@ -283,47 +297,83 @@ export class Mobster {
      * @param {function} createProjectileFunc The function to create a projectile.
      */
 
-    // Modify the update method to include patrol logic:
-    update(deltaTime, playerPosition, isPlayerVisible, isAimedAtByPlayer, createProjectileFunc) {
+    update(deltaTime, playerPosition, isPlayerVisible, isAimedAtByPlayer, createProjectileFunc, isActive = true) {
+        if (this.isFalling) return; // Don't update if the mobster is in the process of falling/dying
+
         const elapsedTime = this.clock.getElapsedTime();
 
-        if (this.isTurning) {
-            this.performTurn(deltaTime);
-        } else if (isPlayerVisible) {
-            this.aimAt(playerPosition);
+        if (!isActive) {
+            this.stand();
         } else {
-            const wasAiming = this.characterState === 'aiming';
-            // Only patrol if patrol boundaries are defined
-            if (this.patrolMinZ !== undefined && this.patrolMaxZ !== undefined) {
-                this.walk(); // Set state to walking
-
-                if (wasAiming) {
-                    // If we just stopped aiming, turn back to patrol direction
-                    const targetRotationY = this.patrolDirection === 1 ? 0 : Math.PI;
-                    this.startTurn(targetRotationY);
-                    return; // Start turning, skip movement for this frame
-                }
-
-                // Continue patrolling
-                this.characterGroup.position.z += this.patrolDirection * this.patrolSpeed * deltaTime;
-
-                // Check boundaries
-                if (this.patrolDirection === 1 && this.characterGroup.position.z >= this.patrolMaxZ) {
-                    this.characterGroup.position.z = this.patrolMaxZ;
-                    this.patrolDirection = -1;
-                    this.startTurn(Math.PI); // Turn to face -Z
-                } else if (this.patrolDirection === -1 && this.characterGroup.position.z <= this.patrolMinZ) {
-                    this.characterGroup.position.z = this.patrolMinZ;
-                    this.patrolDirection = 1;
-                    this.startTurn(0); // Turn to face +Z
-                }
-            } else {
-                // If no patrol boundaries, just stand still.
-                this.stand();
-            }
+            this.handleActiveState(deltaTime, playerPosition, isPlayerVisible, isAimedAtByPlayer, createProjectileFunc);
         }
 
         // Animation logic based on the current state
+        this.updateAnimation(deltaTime, elapsedTime);
+
+        // Check to turn off muzzle flash
+/*         if (this.muzzleFlashLight.visible && elapsedTime >= this.muzzleFlashOffTime) {
+            this.muzzleFlashLight.visible = false;
+        } */
+       // Check to turn off muzzle flash
+        if (this.muzzleFlashLight.intensity > 0 && elapsedTime >= this.muzzleFlashOffTime) {
+            this.muzzleFlashLight.intensity = 0;
+        }
+    }
+
+    handleActiveState(deltaTime, playerPosition, isPlayerVisible, isAimedAtByPlayer, createProjectileFunc) {
+        const mobsterPosition = this.characterGroup.position;
+        const isPlayerInFront = (this.patrolDirection === 1 && playerPosition.z > mobsterPosition.z) || (this.patrolDirection === -1 && playerPosition.z < mobsterPosition.z);
+
+        if (this.isTurning) {
+            this.performTurn(deltaTime);
+            return; // Don't do other logic while turning
+        }
+
+        // Main logic: Aim or Patrol
+        if (isAimedAtByPlayer && (isPlayerVisible || isPlayerInFront)) {
+            this.aimAt(playerPosition);
+            this.fireProjectile(playerPosition, createProjectileFunc);
+        } else {
+            const wasAiming = this.characterState === 'aiming';
+            if (wasAiming) {
+                // If we just stopped aiming, turn based on player's last known general direction
+                const shouldFaceForward = playerPosition.z > mobsterPosition.z;
+                if ((this.patrolDirection === 1 && !shouldFaceForward) || (this.patrolDirection === -1 && shouldFaceForward)) {
+                    this.patrolDirection *= -1; // Flip direction
+                    this.startTurn(this.patrolDirection === 1 ? 0 : Math.PI);
+                }
+                this.stand(); // Transition to standing before walking
+            } else {
+                this.patrol(deltaTime);
+            }
+        }
+    }
+
+    patrol(deltaTime) {
+        if (this.patrolMinZ === undefined || this.patrolMaxZ === undefined) {
+            this.stand();
+            return;
+        }
+
+        this.walk(); // Set state to walking
+
+        // Move the character
+        this.characterGroup.position.z += this.patrolDirection * this.patrolSpeed * deltaTime;
+
+        // Check boundaries and initiate turn if needed
+        if (this.patrolDirection === 1 && this.characterGroup.position.z >= this.patrolMaxZ) {
+            this.characterGroup.position.z = this.patrolMaxZ;
+            this.patrolDirection = -1;
+            this.startTurn(Math.PI); // Turn to face -Z
+        } else if (this.patrolDirection === -1 && this.characterGroup.position.z <= this.patrolMinZ) {
+            this.characterGroup.position.z = this.patrolMinZ;
+            this.patrolDirection = 1;
+            this.startTurn(0); // Turn to face +Z
+        }
+    }
+
+    updateAnimation(deltaTime, elapsedTime) {
         switch (this.characterState) {
             case 'walking':
                 this.animationTime += deltaTime * this.walkSpeed;
@@ -339,10 +389,17 @@ export class Mobster {
     }
 
     fireProjectile(targetPosition, createProjectileFunc) {
-        if (this.characterState !== 'aiming') return;
+        if (this.characterState !== 'aiming') return; // Only fire when in aiming state
 
         const now = this.clock.getElapsedTime();
-        if (now - this.lastShotTime < 2.0) { // Fire rate of 2 seconds
+
+        // 1. Don't fire until the aiming animation is complete.
+        if (now - this.aimStartTime < this.aimTransitionDuration) {
+            return;
+        }
+
+        // 2. Enforce a fire rate (e.g., one shot every 2 seconds).
+        if (now - this.lastShotTime < 2.0) {
             return;
         }
 
@@ -418,6 +475,7 @@ export class Mobster {
     aimAt(targetPoint) {
         if (this.characterState !== 'aiming') {
             this.characterState = 'aiming';
+            
             this.aimStartTime = this.clock.getElapsedTime();
 
             // Store current rotations for smooth transition
@@ -491,16 +549,17 @@ export class Mobster {
         this.rightCalf.rotation.x = this.initialRotations.rightCalf.x;
     }
 
-    _createMuzzleFlash() {
-        const flash = new THREE.PointLight(0xfff7a1, 10, 5, 2);
-        flash.position.set(0.5, 0, 1.75); // Position at barrel tip relative to gunGroup
-        this.gunGroup.add(flash);
+/*     _createMuzzleFlash() {
+        // Make the pre-created light visible and reset its intensity.
+        this.muzzleFlashLight.visible = true;
+        this.muzzleFlashLight.intensity = 10;
+        this.muzzleFlashOffTime = this.clock.getElapsedTime() + 0.08; // Turn off in 80ms
+    } */
 
-        setTimeout(() => {
-            this.gunGroup.remove(flash);
-            flash.dispose();
-        }, 80);
-    }
+        _createMuzzleFlash() {
+            this.muzzleFlashLight.intensity = 10;
+            this.muzzleFlashOffTime = this.clock.getElapsedTime() + 0.08;
+        }
 
     /**
      * Returns the main character group object.
@@ -531,7 +590,7 @@ export class Mobster {
         }
     }
 
-    fallAndDisappear(direction) { // direction parameter added to match call
+/*     fallAndDisappear(direction) { // direction parameter added to match call
         if (this.isFalling) return; // Prevent multiple fall animations
         this.isFalling = true; // Set the state to falling
 
@@ -558,5 +617,40 @@ export class Mobster {
             }
         };
         animateFall();
+    } */
+    fallAndDisappear(direction) { // direction parameter added to match call
+        if (this.isFalling) return; // Prevent multiple fall animations
+        this.isFalling = true; // Set the state to falling
+
+        // Simple fall animation: rotate the character group
+        const rotationSpeed = 0.1; // Adjust as needed
+        const fallSpeed = 0.2; // Adjust as needed
+
+        const targetRotation = new THREE.Euler(-Math.PI / 2, 0, 0); // THREE.Euler(0, 0, Math.PI / 2); // Rotate 90 degrees around Z-axis
+
+        const animateFall = () => {
+            if (this.characterGroup.rotation.x > targetRotation.x) {
+                this.characterGroup.rotation.x -= rotationSpeed;
+                this.characterGroup.position.y -= fallSpeed; // Move downwards
+                requestAnimationFrame(animateFall);
+            } else {
+                // Detach muzzle flash light to keep it in scene (prevents light count change)
+                this.gunGroup.remove(this.muzzleFlashLight);
+                this.muzzleFlashLight.intensity = 0;
+                this.muzzleFlashLight.visible = true; // Ensure it's considered active
+                this.scene.add(this.muzzleFlashLight); // Add directly to scene root
+
+                // After detaching light, remove and dispose the rest
+                this.scene.remove(this.characterGroup);
+                this.characterGroup.traverse(object => {
+                    if (object.isMesh) {
+                        object.geometry.dispose();
+                        object.material.dispose();
+                    }
+                });
+            }
+        };
+        animateFall();
     }
+
 }

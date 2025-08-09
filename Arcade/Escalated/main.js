@@ -79,6 +79,8 @@ const enemies = []; // Array to store enemy objects
 let currentElevatorConfig = null; // To help generateWorld access the current elevator's properties
 let isPlayerInCar = false; // New state variable to track if player is in the car
 
+let aimedAtEnemy = null;
+
 const floorDepth = SETTINGS.floorHeight - SETTINGS.wallHeight; // Add this near your SETTINGS or at the top of generateWorld
 
 // Add these for escalator step tracking
@@ -549,7 +551,7 @@ const ENEMY_SETTINGS = {
     projectileSpeed: 15.0,
     projectileSize: 0.1,
     activationRadius: 40, // Enemies become active if player is within this radius
-    losMaxDistance: 50,   // Max distance for line of sight check
+    losMaxDistance: 40,   // Max distance for line of sight check
 };
 
 const projectiles = []; // Array to store active projectiles
@@ -618,6 +620,7 @@ function createEnemy(x, y, z, floorIndex, patrolMinZ, patrolMaxZ) {
 
     const initialPosition = new THREE.Vector3(x, adjustedY, z);
     const mobster = new Mobster(scene, initialPosition, floorIndex, patrolMinZ, patrolMaxZ);
+    mobster.clock = clock; // use the game's main clock
     enemies.push(mobster);
     // Add individual meshes of the mobster to worldObjects for collision detection
     mobster.getObject().traverse(child => {
@@ -639,7 +642,7 @@ function createProjectile(startPosition, direction, firedByPlayer = false, firer
         firedByPlayer: firedByPlayer, // Mark who fired the projectile
         firer: firer // Store the entity that fired the projectile
     };
-    // console.log(`Projectile created by ${firer ? firer.name + ' (ID: ' + firer.id + ')' : (firedByPlayer ? 'Player' : 'Unknown')}. Projectile ID: ${projectile.id}`);
+    console.log(`Projectile created by ${firer ? firer.name + ' (ID: ' + firer.id + ')' : (firedByPlayer ? 'Player' : 'Unknown')}. Projectile ID: ${projectile.id}`);
     scene.add(projectile);
     projectiles.push(projectile);
     worldObjects.push(projectile); // Add to worldObjects for collision detection
@@ -5048,55 +5051,66 @@ function checkCollision() {
 function updateEnemies(delta) {
     const playerPosition = new THREE.Vector3();
     controls.getObject().getWorldPosition(playerPosition);
+    const playerFeetY = playerPosition.y - playerHeight;
+    const playerFloor = Math.round(playerFeetY / SETTINGS.floorHeight);
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+    const intersects = raycaster.intersectObjects(enemies.map(e => e.getObject()), true);
+
+    //let aimedAtEnemy = null;
+    if (intersects.length > 0) {
+        const firstIntersectedObj = intersects[0].object;
+        aimedAtEnemy = enemies.find(e => e.getObject().getObjectById(firstIntersectedObj.id));
+    }
 
     enemies.forEach(enemy => {
-        if (enemy.health <= 0) return; // Skip dead enemies
+        if (enemy.health <= 0) return;
 
-        const enemyPosition = new THREE.Vector3();
-        enemy.getObject().getWorldPosition(enemyPosition);
+        const enemyPosition = enemy.getObject().position;
+        const roomData = allRoomsData.find(room => {
+            const { isBWing, side, floorIndex, doorIndex } = parseRoomId(room.id);
+            if (floorIndex !== enemy.floorIndex) return false;
 
-        const distanceToPlayer = playerPosition.distanceTo(enemyPosition);
-        let isPlayerVisible = false; // Declare here to ensure it's in scope
+            const roomMinX = (side === 'R') ? -SETTINGS.roomSize : SETTINGS.corridorWidth;
+            const roomMaxX = (side === 'R') ? 0 : SETTINGS.corridorWidth + SETTINGS.roomSize;
+            const totalCorridorLength = SETTINGS.doorsPerSide * SETTINGS.corridorSegmentLength;
+            const segmentStartZ = isBWing ? (doorIndex * SETTINGS.corridorSegmentLength) - 16 - totalCorridorLength : doorIndex * SETTINGS.corridorSegmentLength;
+            const segmentEndZ = segmentStartZ + SETTINGS.corridorSegmentLength;
 
-        if (distanceToPlayer < ENEMY_SETTINGS.activationRadius) {
-            // Simple line-of-sight check
-            const directionToPlayer = playerPosition.clone().sub(enemyPosition).normalize();
-            const raycaster = new THREE.Raycaster(enemyPosition, directionToPlayer, 0, ENEMY_SETTINGS.losMaxDistance);
-            const intersects = raycaster.intersectObjects(worldObjects, true);
+            return enemyPosition.x > roomMinX && enemyPosition.x < roomMaxX && enemyPosition.z > segmentStartZ && enemyPosition.z < segmentEndZ;
+        });
 
-            if (intersects.length > 0) {
-                const firstIntersected = intersects[0].object;
-                // A simple check to see if the ray hit the player's bounding box representation
-                // This needs to be more robust if the player is complex.
-                if (firstIntersected.name.includes("player")) { // Assuming player object or its parts have a name
-                    isPlayerVisible = true;
-                } else {
-                    // A fallback check against the global playerBox if names aren't set
-                    const playerBoundingBox = new THREE.Box3().setFromObject(controls.getObject());
-                    if (playerBoundingBox.containsPoint(intersects[0].point)) {
-                        isPlayerVisible = true;
-                    }
-                }
+        let isEnemyActive = true; // Corridor enemies are always active
+        if (roomData) {
+            const door = doors.find(d => d.userData.roomId === roomData.id);
+            if (door && !door.userData.isOpen) {
+                isEnemyActive = false;
             }
-
-            if (isPlayerVisible) {
-                enemy.aimAt(playerPosition);
-                const now = clock.getElapsedTime();
-                if (now - enemy.lastShotTime > ENEMY_SETTINGS.fireRate / 1000) {
-                    enemy.shoot(); // This method is for animation/visuals
-                    enemy.lastShotTime = now;
-
-                    // Actual projectile creation
-                    createProjectile(new THREE.Vector3().setFromMatrixPosition(enemy.gunGroup.matrixWorld), directionToPlayer, false, enemy.getObject());
-                }
-            }
-        } else {
-            // When player is outside activation radius, they are not visible.
-            isPlayerVisible = false;
         }
 
-        // Always call update, passing the visibility state.
-        enemy.update(delta, playerPosition, isPlayerVisible);
+        if (!isEnemyActive || enemy.floorIndex !== playerFloor) {
+            enemy.stand();
+            enemy.update(delta, playerPosition, false, false, createProjectile);
+            return;
+        }
+
+        const distanceToPlayer = playerPosition.distanceTo(enemyPosition);
+        let isPlayerVisible = false;
+
+        if (distanceToPlayer < ENEMY_SETTINGS.activationRadius) {
+            const directionToPlayer = playerPosition.clone().sub(enemyPosition).normalize();
+            const losRaycaster = new THREE.Raycaster(enemyPosition, directionToPlayer, 0, ENEMY_SETTINGS.losMaxDistance);
+            const losIntersects = losRaycaster.intersectObjects(worldObjects, true);
+
+            if (losIntersects.length > 0 && losIntersects[0].object.name.includes("player")) {
+                 isPlayerVisible = true;
+            }
+        }
+
+        const isAimedAtByPlayer = (enemy === aimedAtEnemy);
+
+        enemy.update(delta, playerPosition, isPlayerVisible, isAimedAtByPlayer, createProjectile);
     });
 }
 
