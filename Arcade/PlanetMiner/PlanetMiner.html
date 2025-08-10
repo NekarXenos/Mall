@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voxel Planet Miner - Advanced Materials (Improved Physics)</title>
+    <title>Voxel Planet Miner - Atmosphere & Clouds</title>
     <script type="importmap">
         {
             "imports": {
@@ -20,7 +20,7 @@
             margin: 0;
             overflow: hidden;
             font-family: 'Inter', sans-serif;
-            background-color: #1a1a2e;
+            background-color: #000000; /* Black background for space */
             color: #e0e0e0;
             -webkit-user-select: none;
             user-select: none;
@@ -452,8 +452,9 @@
             // Underwater
             SEAWEED: { id: 'seaweed', color: new THREE.Color(0x2E8B57) }, // Still defined, but won't be used for generation
             ANEMONE: { id: 'anemone', color: new THREE.Color(0x4169E1), buildable: true },
-            // Subsurface
+            // Subsurface & Special
             LAVA: { id: 'lava', color: new THREE.Color(0xFF4500), emissive: new THREE.Color(0xdd3300), buildable: true },
+            BASALT: { id: 'basalt', color: new THREE.Color(0x36454F), buildable: true }, // NEW MATERIAL
             // Moon
             MOON_ROCK: { id: 'moon_rock', color: new THREE.Color(0x8c8c8c), buildable: true },
             MOON_SAND: { id: 'moon_sand', color: new THREE.Color(0xbebebe), buildable: true },
@@ -551,6 +552,7 @@
         let marchingCubesMesh, marchingCubesMeshMoon;
         let waterMesh;
         let torchLight; // Global variable for the torch spotlight
+        let sky, sun; // NEW: For atmosphere
 
         // --- Inventory & Building ---
         let inventory = {};
@@ -620,6 +622,16 @@
         const MOON_RADIUS_FACTOR = 0.9;
         const MOON_ORBIT_DISTANCE = GRID_SIZE * BLOCK_SIZE * 0.75;
         const MOON_RADIUS = GRID_SIZE_MOON / 2 * BLOCK_SIZE * MOON_RADIUS_FACTOR;
+
+        // --- NEW: Atmosphere & Cloud Parameters ---
+        const ATMOSPHERE_THICKNESS = 15.0; // The height of the atmosphere from the planet's surface.
+        const ATMOSPHERE_TOP_HEIGHT = PLANET_RADIUS + ATMOSPHERE_THICKNESS;
+        const DENSITY_FALLOFF = 8; // 8.0; // How quickly the atmosphere thins out. Higher is thicker.
+        const RAYLEIGH_COEFFICIENTS = new THREE.Vector3(5.8e-4, 1.35e-3, 3.31e-3); // THREE.Vector3(5.8e-6, 1.35e-5, 3.31e-5);
+        const MIE_COEFFICIENTS = new THREE.Vector3(2.0e-5, 2.0e-5, 2.0e-5); // THREE.Vector3(2.0e-5, 2.0e-5, 2.0e-5);
+        const MIE_ECCENTRICITY = 0.76; // Directionality of Mie scattering
+        const CLOUD_BOTTOM_ALTITUDE = 6; // 6.0; // Height above planet surface where clouds start
+        const CLOUD_TOP_ALTITUDE = 8; // 10.0; // Height above planet surface where clouds end
 
         let voxelData = [], voxelDataMoon = [];
         let moonPosition = new THREE.Vector3();
@@ -741,29 +753,37 @@
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a1a2e);
-            scene.fog = new THREE.Fog(0x1a1a2e, 10, 150);
+            scene.background = new THREE.Color(0x000000); // Set background to black for space
+            // Fog is now handled by the sky shader
 
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000); // Increased far plane for sky
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 0.5;
             document.body.appendChild(renderer.domElement);
             canvas = renderer.domElement;
 
-            const ambientLight = new THREE.AmbientLight(0xcccccc, 0.8);
-            scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-            directionalLight.position.set(50, 50, 50);
-            scene.add(directionalLight);
-
-            // --- Add a visible Sun ---
+             // --- Add a visible Sun ---
             const sunGeometry = new THREE.SphereGeometry(20, 32, 32);
-            const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffffee, fog: false });
-            const sun = new THREE.Mesh(sunGeometry, sunMaterial);
-            // Position the sun far away in the same direction as the directional light
-            sun.position.copy(directionalLight.position).normalize().multiplyScalar(500);
-            scene.add(sun);
+            //const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffffFF, fog: false }); // 0xffffee
+            const sunMaterial = new THREE.MeshStandardMaterial({ color: 0xffffee, emissive: 0xffffee, emissiveIntensity: 1000, side: THREE.FrontSide, fog: false }); // 0xffffee
+            sun = new THREE.Mesh(sunGeometry, sunMaterial); // Assign to the global 'sun' variable
+            sun.castShadow = false; // Sun does not cast shadows
+            sun.receiveShadow = false; // Sun does not receive shadows
+            // Lighting will be updated dynamically based on sun position
+            const ambientLight = new THREE.AmbientLight(0xcccccc, 0.2); // Reduced ambient light
+            scene.add(ambientLight);
+
+            // Use a PointLight attached to the sun mesh for unified lighting
+            const pointLight = new THREE.PointLight(0xffffff, 1.5, 0, 0); // color, intensity, distance (0=infinite), decay
+            sun.add(pointLight);
+
+            // --- NEW: Atmosphere and Sky ---
+            initSky();
+
+            scene.add(sun); // The sun's position will be set in the animate loop
 
             // --- Add outer glow to the Sun (GalacticUFOv3 style) ---
             const sunGlowVertexShader = `
@@ -810,7 +830,7 @@
 
             const glowMaterial = new THREE.ShaderMaterial({
                 uniforms: {
-                    pointSize: { value: 100 }, // Adjust size of the glow
+                    pointSize: { value: 50 }, // Adjust size of the glow
                     glowColor: { value: new THREE.Color(0xffd2a1) } // Orange tint
                 },
                 vertexShader: sunGlowVertexShader,
@@ -820,8 +840,9 @@
                 depthTest: true
             });
 
-            const sunGlow = new THREE.Points(glowGeometry, glowMaterial);
-            sun.add(sunGlow);
+            sun.add(new THREE.Points(glowGeometry, glowMaterial));
+
+
 
             // Setup the torch spotlight
             torchLight = new THREE.SpotLight(0xffffff, 0, 50, Math.PI / 6, 0.5, 2); // Color, intensity (0 initially), distance, angle, penumbra, decay
@@ -882,7 +903,6 @@
                 setupMobileControls();
                 messageBox.textContent = "Tap joystick to move, drag right side to look, tap buttons to interact!";
             } else {
-                mobileControls.style.display = 'none';
                 messageBox.textContent = "WASD: Move, Space: Jump, Mouse: Look, Click: Interact, Arrow Keys or 1-9: Switch Material, L: Teleport, T: Toggle Torch";
             }
         }
@@ -913,7 +933,9 @@
          * Creates a semi-transparent geodesic sphere for the water layer.
          */
         function createWaterLayer() {
-            const waterGeometry = new THREE.SphereGeometry(PLANET_RADIUS + WATER_LEVEL_OFFSET, 64, 64);
+            // Use IcosahedronGeometry for a more uniform sphere, preventing polar distortion.
+            // A detail level of 5 gives faces with a side length of roughly 1 unit on a sphere of radius 30.
+            const waterGeometry = new THREE.IcosahedronGeometry(PLANET_RADIUS + WATER_LEVEL_OFFSET, 20);
             const waterMaterial = new THREE.MeshStandardMaterial({
                 metalness: 0.9,
                 roughness: 0.3,
@@ -997,22 +1019,29 @@
                     `
                     #include <color_fragment>
                     float t_color = vNoise;
-                    vec3 blue = vec3(0.0, 0.2, 0.8);
-                    vec3 green = vec3(0.1, 0.9, 0.3);
+                    vec3 blue = vec3(0.0, 0.3, 0.8);
+                    vec3 green = vec3(0.1, 0.8, 0.8);
                     vec3 base_color = mix(blue, green, t_color);
 
-                    // --- White Crests ---
+                    // --- Dynamic Crest Color ---
                     // Recalculate the wave sine value to determine the crest
                     float freq_crest = mix(uBlueFreq, uGreenFreq, vNoise);
                     float phase_crest = time * uWaveSpeed;
                     float wave_sine = sin(vNoise * freq_crest - phase_crest); // This value is between -1 and 1
 
-                    // Use smoothstep to create a smooth transition to white at the wave peaks.
-                    // The range (e.g., 0.5 to 1.0) determines how much of the wave top is white.
+                    // Use smoothstep to create a smooth transition to the crest color at the wave peaks.
                     float crest_factor = smoothstep(0.5, 1.0, wave_sine);
 
-                    vec3 white = vec3(1.0, 1.0, 1.0);
-                    vec3 final_color = mix(base_color, white, crest_factor);
+                    // Define the two crest colors
+                    vec3 sky_blue_crest = vec3(0.529, 0.808, 0.922); // Sky blue for the blue water area
+                    vec3 white_crest = vec3(1.0, 1.0, 1.0);         // White for the green water area
+
+                    // The final crest color is a mix based on the same noise value as the base water color.
+                    // This ensures the crest color changes in sync with the water color.
+                    vec3 dynamic_crest_color = mix(sky_blue_crest, white_crest, t_color);
+
+                    // Mix the base water color with the dynamic crest color.
+                    vec3 final_color = mix(base_color, dynamic_crest_color, crest_factor);
 
                     diffuseColor.rgb = final_color;
                     `
@@ -1532,7 +1561,7 @@
 
                     cubes = cubes.filter(cube => cube.uuid !== intersectedObject.uuid);
                     intersectedObject.geometry.dispose();
-                    intersectedObject.material.dispose(); // Dispose material too
+                    // Do not dispose material, it's shared from builtCubeMaterials
                 }
             }
         }
@@ -1585,74 +1614,120 @@
                 setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
                 return;
             }
+
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const objectsToIntersect = [marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes);
             const intersects = raycaster.intersectObjects(objectsToIntersect);
+
             if (intersects.length > 0) {
                 const intersected = intersects[0];
                 const hitPoint = intersected.point;
                 const faceNormal = intersected.face.normal;
+                const onMoon = (intersected.object === marchingCubesMeshMoon) || (intersected.object.parent === moonCubeParent);
+
+                // --- NEW: Ice on Lava Interaction ---
+                if (materialIdToBuild === 'ice' && !onMoon) {
+                    let transformed = false;
+                    let wasBuiltCube = false;
+
+                    // Case 1: Intersected a built lava cube
+                    if (cubes.includes(intersected.object) && intersected.object.userData.materialId === 'lava') {
+                        intersected.object.material = builtCubeMaterials['basalt'];
+                        intersected.object.userData.materialId = 'basalt';
+                        transformed = true;
+                        wasBuiltCube = true;
+                    }
+                    // Case 2: Intersected natural lava terrain
+                    else if (intersected.object === marchingCubesMesh) {
+                        const groundMaterial = getMaterialAtPoint(hitPoint, faceNormal, false);
+                        if (groundMaterial.id === 'lava') {
+                            // Nudge point inside the surface to ensure we get the right voxel
+                            const localPoint = hitPoint.clone().add(faceNormal.clone().multiplyScalar(-0.1)).sub(planetCenter);
+                            const gridX = Math.floor(localPoint.x / BLOCK_SIZE + GRID_SIZE / 2);
+                            const gridY = Math.floor(localPoint.y / BLOCK_SIZE + GRID_SIZE / 2);
+                            const gridZ = Math.floor(localPoint.z / BLOCK_SIZE + GRID_SIZE / 2);
+
+                            if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE && gridZ >= 0 && gridZ < GRID_SIZE) {
+                                // Carve out the lava voxel
+                                voxelData[gridX][gridY][gridZ] = 0;
+                                updateMarchingCubesMesh();
+
+                                // Place a basalt block in its place, at the center of the removed voxel
+                                const newBlockWorldPos = new THREE.Vector3(
+                                    (gridX - GRID_SIZE / 2 + 0.5) * BLOCK_SIZE,
+                                    (gridY - GRID_SIZE / 2 + 0.5) * BLOCK_SIZE,
+                                    (gridZ - GRID_SIZE / 2 + 0.5) * BLOCK_SIZE
+                                );
+
+                                const newCube = new THREE.Mesh(createChamferedBlockGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), builtCubeMaterials['basalt']);
+                                newCube.position.copy(newBlockWorldPos);
+                                newCube.userData.materialId = 'basalt';
+                                cubeParent.add(newCube); // Add to planet's cube group
+                                cubes.push(newCube);
+                                transformed = true;
+                            }
+                        }
+                    }
+
+                    if (transformed) {
+                        messageBox.textContent = "Lava cooled into basalt!";
+                        setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
+                        // Consume the ice block, unless we transformed a built cube (free transformation)
+                        if (!wasBuiltCube) {
+                           inventory[materialIdToBuild]--;
+                           updateInventoryUI();
+                        }
+                        return; // Exit function, we don't place the ice block itself
+                    }
+                }
+
+                // --- REGULAR PLACEMENT LOGIC ---
                 const newPosition = hitPoint.clone().add(faceNormal.clone().multiplyScalar(BLOCK_SIZE / 2));
 
                 const distanceToPlayer = newPosition.distanceTo(player.position);
-                if (distanceToPlayer < BLOCK_SIZE) { // Changed from 1.5 to 1.0 for closer placement
+                if (distanceToPlayer < BLOCK_SIZE) {
                     messageBox.textContent = "Cannot place block inside yourself!";
                     setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
                     return;
                 }
 
-                const newCubeGeometry = createChamferedBlockGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE); // Use chamfered geometry
-                const newCube = new THREE.Mesh(newCubeGeometry, builtCubeMaterials[materialIdToBuild]);
-
-                // Determine the correct parent and attach the cube
-                const onMoon = (intersected.object === marchingCubesMeshMoon) || (intersected.object.parent === moonCubeParent);
-                const parent = onMoon ? moonCubeParent : cubeParent;
-
-                // Set position and orientation in WORLD space first
-                newCube.position.copy(newPosition);
-                const surfaceUp = newPosition.clone().sub(onMoon ? moonPosition : planetCenter).normalize();
-                const lookAtTarget = newCube.position.clone().add(surfaceUp); // Look "up" from the surface
-                newCube.lookAt(lookAtTarget);
-
-                // Apply random rotation  // to be modified
-                 const axes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
-                const randomAxis = axes[Math.floor(Math.random() * 3)];
-                const randomAngle = (Math.floor(Math.random() * 4)) * Math.PI / 2; // 0, 90, 180, 270 degrees
-                const randomRotation = new THREE.Quaternion().setFromAxisAngle(randomAxis, randomAngle);
-                newCube.quaternion.multiply(randomRotation); 
+                let finalMaterialId = materialIdToBuild;
+                // --- NEW: Lava in Water Interaction ---
+                if (finalMaterialId === 'lava' && !onMoon) {
+                    const isInWater = newPosition.distanceTo(planetCenter) < (PLANET_RADIUS + WATER_LEVEL_OFFSET);
+                    if (isInWater) {
+                        finalMaterialId = 'basalt';
+                        messageBox.textContent = "Lava cooled into basalt in the water!";
+                        setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
+                    }
+                }
                 
-                // --- New Orientation Logic ---
-                // 1. Determine the cube's +Y axis ("up"). It must point away from the celestial body's center.
+                // Use the original material from inventory, but build with the final material
+                inventory[materialIdToBuild]--;
+
+                const newCubeGeometry = createChamferedBlockGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                const newCube = new THREE.Mesh(newCubeGeometry, builtCubeMaterials[finalMaterialId]);
+                newCube.userData.materialId = finalMaterialId;
+
+                const parent = onMoon ? moonCubeParent : cubeParent;
+                newCube.position.copy(newPosition);
+                
+                // --- Orientation Logic ---
                 const celestialCenter = onMoon ? moonPosition : planetCenter;
                 const newY = newPosition.clone().sub(celestialCenter).normalize();
-
-                // 2. Determine the cube's -Z axis ("forward"). It must point towards the player,
-                // but constrained to the local horizontal plane (perpendicular to the "up" vector).
                 const lookDir = player.position.clone().sub(newPosition);
                 const newNegZ = lookDir.projectOnPlane(newY).normalize();
-
-                // 3. Create a full orthonormal basis from these two vectors.
-                const newZ = newNegZ.clone().negate(); // +Z is opposite of "forward"
-                const newX = new THREE.Vector3().crossVectors(newY, newZ); // Y x Z = X (right-handed coordinate system)
-
-                // 4. Create a rotation matrix from the basis vectors and set the cube's quaternion.
-                const rotationMatrix = new THREE.Matrix4();
-                rotationMatrix.makeBasis(newX, newY, newZ);
+                const newZ = newNegZ.clone().negate();
+                const newX = new THREE.Vector3().crossVectors(newY, newZ);
+                const rotationMatrix = new THREE.Matrix4().makeBasis(newX, newY, newZ);
                 newCube.quaternion.setFromRotationMatrix(rotationMatrix);
-                // --- End of New Orientation Logic ---
 
-
-
-                newCube.userData.materialId = materialIdToBuild; // Store material ID
-
-                // Attach the cube to its parent, preserving its world transform
                 parent.attach(newCube);
-
                 cubes.push(newCube);
-                inventory[materialIdToBuild]--;
                 updateInventoryUI();
             }
         }
+
 
         function createLaserBeamEffect(ray) {
             const beamLength = 1000; // A very long beam
@@ -1913,7 +1988,7 @@
             if (marchingCubesMesh) {
                 scene.remove(marchingCubesMesh);
                 marchingCubesMesh.geometry.dispose();
-                marchingCubesMesh.material.dispose();
+                // Do not dispose material, it's shared
             }
             const geometry = generateMarchingCubesGeometry(voxelData, ISO_LEVEL, GRID_SIZE, BLOCK_SIZE, planetCenter); // Pass centerOffset
             if (geometry.attributes.position) {
@@ -1934,7 +2009,7 @@
             marchingCubesMesh = new THREE.Mesh(geometry, material);
             scene.add(marchingCubesMesh);
 
-            // After creating the planet mesh, populate it with grass
+            // After creating the planet mesh, populate it with foliage
             populateFoliage();
         }
 
@@ -2028,7 +2103,7 @@
             if (marchingCubesMeshMoon) {
                 scene.remove(marchingCubesMeshMoon);
                 if (marchingCubesMeshMoon.geometry) marchingCubesMeshMoon.geometry.dispose();
-                if (marchingCubesMeshMoon.material) marchingCubesMeshMoon.material.dispose();
+                // Do not dispose material, it's shared
             }
             const geometry = generateMarchingCubesGeometry(voxelDataMoon, ISO_LEVEL, GRID_SIZE_MOON, BLOCK_SIZE, moonPosition); // Pass centerOffset
             if (geometry.attributes.position) {
@@ -2060,7 +2135,7 @@
             const particleMaterial = new THREE.MeshBasicMaterial({ color: minedMaterial.color }); // Use passed material color
 
             for (let i = 0; i < particleCount; i++) {
-                const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+                const particle = new THREE.Mesh(particleGeometry.clone(), particleMaterial.clone()); // Clone to avoid conflicts
                 particle.position.copy(position);
 
                 particle.velocity = new THREE.Vector3(
@@ -2255,10 +2330,225 @@
             }
         }
 
+        // --- NEW: Atmosphere and Sky Functions ---
+        function initSky() {
+            sky = new THREE.Mesh(
+                new THREE.SphereGeometry(1000, 32, 32), // A large sphere to act as the skybox
+                new THREE.ShaderMaterial({
+                    vertexShader: skyVertexShader,
+                    fragmentShader: skyFragmentShader,
+                    uniforms: {
+                        uSunPosition: { value: new THREE.Vector3() },
+                        uPlanetCenter: { value: planetCenter },
+                        uPlanetRadius: { value: PLANET_RADIUS  + WATER_LEVEL_OFFSET }, // { value: PLANET_RADIUS},
+                        uAtmosphereRadius: { value: ATMOSPHERE_TOP_HEIGHT },
+                        uCameraPos: { value: new THREE.Vector3() },
+                        uTime: { value: 0.0 },
+                        // Scattering uniforms
+                        uRayleigh: { value: RAYLEIGH_COEFFICIENTS },
+                        uMie: { value: MIE_COEFFICIENTS },
+                        uMieG: { value: MIE_ECCENTRICITY },
+                        uDensityFalloff: { value: DENSITY_FALLOFF },
+                        // Cloud uniforms
+                        uCloudCover: { value:  0.3 }, // 0.4 },
+                        uCloudScale: { value: -0.05 },// 0.01 // 0.0005 },
+                        uCloudSpeed: { value: 0.15 }, // 0.02 },
+                        uCloudBottom: { value: PLANET_RADIUS + CLOUD_BOTTOM_ALTITUDE  + WATER_LEVEL_OFFSET  }, // { value: PLANET_RADIUS + CLOUD_BOTTOM_ALTITUDE  },
+                        uCloudTop: { value: PLANET_RADIUS + CLOUD_TOP_ALTITUDE  + WATER_LEVEL_OFFSET }, // { value: PLANET_RADIUS + CLOUD_TOP_ALTITUDE },
+                    },
+                    side: THREE.DoubleSide, // Render the inside of the sphere
+                    depthWrite: false
+                })
+            );
+            scene.add(sky);
+        }
+
+        const skyVertexShader = `
+            varying vec3 vWorldPosition;
+            void main() {
+                vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
+                vWorldPosition = worldPosition.xyz;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+            }
+        `;
+
+        const skyFragmentShader = `
+            varying vec3 vWorldPosition;
+
+            uniform vec3 uSunPosition;
+            uniform vec3 uPlanetCenter;
+            uniform float uPlanetRadius;
+            uniform float uAtmosphereRadius;
+            uniform vec3 uCameraPos;
+            uniform float uTime;
+
+            // Scattering Uniforms
+            uniform vec3 uRayleigh;
+            uniform vec3 uMie;
+            uniform float uMieG;
+            uniform float uDensityFalloff;
+
+            // Cloud uniforms
+            uniform float uCloudCover;
+            uniform float uCloudScale;
+            uniform float uCloudSpeed;
+            uniform float uCloudBottom;
+            uniform float uCloudTop;
+
+            // Simplex noise for clouds
+            ${terrainNoise}
+
+            // Function to calculate intersection of a ray with a sphere
+            vec2 raySphereIntersect(vec3 rayOrigin, vec3 rayDir, vec3 sphereCenter, float sphereRadius) {
+                vec3 oc = rayOrigin - sphereCenter;
+                float b = dot(oc, rayDir);
+                float c = dot(oc, oc) - sphereRadius * sphereRadius;
+                float h = b * b - c;
+                if (h < 0.0) return vec2(-1.0); // No intersection
+                h = sqrt(h);
+                return vec2(-b - h, -b + h);
+            }
+
+            // Rayleigh phase function
+            float rayleighPhase(float cosTheta) {
+                return 3.0 / (16.0 * 3.14159) * (1.0 + cosTheta * cosTheta);
+            }
+
+            // Mie phase function (Henyey-Greenstein)
+            float henyeyGreensteinPhase(float cosTheta) {
+                float g2 = uMieG * uMieG;
+                return (1.0 - g2) / (4.0 * 3.14159 * pow(1.0 + g2 - 2.0 * uMieG * cosTheta, 1.5));
+            }
+            
+            // Cloud density function
+            float cloudDensity(vec3 p) {
+                float height = length(p - uPlanetCenter);
+                float cloudFactor = smoothstep(uCloudBottom, uCloudBottom + 1.0, height) * (1.0 - smoothstep(uCloudTop - 1.0, uCloudTop, height));
+                if (cloudFactor < 0.001) return 0.0;
+
+                vec3 p_anim = p + vec3(uTime * uCloudSpeed, 0.0, 0.0);
+                float noise = ridgedMultifractal(p_anim * uCloudScale);
+                float density = smoothstep(uCloudCover, 1.0, noise);
+                return density * cloudFactor;
+            }
+
+            // Optical depth for sun light
+            float getSunlightOpticalDepth(vec3 samplePoint, vec3 sunDir, vec3 planetCenter, float planetRadius, float atmosphereRadius) {
+                vec2 atmosphereIntersect = raySphereIntersect(samplePoint, sunDir, planetCenter, atmosphereRadius);
+                if (atmosphereIntersect.y < 0.0) return 0.0;
+
+                vec2 planetIntersect = raySphereIntersect(samplePoint, sunDir, planetCenter, planetRadius);
+                if (planetIntersect.x > 0.0) return 1000.0; // In shadow of the planet
+
+                int sunSamples = 8;
+                float sunStepSize = atmosphereIntersect.y / float(sunSamples);
+                float opticalDepth = 0.0;
+
+                for (int j = 0; j < sunSamples; ++j) {
+                    vec3 p = samplePoint + sunDir * (float(j) + 0.5) * sunStepSize;
+                    float height = length(p - planetCenter) - planetRadius;
+                    float density = exp(-height / uDensityFalloff);
+                    opticalDepth += density * sunStepSize;
+                }
+                return opticalDepth;
+            }
+
+
+            void main() {
+                vec3 rayDir = normalize(vWorldPosition - uCameraPos);
+                vec3 sunDir = normalize(uSunPosition);
+                float cosTheta = dot(rayDir, sunDir);
+
+                // --- Atmospheric Scattering ---
+                vec2 planetIntersect = raySphereIntersect(uCameraPos, rayDir, uPlanetCenter, uPlanetRadius);
+                vec2 atmosphereIntersect = raySphereIntersect(uCameraPos, rayDir, uPlanetCenter, uAtmosphereRadius);
+                
+                // If ray doesn't hit atmosphere, it's just space
+                if(atmosphereIntersect.x < 0.0 && length(uCameraPos) > uAtmosphereRadius) {
+                    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                    return;
+                }
+
+                // Ray march through the atmosphere
+                float marchDist = max(0.0, atmosphereIntersect.x);
+                float marchEnd = atmosphereIntersect.y;
+                
+                // If ray hits planet, shorten the march
+                if(planetIntersect.x > 0.0) {
+                    marchEnd = min(marchEnd, planetIntersect.x);
+                }
+
+                int numSamples = 32;
+                float stepSize = (marchEnd - marchDist) / float(numSamples);
+
+                vec3 transmittance = vec3(1.0);
+                vec3 scatteredLight = vec3(0.0);
+                
+                for(int i = 0; i < numSamples; ++i) {
+                    vec3 p = uCameraPos + rayDir * (marchDist + (float(i) + 0.5) * stepSize);
+                    float height = length(p - uPlanetCenter) - uPlanetRadius;
+                    if (height < 0.0) continue;
+
+                    float density = exp(-height / uDensityFalloff);
+
+                    // --- Cloud Calculation ---
+                    float cloud_density = cloudDensity(p);
+                    vec3 extinction = uRayleigh * density + uMie * density + cloud_density * 2.0; // Combined extinction
+                    
+                    vec3 sampleTransmittance = exp(-extinction * stepSize);
+                    
+                    // Calculate light scattered at this point
+                    float sunOpticalDepth = getSunlightOpticalDepth(p, sunDir, uPlanetCenter, uPlanetRadius, uAtmosphereRadius);
+                    vec3 sunTransmittance = exp(-(uRayleigh * sunOpticalDepth + uMie * sunOpticalDepth + cloudDensity(p) * sunOpticalDepth));
+
+                    vec3 inScatter = (uRayleigh * rayleighPhase(cosTheta) + uMie * henyeyGreensteinPhase(cosTheta)) * density;
+                    
+                    // Add cloud scattering
+                    inScatter += cloud_density * henyeyGreensteinPhase(cosTheta) * 1.0;
+
+                    scatteredLight += transmittance * inScatter * sunTransmittance * stepSize;
+                    transmittance *= sampleTransmittance;
+                }
+                
+                // If the ray hits the planet surface, add surface color
+                if (planetIntersect.x > 0.0 && planetIntersect.x < atmosphereIntersect.y) {
+                   // We are looking at the planet, so we see the light reflected from it.
+                   // A simple Lambertian reflection would be dot(normal, sunDir)
+                   // but we don't have the normal. So just darken the transmittance.
+                   transmittance *= 0.1; 
+                }
+
+                // Final color is scattered light + sun glare
+                float sunDot = dot(rayDir, sunDir);
+                float sunGlare = pow(max(0.0, sunDot), 100.0);
+                vec3 finalColor = scatteredLight * 20.0 + vec3(1.0, 0.9, 0.8) * sunGlare * transmittance;
+                
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `;
+
 
         function animate() {
             requestAnimationFrame(animate);
             const delta = Math.min(clock.getDelta(), 0.1); // Clamp delta to avoid physics glitches
+
+            // --- Sun Position Update ---
+            const time = clock.getElapsedTime() * 0.1;
+            const sunPosition = new THREE.Vector3(
+                Math.sin(time) * 1000,
+                Math.cos(time) * 1000,
+                0
+            );
+            
+            if (sun) {
+                sun.position.copy(sunPosition);
+            }
+
+            if (sky) {
+                sky.material.uniforms.uSunPosition.value.copy(sunPosition);
+                sky.material.uniforms.uCameraPos.value.copy(camera.position);
+                sky.material.uniforms.uTime.value = clock.getElapsedTime();
+            }
 
             if (isLocked && player) {
                 // --- ROTATIONS ---
