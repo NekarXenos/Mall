@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Black Hole Sphere Lens (Game-Ready)</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: black; overflow: hidden; }
+    #info { position: fixed; bottom: 12px; left: 12px; color: #9fb; font: 12px system-ui; }
+    #gui { position: fixed; top: 12px; left: 12px; background:#111; color:#9fb; padding:10px; border-radius:8px; font: 12px system-ui; }
+    #gui label { display:block; margin:4px 0; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.158/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="info">Black Hole Visualization (Game-Ready Screen-Space Refraction)</div>
+  <div id="gui">
+    <label>Strength <input id="strength" type="range" min="0" max="0.5" step="0.01" value="0.12"> <span id="strengthVal">0.12</span></label>
+    <label>Falloff <input id="falloff" type="range" min="0.1" max="3" step="0.1" value="0.9"> <span id="falloffVal">0.9</span></label>
+    <label>Size <input id="size" type="range" min="0.5" max="3" step="0.1" value="1.6"> <span id="sizeVal">1.6</span></label>
+  </div>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // --- Basic setup ---
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 2000);
+    camera.position.set(7, 5, 12);
+    const controls = new OrbitControls(camera, renderer.domElement);
+
+    // --- Scene Setup ---
+    // The scene now contains all objects. The complex layer system is no longer needed.
+    const scene = new THREE.Scene();
+    const clock = new THREE.Clock();
+
+    // --- Starfield ---
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 10000;
+    const pos = new Float32Array(starCount*3);
+    for (let i=0;i<starCount;i++){
+      pos[i*3] = (Math.random()*2-1)*800;
+      pos[i*3+1] = (Math.random()*2-1)*800;
+      pos[i*3+2] = (Math.random()*2-1)*800;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color:0xffffff, size:0.8, sizeAttenuation:true }));
+    scene.add(stars);
+
+    // This render target will hold a copy of the *previous* frame's screen content.
+    const screenTextureTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
+
+    // --- Gravitational lens material for the black hole sphere ---
+    const lensUniforms = {
+      // The tScene uniform now samples from our screen texture target.
+      tScene:{ value:screenTextureTarget.texture },
+      resolution:{ value:new THREE.Vector2(window.innerWidth,window.innerHeight) },
+      strength:{ value:0.12 },
+      falloff:{ value:0.9 },
+      chroma:{ value:0.0015 }
+    };
+
+    const lensMat = new THREE.ShaderMaterial({
+      uniforms:lensUniforms,
+      // The shaders themselves don't need to change, as they already operate in screen space.
+      vertexShader:`varying vec4 vPos;void main(){vPos=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_Position=vPos;}`,
+      fragmentShader:`precision highp float;uniform sampler2D tScene;uniform vec2 resolution;uniform float strength;uniform float falloff;uniform float chroma;void main(){vec2 uv=gl_FragCoord.xy/resolution;vec2 c=vec2(0.5);vec2 d=uv-c;d.x*=resolution.x/resolution.y;float r=length(d)+1e-6; if(r<0.035){gl_FragColor=vec4(0.,0.,0.,1.);return;} float k=strength/pow(r,falloff);vec2 dir=d/r;vec2 shift=dir*k;shift.x/=resolution.x/resolution.y;vec3 col;col.r=texture2D(tScene,uv-shift*(1.0+chroma)).r;col.g=texture2D(tScene,uv-shift).g;col.b=texture2D(tScene,uv-shift*(1.0-chroma)).b;gl_FragColor=vec4(col,1.0);}`,
+      side:THREE.DoubleSide,
+    });
+    
+    let bhRadius = 1.6;
+    let bhSphere = new THREE.Mesh(new THREE.SphereGeometry(bhRadius,48,32), lensMat);
+    scene.add(bhSphere);
+
+    // --- Accretion Disk ---
+    const diskInner = 2.0, diskOuter = 5.0;
+    const diskGeo = new THREE.RingGeometry(diskInner, diskOuter, 128, 1);
+    const diskMat = new THREE.ShaderMaterial({
+        side: THREE.DoubleSide,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        uniforms: {
+            time: { value: 0 },
+            innerRadius: { value: diskInner },
+            outerRadius: { value: diskOuter },
+        },
+        vertexShader: `
+        varying vec3 vWorldPos;
+        void main() {
+            vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+        fragmentShader: `
+        varying vec3 vWorldPos;
+        uniform float time;
+        uniform float innerRadius;
+        uniform float outerRadius;
+
+        // Noise functions for disk texture
+        float hash(float n) { return fract(sin(n) * 753.5453); }
+        float noise(vec3 x) {
+            vec3 p = floor(x); vec3 f = fract(x);
+            f = f * f * (3.0 - 2.0 * f);
+            float n = p.x + p.y * 157.0 + 113.0 * p.z;
+            return mix(mix(mix(hash(n + 0.0), hash(n + 1.0), f.x),
+                           mix(hash(n + 157.0), hash(n + 158.0), f.x), f.y),
+                       mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
+                           mix(hash(n + 270.0), hash(n + 271.0), f.x), f.y), f.z);
+        }
+        float fbm(vec3 pos) {
+            float t = 0.0;
+            float amp = 0.5;
+            for (int i = 0; i < 4; i++) {
+                t += noise(pos) * amp;
+                pos *= 2.0;
+                amp *= 0.5;
+            }
+            return t;
+        }
+
+        void main() {
+            float dist = length(vWorldPos.xz);
+            float angle = atan(vWorldPos.z, vWorldPos.x);
+
+            float diskTwist = 10.0 / sqrt(dist);
+            vec3 uvw = vec3(angle / (2.0 * 3.14159) - diskTwist, dist, 0.0);
+            
+            float densityVariation = fbm(uvw * 2.0);
+            
+            float radialProfile = smoothstep(innerRadius, innerRadius + 1.0, dist) * (1.0 - smoothstep(outerRadius - 1.0, outerRadius, dist));
+            
+            float density = radialProfile * densityVariation;
+            
+            vec3 color = mix(vec3(1.0, 0.5, 0.0), vec3(0.8, 0.2, 0.0), (dist - innerRadius) / (outerRadius - innerRadius));
+            
+            vec3 viewDir = normalize(cameraPosition - vWorldPos);
+            vec3 velocityDir = normalize(vec3(-vWorldPos.z, 0.0, vWorldPos.x));
+            float doppler = dot(viewDir, velocityDir);
+            
+            color.r *= 1.0 - doppler * 0.3;
+            color.b *= 1.0 + doppler * 0.3;
+
+            float gravitationalShift = 1.0 - 1.0 / sqrt(dist);
+            color *= gravitationalShift;
+
+            gl_FragColor = vec4(color, density * 1.5);
+        }
+    `
+    });
+    const disk = new THREE.Mesh(diskGeo, diskMat);
+    disk.rotation.x = THREE.MathUtils.degToRad(90);
+    scene.add(disk);
+
+    // --- Particle Jets & Accretion ---
+    const jetCount = 6000;
+    const jetGeo = new THREE.BufferGeometry();
+    const jetPos = new Float32Array(jetCount * 3);
+    const jetA = new Float32Array(jetCount);
+    const jetHem = new Float32Array(jetCount);
+    const jetPhase = new Float32Array(jetCount);
+
+    for (let i = 0; i < jetCount; i++) {
+        jetPos[i * 3 + 0] = 0; jetPos[i * 3 + 1] = 0; jetPos[i * 3 + 2] = 0;
+        jetA[i] = Math.random() * Math.PI * 2;
+        jetHem[i] = Math.random() < 0.5 ? 1 : -1;
+        jetPhase[i] = Math.random();
+    }
+
+    jetGeo.setAttribute('position', new THREE.BufferAttribute(jetPos, 3));
+    jetGeo.setAttribute('aU', new THREE.BufferAttribute(jetA, 1));
+    jetGeo.setAttribute('aHem', new THREE.BufferAttribute(jetHem, 1));
+    jetGeo.setAttribute('aPhase', new THREE.BufferAttribute(jetPhase, 1));
+
+    const R_torus = 3.2;
+    const r_torus = 3.2;
+
+    const jetMat = new THREE.ShaderMaterial({
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        uniforms: {
+            time: { value: 0 },
+            R: { value: R_torus },
+            r: { value: r_torus },
+            speed: { value: 0.085 },
+            tilt: { value: new THREE.Vector2(Math.sin(disk.rotation.x), Math.cos(disk.rotation.x)) },
+            diskInner: { value: diskInner },
+            diskOuter: { value: diskOuter },
+            bhRadius: { value: bhRadius }
+        },
+        vertexShader: `
+    attribute float aU;
+    attribute float aHem;
+    attribute float aPhase;
+    uniform float time; uniform float R; uniform float r; uniform float speed; uniform vec2 tilt;
+    uniform float diskInner; uniform float diskOuter; uniform float bhRadius;
+    varying float vHeat;
+
+    vec3 tiltX(vec3 p, float s, float c){ return vec3(p.x, c*p.y - s*p.z, s*p.y + c*p.z); }
+
+    void main(){
+      float t = fract(aPhase + time * speed);
+      float split = 0.5;
+      vec3 p;
+      float heat = 0.0;
+
+      if (t < split) {
+        float tt = t / split;
+        float v = mix(1.5707963 * aHem, 0.0, smoothstep(0.0, 1.0, tt));
+        float swirl = 2.5 * (1.0 - abs(v)/1.5707963) * tt;
+        float u = aU + swirl;
+        
+        vec3 onTorus = vec3((R + r*cos(v))*cos(u), (R + r*cos(v))*sin(u), r*sin(v));
+        vec3 pole = vec3(0.0, 0.0, bhRadius * aHem);
+        
+        p = mix(pole, onTorus, smoothstep(0.0, 0.15, tt));
+        heat = 1.0 - abs(v)/1.5707963;
+        p *= mix(1.0, 0.9, heat);
+        p = tiltX(p, tilt.x, tilt.y);
+      } else {
+        float s = (t - split) / (1.0 - split);
+        float startR = R + r;
+        float targetR = diskInner * 0.98;
+        float rr = mix(startR, targetR, smoothstep(0.0, 1.0, s));
+        float ang = aU + 10.0 * s;
+        vec3 inPlane = vec3(rr * cos(ang), rr * sin(ang), 0.0);
+        
+        float settle = 0.2 * (1.0 - s);
+        vec3 wobble = vec3(0.0, 0.0, settle * aHem);
+        p = tiltX(inPlane + wobble, tilt.x, tilt.y);
+        heat = 1.0;
+      }
+
+      vHeat = heat;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      float dist = length((modelViewMatrix * vec4(p,1.0)).xyz);
+      gl_PointSize = 90.0 / dist;
+    }
+  `,
+        fragmentShader: `
+    precision highp float; varying float vHeat;
+    void main(){
+      vec2 uv = gl_PointCoord * 2.0 - 1.0;
+      float d = dot(uv, uv);
+      if (d > 1.0) discard;
+      float glow = pow(1.0 - d, 2.5);
+      vec3 cold = vec3(0.2, 0.6, 1.0);
+      vec3 mid = vec3(0.8, 0.95, 1.0);
+      vec3 hot = vec3(1.0, 0.5, 0.0);
+      vec3 c = mix(mix(cold, mid, smoothstep(0.0, 0.6, vHeat)), hot, smoothstep(0.6, 1.0, vHeat));
+      gl_FragColor = vec4(c * glow, glow);
+    }
+  `
+    });
+    const jets = new THREE.Points(jetGeo, jetMat);
+    scene.add(jets);
+
+    // --- GUI controls ---
+    const strengthSlider=document.getElementById('strength');
+    const falloffSlider=document.getElementById('falloff');
+    const sizeSlider=document.getElementById('size');
+    strengthSlider.addEventListener('input',()=>{lensUniforms.strength.value=parseFloat(strengthSlider.value);document.getElementById('strengthVal').textContent=strengthSlider.value;});
+    falloffSlider.addEventListener('input',()=>{lensUniforms.falloff.value=parseFloat(falloffSlider.value);document.getElementById('falloffVal').textContent=falloffSlider.value;});
+    sizeSlider.addEventListener('input',()=>{
+      bhRadius=parseFloat(sizeSlider.value);
+      bhSphere.geometry.dispose();
+      bhSphere.geometry = new THREE.SphereGeometry(bhRadius,48,32);
+      jetMat.uniforms.bhRadius.value = bhRadius;
+      document.getElementById('sizeVal').textContent=sizeSlider.value;
+    });
+
+    // --- Resize ---
+    window.addEventListener('resize',()=>{
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();
+      screenTextureTarget.setSize(window.innerWidth, window.innerHeight);
+      lensUniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    });
+
+    // --- Animate ---// --- Animate ---
+function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+    controls.update();
+
+    // Update animated uniforms
+    diskMat.uniforms.time.value = t;
+    jetMat.uniforms.time.value = t;
+
+    // --- Corrected Two-Pass Render for Screen-Space Refraction ---
+
+    // 1. Hide the lens sphere so it's not in our background texture.
+    bhSphere.visible = false;
+
+    // 2. Render the scene (stars, disk, jets) into our render target.
+    //    This captures the background that will be distorted.
+    renderer.setRenderTarget(screenTextureTarget);
+    renderer.render(scene, camera);
+
+    // 3. Make the lens sphere visible again for the final render.
+    bhSphere.visible = true;
+
+    // 4. Render the complete scene to the screen (the canvas).
+    //    The lens shader will now sample from the screenTextureTarget we just created.
+    renderer.setRenderTarget(null);
+    renderer.render(scene, camera);
+}
+animate();
+  </script>
+</body>
+</html>
