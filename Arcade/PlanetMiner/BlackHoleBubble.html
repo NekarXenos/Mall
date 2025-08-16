@@ -44,6 +44,11 @@
     const scene = new THREE.Scene();
     const clock = new THREE.Clock();
 
+    function computeMinorRadius(R, a) { // a = bhRadius
+    return Math.sqrt(R*R + a*a);
+    }
+
+
     // --- Starfield ---
     const starGeo = new THREE.BufferGeometry();
     const starCount = 10000;
@@ -79,7 +84,7 @@
     });
     
     let bhRadius = 1.6;
-    let bhSphere = new THREE.Mesh(new THREE.SphereGeometry(bhRadius,48,32), lensMat);
+    let bhSphere = new THREE.Mesh(new THREE.SphereGeometry(bhRadius,32,16), lensMat);
     scene.add(bhSphere);
 
     // --- Accretion Disk ---
@@ -161,6 +166,7 @@
     });
     const disk = new THREE.Mesh(diskGeo, diskMat);
     disk.rotation.x = THREE.MathUtils.degToRad(90);
+    bhSphere.rotation.x = disk.rotation.x;
     scene.add(disk);
 
     // --- Particle Jets & Accretion ---
@@ -183,7 +189,7 @@
     jetGeo.setAttribute('aHem', new THREE.BufferAttribute(jetHem, 1));
     jetGeo.setAttribute('aPhase', new THREE.BufferAttribute(jetPhase, 1));
 
-    const R_torus = 3.2;
+    /* const R_torus = 3.2;
     const r_torus = 3.2;
 
     const jetMat = new THREE.ShaderMaterial({
@@ -199,16 +205,41 @@
             diskInner: { value: diskInner },
             diskOuter: { value: diskOuter },
             bhRadius: { value: bhRadius }
-        },
+        }, */
+    const R_torus = 3.2;  // keep major radius fixed
+let   r_torus = computeMinorRadius(R_torus, bhRadius); // spindle torus secondary radius
+
+const jetMat = new THREE.ShaderMaterial({
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    uniforms: {
+        time: { value: 0 },
+        R: { value: R_torus },
+        r: { value: r_torus },  // <-- computed dynamically
+        speed: { value: 0.085 },
+        tilt: { value: new THREE.Vector2(Math.sin(disk.rotation.x), Math.cos(disk.rotation.x)) },
+        diskInner: { value: diskInner },
+        diskOuter: { value: diskOuter },
+        bhRadius: { value: bhRadius }
+    },    
         vertexShader: `
     attribute float aU;
     attribute float aHem;
     attribute float aPhase;
-    uniform float time; uniform float R; uniform float r; uniform float speed; uniform vec2 tilt;
-    uniform float diskInner; uniform float diskOuter; uniform float bhRadius;
+    uniform float time; 
+    uniform float R; 
+    uniform float r; 
+    uniform float speed; 
+    uniform vec2 tilt;
+    uniform float diskInner; 
+    uniform float diskOuter; 
+    uniform float bhRadius;
     varying float vHeat;
 
-    vec3 tiltX(vec3 p, float s, float c){ return vec3(p.x, c*p.y - s*p.z, s*p.y + c*p.z); }
+    vec3 tiltX(vec3 p, float s, float c){ 
+        return vec3(p.x, c*p.y - s*p.z, s*p.y + c*p.z); 
+    }
 
     void main(){
       float t = fract(aPhase + time * speed);
@@ -217,38 +248,55 @@
       float heat = 0.0;
 
       if (t < split) {
+        // --- Jet ejection phase, along spindle horn ---
         float tt = t / split;
-        float v = mix(1.5707963 * aHem, 0.0, smoothstep(0.0, 1.0, tt));
+
+        // spindle horn start angle (intersection point)
+        float v0 = acos(-R/r);
+        // interpolate v from spindle horn tip -> equator
+        float v = mix(v0 * aHem, 0.0, tt);
+
+        // swirl in azimuth as before
         float swirl = 2.5 * (1.0 - abs(v)/1.5707963) * tt;
         float u = aU + swirl;
-        
-        vec3 onTorus = vec3((R + r*cos(v))*cos(u), (R + r*cos(v))*sin(u), r*sin(v));
-        vec3 pole = vec3(0.0, 0.0, bhRadius * aHem);
-        
-        p = mix(pole, onTorus, smoothstep(0.0, 0.15, tt));
+
+        // exact torus parametric position (u,v)
+        vec3 onSpindle = vec3(
+            (R + r*cos(v))*cos(u),
+            (R + r*cos(v))*sin(u),
+            r*sin(v)
+        );
+
+        p = tiltX(onSpindle, tilt.x, tilt.y);
+
+        // hotter near poles
         heat = 1.0 - abs(v)/1.5707963;
-        p *= mix(1.0, 0.9, heat);
-        p = tiltX(p, tilt.x, tilt.y);
+
       } else {
+        // --- Disk settling phase (unchanged) ---
         float s = (t - split) / (1.0 - split);
         float startR = R + r;
         float targetR = diskInner * 0.98;
         float rr = mix(startR, targetR, smoothstep(0.0, 1.0, s));
         float ang = aU + 10.0 * s;
         vec3 inPlane = vec3(rr * cos(ang), rr * sin(ang), 0.0);
-        
+
         float settle = 0.2 * (1.0 - s);
         vec3 wobble = vec3(0.0, 0.0, settle * aHem);
         p = tiltX(inPlane + wobble, tilt.x, tilt.y);
+
         heat = 1.0;
       }
 
       vHeat = heat;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+
+      // perspective point size
       float dist = length((modelViewMatrix * vec4(p,1.0)).xyz);
       gl_PointSize = 90.0 / dist;
     }
   `,
+
         fragmentShader: `
     precision highp float; varying float vHeat;
     void main(){
@@ -273,13 +321,28 @@
     const sizeSlider=document.getElementById('size');
     strengthSlider.addEventListener('input',()=>{lensUniforms.strength.value=parseFloat(strengthSlider.value);document.getElementById('strengthVal').textContent=strengthSlider.value;});
     falloffSlider.addEventListener('input',()=>{lensUniforms.falloff.value=parseFloat(falloffSlider.value);document.getElementById('falloffVal').textContent=falloffSlider.value;});
-    sizeSlider.addEventListener('input',()=>{
+    /* sizeSlider.addEventListener('input',()=>{
       bhRadius=parseFloat(sizeSlider.value);
       bhSphere.geometry.dispose();
       bhSphere.geometry = new THREE.SphereGeometry(bhRadius,48,32);
       jetMat.uniforms.bhRadius.value = bhRadius;
       document.getElementById('sizeVal').textContent=sizeSlider.value;
+    }); */
+    sizeSlider.addEventListener('input',()=>{
+    bhRadius = parseFloat(sizeSlider.value);
+
+    // Update sphere geometry
+    bhSphere.geometry.dispose();
+    bhSphere.geometry = new THREE.SphereGeometry(bhRadius, 48, 32);
+    jetMat.uniforms.bhRadius.value = bhRadius;
+
+    // Recompute spindle torus minor radius so tips stay on sphere poles
+    const newMinor = computeMinorRadius(R_torus, bhRadius);
+    jetMat.uniforms.r.value = newMinor;
+
+    document.getElementById('sizeVal').textContent = sizeSlider.value;
     });
+
 
     // --- Resize ---
     window.addEventListener('resize',()=>{
