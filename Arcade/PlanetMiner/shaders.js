@@ -172,6 +172,7 @@ uniform vec3 uRayleigh;
 uniform vec3 uMie;
 uniform float uMieG;
 uniform float uDensityFalloff;
+uniform float uScatteringEnabled;
 
 // Cloud uniforms
 uniform float uCloudCover;
@@ -286,7 +287,7 @@ void main() {
         float sunOpticalDepth = getSunlightOpticalDepth(p, sunDir, uPlanetCenter, uPlanetRadius, uAtmosphereRadius);
         vec3 sunTransmittance = exp(-(uRayleigh * sunOpticalDepth + uMie * sunOpticalDepth + cloudDensity(p) * sunOpticalDepth));
 
-        vec3 inScatter = (uRayleigh * rayleighPhase(cosTheta) + uMie * henyeyGreensteinPhase(cosTheta)) * density;
+        vec3 inScatter = (uRayleigh * rayleighPhase(cosTheta) + uMie * henyeyGreensteinPhase(cosTheta)) * density * uScatteringEnabled;
         
         // Add cloud scattering
         inScatter += cloud_density * henyeyGreensteinPhase(cosTheta) * 1.0;

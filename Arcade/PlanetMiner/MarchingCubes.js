@@ -19,7 +19,7 @@ export function generateMarchingCubesGeometry(grid, threshold, gridSize, blockSi
             p1.z + mu * (p2.z - p1.z)
         );
     }
-
+ 
     for (let x = 0; x < resolution - 1; x++) {
         for (let y = 0; y < resolution - 1; y++) {
             for (let z = 0; z < resolution - 1; z++) {
