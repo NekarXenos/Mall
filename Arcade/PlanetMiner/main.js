@@ -3,6 +3,7 @@ import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import { MATERIALS } from './materials.js';
 import { EdgeVertexIndices, TriangleTable, generateMarchingCubesGeometry } from './marchingCubes.js';
 import { terrainNoise, sunGlowVertexShader, sunGlowFragmentShader, skyVertexShader, skyFragmentShader } from './shaders.js';
+import { initWaterMaterial } from './waterShader.js';
 
 // Set up basic Three.js scene components
 let scene, camera, renderer, raycaster;
@@ -10,6 +11,7 @@ let marchingCubesMesh, marchingCubesMeshMoon;
 let waterMesh;
 let torchLight; // Global variable for the torch spotlight
 let sky, sun; // NEW: For atmosphere
+let originMarker, playerMarker; // For map view
 
 // --- Inventory & Building ---
 let inventory = {};
@@ -19,6 +21,7 @@ let cubes = [];
 let cubeParent, moonCubeParent;
 let moonRotation = new THREE.Quaternion();
 const builtCubeMaterials = {};
+let moonGroup; // Container for the moon and its cubes
 
 // --- Grass Instancing & LOD ---
 let grassLODs = []; // Will hold our InstancedMesh objects
@@ -35,18 +38,21 @@ let player;
 const clock = new THREE.Clock();
 const thirdPersonCameraOffset = new THREE.Vector3(0, 3, 8);
 let isFirstPersonView = true;
-// Updated player settings from PlanetMiner (2).html
+let isSolarSystemView = false; // For solar system view
+let solarSystemCamera; // For solar system view
+let solarSystemViewMode = 0; // 0: Top (X), 1: Side (Y), 2: Front (Z) // was 0: Top (Y), 1: Side (X), 2: Front (Z)
+
 const playerSettings = {
     height: 2,
     speed: 5.0, // Units per second
-    gravityStrength: 0.1, // per-frame acceleration
+    gravityStrength: 9.8, // A more standard gravity value (will be scaled by delta)
     jumpStrength: 5, // per-jump impulse
     sensitivity: 0.002,
     maxHealth: 100
 };
 const planetCenter = new THREE.Vector3(0, 0, 0);
 let dominantBodyPosition = planetCenter;
-const keys = { w: false, a: false, s: false, d: false, space: false, c: false, ctrl: false, arrowLeft: false, arrowRight: false }; // Added arrowLeft and arrowRight
+const keys = { w: false, a: false, s: false, d: false, space: false, c: false, ctrl: false, arrowLeft: false, arrowRight: false };
 let isLocked = false;
 
 // --- Particle Systems ---
@@ -56,7 +62,7 @@ let lastBubbleTime = 0;
 let lastSplashTime = 0;
 let wasInWater = false; // To detect entering/exiting water
 
-// Mobile control variables (declared globally for setupMobileControls)
+// Mobile control variables
 let mobileJoystickTouchId = -1;
 let joystickCenter = new THREE.Vector2();
 const joystickRadius = 50;
@@ -80,15 +86,15 @@ const MOON_RADIUS_FACTOR = 0.9;
 const MOON_ORBIT_DISTANCE = GRID_SIZE * BLOCK_SIZE * 0.75;
 const MOON_RADIUS = GRID_SIZE_MOON / 2 * BLOCK_SIZE * MOON_RADIUS_FACTOR;
 
-// --- NEW: Atmosphere & Cloud Parameters ---
-const ATMOSPHERE_THICKNESS = 15.0; // The height of the atmosphere from the planet's surface.
+// --- Atmosphere & Cloud Parameters ---
+const ATMOSPHERE_THICKNESS = 15.0;
 const ATMOSPHERE_TOP_HEIGHT = PLANET_RADIUS + ATMOSPHERE_THICKNESS;
-const DENSITY_FALLOFF = 8; // 8.0; // How quickly the atmosphere thins out. Higher is thicker.
-const RAYLEIGH_COEFFICIENTS = new THREE.Vector3(5.8e-4, 1.35e-3, 3.31e-3); // THREE.Vector3(5.8e-6, 1.35e-5, 3.31e-5);
-const MIE_COEFFICIENTS = new THREE.Vector3(2.0e-5, 2.0e-5, 2.0e-5); // THREE.Vector3(2.0e-5, 2.0e-5, 2.0e-5);
-const MIE_ECCENTRICITY = 0.76; // Directionality of Mie scattering
-const CLOUD_BOTTOM_ALTITUDE = 6; // 6.0; // Height above planet surface where clouds start
-const CLOUD_TOP_ALTITUDE = 8; // 10.0; // Height above planet surface where clouds end
+const DENSITY_FALLOFF = 8;
+const RAYLEIGH_COEFFICIENTS = new THREE.Vector3(5.8e-4, 1.35e-3, 3.31e-3);
+const MIE_COEFFICIENTS = new THREE.Vector3(2.0e-5, 2.0e-5, 2.0e-5);
+const MIE_ECCENTRICITY = 0.76;
+const CLOUD_BOTTOM_ALTITUDE = 6;
+const CLOUD_TOP_ALTITUDE = 8;
 
 let voxelData = [], voxelDataMoon = [];
 let moonPosition = new THREE.Vector3();
@@ -97,7 +103,7 @@ const simplex = new SimplexNoise();
 // Noise parameters
 const initialNoiseScale = 0.02, noiseStrength = 0.5, octaves = 6, lacunarity = 2.0, persistence = 0.5;
 
-// Water parameters (replaces sliders)
+// Water parameters
 const waterSettings = {
     waveSpeed: 1.5,
     waveAmplitude: 100,
@@ -108,38 +114,33 @@ const waterSettings = {
 // DOM Elements
 const overlay = document.getElementById('overlay');
 const messageBox = document.getElementById('message-box');
+const mapViewInfo = document.getElementById('map-view-info');
 let canvas;
 
 /**
- * Determines the material type at a given world point based on various environmental factors.
- * @param {THREE.Vector3} worldPoint - The point in world space to check.
- * @param {THREE.Vector3} surfaceNormal - The normal of the surface at the world point.
- * @param {boolean} onMoon - Whether the point is on the moon.
- * @returns {object} The material object from the MATERIALS constant.
+ * Determines the material type at a given world point.
+ * @param {THREE.Vector3} worldPoint - The point in world space.
+ * @param {THREE.Vector3} surfaceNormal - The surface normal.
+ * @param {boolean} onMoon - If the point is on the moon.
+ * @returns {object} The material object from MATERIALS.
  */
 function getMaterialAtPoint(worldPoint, surfaceNormal, onMoon = false) {
     const center = onMoon ? moonPosition : planetCenter;
     const radius = onMoon ? MOON_RADIUS : PLANET_RADIUS;
     const waterRadius = PLANET_RADIUS + WATER_LEVEL_OFFSET;
 
-    // --- Corrected Noise Calculation ---
-    let terrainNoise;
+    let terrainNoiseVal;
     if (onMoon) {
-        // For the moon, use its specific noise parameters and local coordinates
         const localPoint = worldPoint.clone().sub(moonPosition);
-        terrainNoise = getRidgedMultifractalNoise(localPoint.x, localPoint.y, localPoint.z, simplex, 0.05, 0.3, 5, 2.2, 0.4);
+        terrainNoiseVal = getRidgedMultifractalNoise(localPoint.x, localPoint.y, localPoint.z, simplex, 0.05, 0.3, 5, 2.2, 0.4);
     } else {
-        // For the planet, use its noise parameters and world coordinates
-        terrainNoise = getRidgedMultifractalNoise(worldPoint.x, worldPoint.y, worldPoint.z, simplex, initialNoiseScale, noiseStrength, octaves, lacunarity, persistence);
+        terrainNoiseVal = getRidgedMultifractalNoise(worldPoint.x, worldPoint.y, worldPoint.z, simplex, initialNoiseScale, noiseStrength, octaves, lacunarity, persistence);
     }
-    // --- End Correction ---
-
-    // 1. Calculate depth from the "true" noise-defined surface
-    const distSurface = (1.0 + terrainNoise - ISO_LEVEL) * radius;
+    
+    const distSurface = (1.0 + terrainNoiseVal - ISO_LEVEL) * radius;
     const distCenter = worldPoint.distanceTo(center);
     const depth = distSurface - distCenter;
 
-    // 2. Handle subsurface materials first based on depth
     if (onMoon) {
         if (depth > 7) return MATERIALS.LAVA;
         if (depth > 2) return MATERIALS.MOON_ROCK;
@@ -150,48 +151,41 @@ function getMaterialAtPoint(worldPoint, surfaceNormal, onMoon = false) {
         if (depth >= 0) return MATERIALS.SOIL;
     }
 
-    // 3. Handle surface materials (where depth is near zero or negative)
     const upVector = worldPoint.clone().sub(center).normalize();
-    const slope = 1.0 - Math.abs(surfaceNormal.dot(upVector)); // 0 = flat, 1 = vertical
+    const slope = 1.0 - Math.abs(surfaceNormal.dot(upVector));
 
     if (onMoon) {
         return slope > 0.4 ? MATERIALS.MOON_ROCK : MATERIALS.MOON_SAND;
     }
 
-    // --- NEW: Polar Ice Cap Logic for Planet ---
-    const poleThreshold = 0.85; // How far from the pole the ice extends. 1.0 is the pole.
+    const poleThreshold = 0.85;
     if (!onMoon && Math.abs(upVector.y) > poleThreshold) {
         return MATERIALS.ICE;
     }
 
-    // Planet surface logic
     const heightAboveWater = distCenter - waterRadius;
-    const isVertical = slope > 0.7; // Very steep, definitely rock
-    const isSteep = slope > 0.3; // Moderately steep
+    const isVertical = slope > 0.7;
+    const isSteep = slope > 0.3;
 
-    // All overhangs/steep areas should be rock
     if (isVertical || isSteep) {
         return MATERIALS.ROCK;
     }
 
-    if (heightAboveWater < -1.0) { // Deep underwater
+    if (heightAboveWater < -1.0) {
         const underwaterPattern = simplex.noise3D(worldPoint.x * 2, worldPoint.y * 2, worldPoint.z * 2);
-        // Replaced seaweed with anemone: if it was seaweed or anemone, now it's anemone. Otherwise, sand.
         if (underwaterPattern < -0.3 || underwaterPattern > 0.3) return MATERIALS.ANEMONE;
         return MATERIALS.SAND;
     }
 
-    if (Math.abs(heightAboveWater) <= 1.0) { // Shoreline
-        // If not steep (already handled above), it's sand at the shoreline
+    if (Math.abs(heightAboveWater) <= 1.0) {
         return MATERIALS.SAND;
     }
 
-    if (heightAboveWater > 1.0) { // Above shoreline
-        // If not steep (already handled above), it's only grass for near horizontal areas
+    if (heightAboveWater > 1.0) {
         return MATERIALS.GRASS;
     }
 
-    return MATERIALS.SOIL; // Default fallback (should be rarely reached now)
+    return MATERIALS.SOIL;
 }
 
 function getRidgedMultifractalNoise(x, y, z, noiseGenerator, scale, strength, numOctaves, lac, pers) {
@@ -207,13 +201,13 @@ function getRidgedMultifractalNoise(x, y, z, noiseGenerator, scale, strength, nu
     return (totalNoise / maxAmplitudeSum) * strength;
 }
 
-
 function init() {
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000); // Set background to black for space
-    // Fog is now handled by the sky shader
+    scene.background = new THREE.Color(0x000000);
 
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000); // Increased far plane for sky
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+    solarSystemCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
+    scene.add(solarSystemCamera);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -222,34 +216,40 @@ function init() {
     document.body.appendChild(renderer.domElement);
     canvas = renderer.domElement;
 
-     // --- Add a visible Sun ---
     const sunGeometry = new THREE.SphereGeometry(20, 32, 32);
-    //const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffffFF, fog: false }); // 0xffffee
-    const sunMaterial = new THREE.MeshStandardMaterial({ color: 0xffffee, emissive: 0xffffee, emissiveIntensity: 1000, side: THREE.FrontSide, fog: false }); // 0xffffee
-    sun = new THREE.Mesh(sunGeometry, sunMaterial); // Assign to the global 'sun' variable
-    sun.castShadow = false; // Sun does not cast shadows
-    sun.receiveShadow = false; // Sun does not receive shadows
-    // Lighting will be updated dynamically based on sun position
-    const ambientLight = new THREE.AmbientLight(0xccddee, 0.5); // Reduced ambient light
+    const sunMaterial = new THREE.MeshStandardMaterial({ color: 0xffffee,  emissive: 0xffffff, emissiveIntensity: 1000000, side: THREE.BackSide, fog: true });
+    sun = new THREE.Mesh(sunGeometry, sunMaterial);
+    sun.castShadow = false;
+    sun.receiveShadow = false;
+    
+    const ambientLight = new THREE.AmbientLight(0xccddee, 0.5);
     scene.add(ambientLight);
 
-    // Use a PointLight attached to the sun mesh for unified lighting
-    const pointLight = new THREE.PointLight(0xffffff, 4, 0, 0); // color, intensity, distance (0=infinite), decay
+    const pointLight = new THREE.PointLight(0xffffff, 4, 0, 0);
     sun.add(pointLight);
 
-    // --- NEW: Atmosphere and Sky ---
     initSky();
+    scene.add(sun);
 
-    scene.add(sun); // The sun's position will be set in the animate loop
+    // --- NEW: Initialize markers for solar system view ---
+    originMarker = new THREE.AxesHelper(100);
+    originMarker.visible = false;
+    scene.add(originMarker);
+    
+    playerMarker = new THREE.Mesh(
+        new THREE.SphereGeometry(5, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true })
+    );
+    playerMarker.visible = false;
+    scene.add(playerMarker);
+    // --- End Marker Initialization ---
 
-    // --- Add outer glow to the Sun (GalacticUFOv3 style) ---
     const glowGeometry = new THREE.BufferGeometry();
     glowGeometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3));
-
     const glowMaterial = new THREE.ShaderMaterial({
         uniforms: {
-            pointSize: { value: 50 }, // Adjust size of the glow
-            glowColor: { value: new THREE.Color(0xffd2a1) } // Orange tint
+            pointSize: { value: 50 },
+            glowColor: { value: new THREE.Color(0xffd2a1) }
         },
         vertexShader: sunGlowVertexShader,
         fragmentShader: sunGlowFragmentShader,
@@ -257,26 +257,18 @@ function init() {
         transparent: true,
         depthTest: true
     });
-
     sun.add(new THREE.Points(glowGeometry, glowMaterial));
 
-
-
-    // Setup the torch spotlight
-    torchLight = new THREE.SpotLight(0xffffff, 0, 50, Math.PI / 6, 0.5, 2); // Color, intensity (0 initially), distance, angle, penumbra, decay
+    torchLight = new THREE.SpotLight(0xffffff, 0, 50, Math.PI / 6, 0.5, 2);
     torchLight.castShadow = true;
     torchLight.shadow.mapSize.width = 1024;
     torchLight.shadow.mapSize.height = 1024;
-    torchLight.shadow.camera.near = 0.5;
-    torchLight.shadow.camera.far = 50;
-    torchLight.shadow.camera.fov = 30; // Match spotlight angle
-    scene.add(torchLight); // Add torch light directly to the scene
-    torchLight.target = new THREE.Object3D(); // Target for the spotlight
-    scene.add(torchLight.target); // Add the target directly to the scene
+    scene.add(torchLight);
+    torchLight.target = new THREE.Object3D();
+    scene.add(torchLight.target);
 
     raycaster = new THREE.Raycaster();
 
-    // Populate inventory and buildable materials list
     for (const key in MATERIALS) {
         const mat = MATERIALS[key];
         if (mat.buildable) {
@@ -285,9 +277,8 @@ function init() {
             const materialOptions = { color: mat.color, roughness: 0.8 };
             if (mat.emissive) {
                 materialOptions.emissive = mat.emissive;
-                materialOptions.emissiveIntensity = 1.0; // Make it glow
+                materialOptions.emissiveIntensity = 1.0;
             }
-            // --- NEW: Special properties for ice ---
             if (mat.id === 'ice') {
                 materialOptions.roughness = 0.2;
                 materialOptions.metalness = 0.1;
@@ -298,7 +289,11 @@ function init() {
         }
     }
 
-    setupFoliage(); // New function call for foliage
+    setupFoliage();
+
+    // --- FIXED: Initialize moonGroup before generating the moon ---
+    moonGroup = new THREE.Group();
+    scene.add(moonGroup);
 
     generatePlanet();
     generateMoon();
@@ -307,15 +302,13 @@ function init() {
     cubeParent = new THREE.Group();
     scene.add(cubeParent);
 
-    moonCubeParent = new THREE.Group(); // Create the moon cube container
-    scene.add(moonCubeParent); // Add it to the scene
+    moonCubeParent = new THREE.Group();
+    moonGroup.add(moonCubeParent);
 
     createPlayer();
-
     setupEventListeners();
     setupInventoryUI();
 
-    // Mobile device detection and control setup
     if (isMobileDevice()) {
         mobileControls.style.display = 'flex';
         setupMobileControls();
@@ -331,9 +324,6 @@ function setupEventListeners() {
     document.addEventListener('pointerlockchange', onPointerLockChange);
 
     overlay.addEventListener('click', () => {
-        // The request for pointer lock can be denied by the user, or fail if the
-        // document is not in the correct state. This can sometimes lead to an
-        // unhandled promise rejection in certain environments. This handles that case.
         const request = canvas.requestPointerLock();
         if (request && typeof request.catch === 'function') {
             request.catch(err => {
@@ -347,160 +337,43 @@ function setupEventListeners() {
     window.addEventListener('resize', onWindowResize);
 }
 
-/**
- * Creates a semi-transparent geodesic sphere for the water layer.
- */
 function createWaterLayer() {
-    // Use IcosahedronGeometry for a more uniform sphere, preventing polar distortion.
-    // A detail level of 5 gives faces with a side length of roughly 1 unit on a sphere of radius 30.
     const waterGeometry = new THREE.IcosahedronGeometry(PLANET_RADIUS + WATER_LEVEL_OFFSET, 20);
     const waterMaterial = new THREE.MeshStandardMaterial({
         metalness: 0.9,
         roughness: 0.3,
         transparent: true,
         opacity: 0.7,
-        side: THREE.DoubleSide // Render both sides
+        side: THREE.DoubleSide
     });
-
-
-    waterMaterial.onBeforeCompile = shader => {
-        shader.uniforms.time = { value: 0 };
-        shader.uniforms.noiseScale = { value: 2 };
-        shader.uniforms.uWaveSpeed = { value: waterSettings.waveSpeed };
-        shader.uniforms.uWaveAmplitude = { value: waterSettings.waveAmplitude };
-        shader.uniforms.uBlueFreq = { value: waterSettings.blueFreq };
-        shader.uniforms.uGreenFreq = { value: waterSettings.greenFreq };
-
-        // Add simplex noise function to both shaders
-        shader.vertexShader = terrainNoise + shader.vertexShader;
-        shader.fragmentShader = terrainNoise + shader.fragmentShader;
-
-        // Pass noise from vertex to fragment
-        shader.vertexShader = shader.vertexShader.replace(
-            '#include <common>',
-            `
-            #include <common>
-            uniform float time;
-            uniform float noiseScale;
-            varying float vNoise;
-            `
-        );
-        shader.vertexShader = shader.vertexShader.replace(
-            '#include <begin_vertex>',
-            `
-            #include <begin_vertex>
-            vNoise = ridgedMultifractal(normal * noiseScale);
-            `
-        );
-
-        // --- Fragment Shader Modifications ---
-        shader.fragmentShader = shader.fragmentShader.replace(
-            '#include <common>',
-            `
-            #include <common>
-            uniform float time;
-            uniform float uWaveSpeed;
-            uniform float uWaveAmplitude;
-            uniform float uBlueFreq;
-            uniform float uGreenFreq;
-            varying float vNoise;
-            `
-        );
-
-        // Modify the normal to create the wave effect
-        shader.fragmentShader = shader.fragmentShader.replace(
-            '#include <normal_fragment_maps>',
-            `
-            #include <normal_fragment_maps>
-
-            float t = vNoise;
-            float freq = mix(uBlueFreq, uGreenFreq, t);
-            float phase = time * uWaveSpeed;
-            float wave_height = uWaveAmplitude * sin(vNoise * freq - phase);
-
-            // Use derivatives to calculate the normal from the height field
-            vec3 p_dx = dFdx(vViewPosition);
-            vec3 p_dy = dFdy(vViewPosition);
-            vec2 h_dx = dFdx(vec2(wave_height, 0.0));
-            vec2 h_dy = dFdy(vec2(wave_height, 0.0));
-
-            vec3 n = normal;
-            n.xy -= vec2(h_dx.x, h_dy.x) * 0.1;
-
-            normal = normalize(n);
-            `
-        );
-
-        // Modify the color based on depth and wave crests
-        shader.fragmentShader = shader.fragmentShader.replace(
-            '#include <color_fragment>',
-            `
-            #include <color_fragment>
-            float t_color = vNoise;
-            vec3 blue = vec3(0.0, 0.3, 0.8);
-            vec3 green = vec3(0.1, 0.8, 0.8);
-            vec3 base_color = mix(blue, green, t_color);
-
-            // --- Dynamic Crest Color ---
-            // Recalculate the wave sine value to determine the crest
-            float freq_crest = mix(uBlueFreq, uGreenFreq, vNoise);
-            float phase_crest = time * uWaveSpeed;
-            float wave_sine = sin(vNoise * freq_crest - phase_crest); // This value is between -1 and 1
-
-            // Use smoothstep to create a smooth transition to the crest color at the wave peaks.
-            float crest_factor = smoothstep(0.5, 1.0, wave_sine);
-
-            // Define the two crest colors
-            vec3 sky_blue_crest = vec3(0.529, 0.808, 0.922); // Sky blue for the blue water area
-            vec3 white_crest = vec3(1.0, 1.0, 1.0);         // White for the green water area
-
-            // The final crest color is a mix based on the same noise value as the base water color.
-            // This ensures the crest color changes in sync with the water color.
-            vec3 dynamic_crest_color = mix(sky_blue_crest, white_crest, t_color);
-
-            // Mix the base water color with the dynamic crest color.
-            vec3 final_color = mix(base_color, dynamic_crest_color, crest_factor);
-
-            diffuseColor.rgb = final_color;
-            `
-        );
-
-        waterMaterial.userData.shader = shader;
-    };
-
-
-
+    initWaterMaterial(waterMaterial, waterSettings);
     waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
-    waterMesh.position.copy(planetCenter); // Center the water sphere on the planet
+    waterMesh.position.copy(planetCenter);
     scene.add(waterMesh);
 }
 
 function createPlayer() {
     player = new THREE.Group();
-    // Attach state properties directly to the player group
     player.velocity = new THREE.Vector3();
     player.onGround = false;
-    player.health = playerSettings.maxHealth; // Initialize health
-    player.lastDamageTime = 0; // For damage cooldown
+    player.health = playerSettings.maxHealth;
+    player.lastDamageTime = 0;
 
     const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
     const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x5588ff });
-    player.body = new THREE.Mesh(bodyGeometry, bodyMaterial); // Assign to player.body
-    player.body.castShadow = true; // Added castShadow
+    player.body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    player.body.castShadow = true;
     player.body.position.y = -0.3;
     player.add(player.body);
 
     const headGeometry = new THREE.DodecahedronGeometry(0.5, 0);
     const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffccaa });
-    player.head = new THREE.Mesh(headGeometry, headMaterial); // Assign to player.head
-    player.head.castShadow = true; // Added castShadow
+    player.head = new THREE.Mesh(headGeometry, headMaterial);
+    player.head.castShadow = true;
     player.head.position.y = 0.8;
     player.add(player.head);
 
-    // Initial position on the planet's surface
     player.position.set(0, PLANET_RADIUS + playerSettings.height, 0);
-
-    // Orient player to be upright at the start
     const initialUp = player.position.clone().normalize();
     player.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), initialUp);
     scene.add(player);
@@ -508,48 +381,33 @@ function createPlayer() {
 
 function onMouseDownDesktop(event) {
     if (!isLocked) return;
-    event.preventDefault(); // Prevent default middle-click actions
+    event.preventDefault();
     if (event.button === 0) mineBlockAtCrosshair();
     else if (event.button === 1) firePowerLaser();
     else if (event.button === 2) placeBlockAtCrosshair();
 }
 
-// --- GRASS FUNCTIONS ---
-/**
- * Creates geometry for a single grass patch with a variable number of blades.
- * @param {number} bladeCount - The number of triangular blades to generate.
- * @returns {THREE.BufferGeometry}
- */
 function createGrassPatchGeometry(bladeCount) {
     const patchGeometry = new THREE.BufferGeometry();
     const vertices = [];
-
     for (let i = 0; i < bladeCount; i++) {
         const baseWidth = 0.01;
         const height = THREE.MathUtils.randFloat(0.1, 0.5);
         const horizontalOffset = THREE.MathUtils.randFloat(0.05, 0.1);
-
         const angle = Math.random() * Math.PI * 2;
         const offsetX = Math.cos(angle) * horizontalOffset;
         const offsetZ = Math.sin(angle) * horizontalOffset;
-
         const v1 = new THREE.Vector3(offsetX - baseWidth / 2, 0, offsetZ);
         const v2 = new THREE.Vector3(offsetX + baseWidth / 2, 0, offsetZ);
         const v3 = new THREE.Vector3(offsetX, height, offsetZ);
-
         vertices.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, v3.x, v3.y, v3.z);
     }
-
     patchGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     patchGeometry.computeVertexNormals();
     return patchGeometry;
 }
 
-/**
- * Initializes the InstancedMesh objects for all foliage types (grass, anemones).
- */
 function setupFoliage() {
-    // Setup for Grass
     const grassMaterial = new THREE.MeshStandardMaterial({ color: 0x00cc44, side: THREE.DoubleSide });
     for (let i = 0; i < GRASS_LOD_DISTANCES.length; i++) {
         const bladeCount = GRASS_LOD_BLADES[i];
@@ -561,12 +419,11 @@ function setupFoliage() {
         grassLODs.push(lodMesh);
     }
 
-    // Setup for Sea Anemones
-    const anemoneMaterial = new THREE.MeshStandardMaterial({ color: 0x4169E1, side: THREE.DoubleSide }); // Blue color
+    const anemoneMaterial = new THREE.MeshStandardMaterial({ color: 0x4169E1, side: THREE.DoubleSide });
     for (let i = 0; i < GRASS_LOD_DISTANCES.length; i++) {
-        const bladeCount = GRASS_LOD_BLADES[i]; // Using same blade count for simplicity
+        const bladeCount = GRASS_LOD_BLADES[i];
         const anemonePatchGeometry = createGrassPatchGeometry(bladeCount);
-        const lodMesh = new THREE.InstancedMesh(anemonePatchGeometry, anemoneMaterial, MAX_GRASS_PER_LOD); // Re-use max count
+        const lodMesh = new THREE.InstancedMesh(anemonePatchGeometry, anemoneMaterial, MAX_GRASS_PER_LOD);
         lodMesh.name = `Anemone_LOD_${i}`;
         lodMesh.count = 0;
         scene.add(lodMesh);
@@ -574,7 +431,6 @@ function setupFoliage() {
     }
 }
 
-// --- MOBILE CONTROL FUNCTIONS ---
 function isMobileDevice() {
     const userAgent = navigator.userAgent || navigator.vendor || window.opera;
     return /android|iphone|ipad|ipod|blackberry|windows phone/i.test(userAgent) ||
@@ -629,26 +485,18 @@ function onJoystickEnd(event) {
     }
 }
 
-// --- INVENTORY UI FUNCTIONS ---
 function setupInventoryUI() {
-    // updateInventoryUI will now handle the full render, including initial setup.
     updateInventoryUI();
 }
 
 function updateInventoryUI() {
-    // Store the ID of the currently selected material to maintain selection
     const selectedId = buildableMaterials[selectedMaterialIndex];
-
-    // Ensure buildableMaterials is in a fixed, predictable order. Do not sort.
-    // The initial order from the MATERIALS object is now preserved.
-
     const slotsContainer = document.getElementById('inventory-slots');
-    slotsContainer.innerHTML = ''; // Clear existing slots to re-render
+    slotsContainer.innerHTML = '';
 
-    // Re-create all slots in the fixed order
     buildableMaterials.forEach((matId, index) => {
         const mat = Object.values(MATERIALS).find(m => m.id === matId);
-        if (!mat) return; // Safety check
+        if (!mat) return;
 
         const slot = document.createElement('div');
         slot.className = 'inventory-slot';
@@ -670,7 +518,6 @@ function updateInventoryUI() {
         slotsContainer.appendChild(slot);
     });
 
-    // Scroll the selected item into view if it's outside the visible area
     const selectedSlot = document.querySelector('.inventory-slot.selected');
     if (selectedSlot) {
         selectedSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
@@ -688,17 +535,18 @@ function selectMaterialById(matId) {
     if (index !== -1) selectMaterial(index);
 }
 
-// --- CORE GAME LOGIC ---
+function updateMapViewInfo() {
+    const viewName = ['Top', 'Side', 'Front'][solarSystemViewMode];
+    mapViewInfo.textContent = `View: ${viewName}`;
+}
+
 function onKeyDown(event) {
-    // Handle number keys for inventory selection
     if (event.code.startsWith('Digit')) {
         const index = parseInt(event.key) - 1;
-        if (index >= 0 && index < 9) {
-            if (index < buildableMaterials.length) {
-                selectMaterial(index);
-            }
-            return; // Early exit for number keys
+        if (index >= 0 && index < 9 && index < buildableMaterials.length) {
+            selectMaterial(index);
         }
+        return;
     }
 
     switch (event.code) {
@@ -707,82 +555,55 @@ function onKeyDown(event) {
         case 'KeyS': keys.s = true; break;
         case 'KeyD': keys.d = true; break;
         case 'Space':
-            keys.space = true; // Always track spacebar state
-            // Jump impulse should only happen when on the ground.
+            keys.space = true;
             if (player && player.onGround) {
                 const upDirection = player.position.clone().sub(dominantBodyPosition).normalize();
                 player.velocity.add(upDirection.multiplyScalar(playerSettings.jumpStrength));
-                player.onGround = false; // Player is no longer on ground after jumping
+                player.onGround = false;
             }
             break;
         case 'KeyC': keys.c = true; break;
         case 'ControlLeft': case 'ControlRight': keys.ctrl = true; break;
-        case 'ArrowLeft': keys.arrowLeft = true; selectPrevMaterial(); break; // Added for material selection
-        case 'ArrowRight': keys.arrowRight = true; selectNextMaterial(); break; // Added for material selection
-        case 'KeyL': // Teleport between Planet and Moon
-            if (!marchingCubesMeshMoon) break; // Safety check
-
+        case 'ArrowLeft': keys.arrowLeft = true; selectPrevMaterial(); break;
+        case 'ArrowRight': keys.arrowRight = true; selectNextMaterial(); break;
+        case 'KeyL':
+            if (!marchingCubesMeshMoon) break;
             const distToPlanet = player.position.distanceTo(planetCenter);
             const distToMoon = player.position.distanceTo(marchingCubesMeshMoon.position);
-
             if (distToPlanet > distToMoon) {
-                // On moon, teleport to planet
                 player.position.set(0, PLANET_RADIUS + playerSettings.height, 0);
                 messageBox.textContent = "Teleported to the Planet!";
             } else {
-                // On planet, teleport to moon
                 player.position.copy(moonPosition.clone().add(new THREE.Vector3(0, MOON_RADIUS + playerSettings.height, 0)));
                 messageBox.textContent = "Teleported to the Moon!";
             }
-            player.velocity.set(0, 0, 0); // Reset velocity
-            player.onGround = false; // Player might not be on ground immediately after teleport
+            player.velocity.set(0, 0, 0);
+            player.onGround = false;
             setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
             break;
-        case 'KeyP': // Debug: Count surface voxels
-            let totalSurfaceVoxels = 0;
-            const gridsToCount = [
-                { data: voxelData, size: GRID_SIZE },
-                { data: voxelDataMoon, size: GRID_SIZE_MOON }
-            ];
-
-            gridsToCount.forEach(gridInfo => {
-                const grid = gridInfo.data;
-                const size = gridInfo.size;
-                if (!grid || grid.length === 0) return;
-
-                for (let x = 1; x < size - 1; x++) {
-                    for (let y = 1; y < size - 1; y++) {
-                        for (let z = 1; z < size - 1; z++) {
-                            if (grid[x][y][z] >= ISO_LEVEL) { // If the voxel is solid
-                                // Check if any neighbor is air
-                                if (
-                                    grid[x + 1][y][z] < ISO_LEVEL ||
-                                    grid[x - 1][y][z] < ISO_LEVEL ||
-                                    grid[x][y + 1][z] < ISO_LEVEL ||
-                                    grid[x][y - 1][z] < ISO_LEVEL ||
-                                    grid[x][y][z + 1] < ISO_LEVEL ||
-                                    grid[x][y][z - 1] < ISO_LEVEL
-                                ) {
-                                    totalSurfaceVoxels++;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-
-            messageBox.textContent = `Total surface voxels: ${totalSurfaceVoxels}`;
-            setTimeout(() => { messageBox.textContent = "Controls active"; }, 3000);
+        case 'KeyP':
+            // Debug functionality can be added here
             break;
-        case 'KeyT': // Toggle Torch
-            if (torchLight.intensity === 0) {
-                torchLight.intensity = 1; // Turn on
-                messageBox.textContent = "Torch ON";
+        case 'KeyT':
+            torchLight.intensity = torchLight.intensity === 0 ? 1 : 0;
+            messageBox.textContent = `Torch ${torchLight.intensity === 1 ? 'ON' : 'OFF'}`;
+            setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
+            break;
+        case 'KeyM':
+            isSolarSystemView = !isSolarSystemView;
+            if (isSolarSystemView) {
+                solarSystemViewMode = 0;
+                updateMapViewInfo();
+                mapViewInfo.style.display = 'block';
             } else {
-                torchLight.intensity = 0; // Turn off
-                messageBox.textContent = "Torch OFF";
+                mapViewInfo.style.display = 'none';
             }
-            setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
+            break;
+        case 'KeyX':
+            if (isSolarSystemView) {
+                solarSystemViewMode = (solarSystemViewMode + 1) % 3;
+                updateMapViewInfo();
+            }
             break;
     }
 }
@@ -797,30 +618,34 @@ function onKeyUp(event) {
         case 'KeyC': keys.c = false; break;
         case 'ControlLeft': case 'ControlRight': keys.ctrl = false; break;
         case 'KeyV': isFirstPersonView = !isFirstPersonView; break;
-        case 'ArrowLeft': keys.arrowLeft = false; break; // Added for material selection
-        case 'ArrowRight': keys.arrowRight = false; break; // Added for material selection
+        case 'ArrowLeft': keys.arrowLeft = false; break;
+        case 'ArrowRight': keys.arrowRight = false; break;
     }
 }
 
+// --- FIXED: Restored correct head rotation logic ---
 function onMouseMove(event) {
     if (!isLocked || !player) return;
+
     const movementX = event.movementX || 0;
     const movementY = event.movementY || 0;
 
-    const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
-    const yawDelta = -movementX * playerSettings.sensitivity;
-    const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(playerUp, yawDelta);
-    player.quaternion.premultiply(yawQuaternion);
+    // Yaw (left/right) rotation for the whole player body
+    const upDir = player.position.clone().sub(dominantBodyPosition).normalize();
+    const yaw = -movementX * playerSettings.sensitivity;
+    const yawQuat = new THREE.Quaternion().setFromAxisAngle(upDir, yaw);
+    player.quaternion.premultiply(yawQuat);
 
-    const pitchDelta = -movementY * playerSettings.sensitivity;
-    player.head.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.head.rotation.x + pitchDelta));
+    // Pitch (up/down) rotation for the player's head only, with clamping
+    const pitch = -movementY * playerSettings.sensitivity;
+    player.head.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.head.rotation.x + pitch));
 }
 
 function onPointerLockChange() {
     isLocked = document.pointerLockElement === canvas;
     overlay.style.display = isLocked ? 'none' : 'flex';
     messageBox.style.display = isLocked ? 'block' : 'none';
-    document.getElementById('health-bar-container').style.display = isLocked ? 'block' : 'none'; // Show/hide health bar
+    document.getElementById('health-bar-container').style.display = isLocked ? 'block' : 'none';
     if (isLocked) {
         document.addEventListener('mousemove', onMouseMove, false);
     } else {
@@ -837,14 +662,11 @@ function updateHealthUI() {
 
 function takeDamage(amount) {
     if (!player || player.health <= 0) return;
-
     player.health -= amount;
     player.lastDamageTime = clock.getElapsedTime();
-
     const damageOverlay = document.getElementById('damage-overlay');
     damageOverlay.style.opacity = 1;
-    setTimeout(() => { damageOverlay.style.opacity = 0; }, 250); // Fade out after 250ms
-
+    setTimeout(() => { damageOverlay.style.opacity = 0; }, 250);
     if (player.health <= 0) {
         player.health = 0;
         respawnPlayer();
@@ -855,30 +677,23 @@ function takeDamage(amount) {
 function respawnPlayer() {
     messageBox.textContent = "You have perished! Respawning...";
     messageBox.style.display = 'block';
-
-    // Reset player state
     player.health = playerSettings.maxHealth;
     player.velocity.set(0, 0, 0);
-    inventory = {}; // Optional: reset inventory on death
     for (const key in MATERIALS) {
         if (MATERIALS[key].buildable) {
             inventory[MATERIALS[key].id] = 0;
         }
     }
     updateInventoryUI();
-
-    // Teleport to a safe spot on the planet surface
     player.position.set(0, PLANET_RADIUS + playerSettings.height, 0);
     const initialUp = player.position.clone().normalize();
     player.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), initialUp);
     player.onGround = false;
-
     setTimeout(() => {
         if (isLocked) {
             messageBox.textContent = "Controls active";
         }
     }, 2000);
-
     updateHealthUI();
 }
 
@@ -892,27 +707,25 @@ function mineBlockAtCrosshair() {
         const miningRayDir = raycaster.ray.direction;
         const offsetWorldPoint = intersectionPoint.clone().add(miningRayDir.clone().multiplyScalar(-BLOCK_SIZE * 0.25));
 
-        // Determine which Marching Cubes mesh was hit
         let targetGrid, targetGridSize, targetCenterOffset;
         let isMarchingCubesObject = false;
-        let onMoon = false; // Added for material determination
+        let onMoon = false;
 
         if (intersectedObject === marchingCubesMesh) {
             targetGrid = voxelData;
             targetGridSize = GRID_SIZE;
-            targetCenterOffset = planetCenter; // Marching cubes mesh is at 0,0,0
+            targetCenterOffset = planetCenter;
             isMarchingCubesObject = true;
             onMoon = false;
         } else if (intersectedObject === marchingCubesMeshMoon) {
             targetGrid = voxelDataMoon;
             targetGridSize = GRID_SIZE_MOON;
-            targetCenterOffset = marchingCubesMeshMoon.position; // Moon mesh is at moonPosition
+            targetCenterOffset = marchingCubesMeshMoon.position;
             isMarchingCubesObject = true;
             onMoon = true;
         }
 
         if (isMarchingCubesObject) {
-            // Convert world coordinates to grid coordinates relative to the object's center
             const localPoint = offsetWorldPoint.clone().sub(targetCenterOffset);
             const halfTargetGrid = targetGridSize / 2;
             const gridX = Math.floor(localPoint.x / BLOCK_SIZE + halfTargetGrid);
@@ -920,24 +733,18 @@ function mineBlockAtCrosshair() {
             const gridZ = Math.floor(localPoint.z / BLOCK_SIZE + halfTargetGrid);
 
             if (gridX >= 0 && gridX < targetGridSize && gridY >= 0 && gridY < targetGridSize && gridZ >= 0 && gridZ < targetGridSize) {
-                // Set the voxel value to 0 (empty)
                 targetGrid[gridX][gridY][gridZ] = 0;
-
-                // Re-generate the Marching Cubes mesh for the affected object
                 if (intersectedObject === marchingCubesMesh) {
                     updateMarchingCubesMesh();
                 } else if (intersectedObject === marchingCubesMeshMoon) {
                     updateMarchingCubesMoonMesh();
                 }
-
                 const minedMaterial = getMaterialAtPoint(offsetWorldPoint, intersected.face.normal, onMoon);
                 if (minedMaterial.buildable) {
                     inventory[minedMaterial.id]++;
                     updateInventoryUI();
                 }
                 createMiningEffect(intersectionPoint, minedMaterial);
-
-                // If a foliage block was mined, remove the corresponding instance
                 const mapKey = `${gridX},${gridY},${gridZ}`;
                 if (minedMaterial.id === 'grass') {
                     const instanceId = voxelToGrassMap.get(mapKey);
@@ -962,67 +769,40 @@ function mineBlockAtCrosshair() {
                 }
             }
         } else if (cubes.includes(intersectedObject)) {
-            // This is a manually placed cube
             const minedMaterialId = intersectedObject.userData.materialId;
             if (minedMaterialId && inventory[minedMaterialId] !== undefined) {
                 inventory[minedMaterialId]++;
                 updateInventoryUI();
             }
-            const builtMaterial = Object.values(MATERIALS).find(m => m.id === minedMaterialId) || MATERIALS.ROCK; // Fallback
+            const builtMaterial = Object.values(MATERIALS).find(m => m.id === minedMaterialId) || MATERIALS.ROCK;
             createMiningEffect(intersectionPoint, builtMaterial);
-
-            // The cube's parent is either cubeParent or moonCubeParent.
-            // This correctly removes it from the scene graph.
             if (intersectedObject.parent) {
                 intersectedObject.parent.remove(intersectedObject);
             }
-
             cubes = cubes.filter(cube => cube.uuid !== intersectedObject.uuid);
             intersectedObject.geometry.dispose();
-            // Do not dispose material, it's shared from builtCubeMaterials
         }
     }
 }
 
-/**
- * Creates a chamfered box geometry for built blocks.
- * @param {number} width
- * @param {number} height
- * @param {number} depth
- * @returns {THREE.ConvexGeometry}
- */
 function createChamferedBlockGeometry(width, height, depth) {
-    const w = width / 2;
-    const h = height / 2;
-    const d = depth / 2;
-
+    const w = width / 2, h = height / 2, d = depth / 2;
     const points = [];
-
     const getRandomChamfer = (dim) => THREE.MathUtils.randFloat(dim / 10, dim / 3);
-
     const corners = [
         new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d),
         new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
         new THREE.Vector3(-w, h, d), new THREE.Vector3(-w, h, -d),
         new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
     ];
-
     corners.forEach(corner => {
-        const sx = Math.sign(corner.x);
-        const sy = Math.sign(corner.y);
-        const sz = Math.sign(corner.z);
-
-        const chamferX = getRandomChamfer(width);
-        const chamferY = getRandomChamfer(height);
-        const chamferZ = getRandomChamfer(depth);
-
+        const sx = Math.sign(corner.x), sy = Math.sign(corner.y), sz = Math.sign(corner.z);
+        const chamferX = getRandomChamfer(width), chamferY = getRandomChamfer(height), chamferZ = getRandomChamfer(depth);
         points.push(new THREE.Vector3(corner.x - sx * chamferX, corner.y, corner.z));
         points.push(new THREE.Vector3(corner.x, corner.y - sy * chamferY, corner.z));
         points.push(new THREE.Vector3(corner.x, corner.y, corner.z - sz * chamferZ));
     });
-
-    const geometry = new ConvexGeometry(points);
-    return geometry;
+    return new ConvexGeometry(points);
 }
 
 function placeBlockAtCrosshair() {
@@ -1043,74 +823,119 @@ function placeBlockAtCrosshair() {
         const faceNormal = intersected.face.normal;
         const onMoon = (intersected.object === marchingCubesMeshMoon) || (intersected.object.parent === moonCubeParent);
 
-        // --- NEW: Ice on Lava Interaction ---
-        if (materialIdToBuild === 'ice' && !onMoon) {
+        // --- START: New logic for lava on ice/snow ---
+        if (materialIdToBuild === 'lava') {
             let transformed = false;
-            let wasBuiltCube = false;
+            let targetMaterialId = null;
 
-            // Case 1: Intersected a built lava cube
-            if (cubes.includes(intersected.object) && intersected.object.userData.materialId === 'lava') {
-                intersected.object.material = builtCubeMaterials['basalt'];
-                intersected.object.userData.materialId = 'basalt';
-                transformed = true;
-                wasBuiltCube = true;
-            }
-            // Case 2: Intersected natural lava terrain
-            else if (intersected.object === marchingCubesMesh) {
+            // Determine the material of the block being targeted
+            if (cubes.includes(intersected.object)) {
+                targetMaterialId = intersected.object.userData.materialId;
+            } else if (intersected.object === marchingCubesMesh) {
                 const groundMaterial = getMaterialAtPoint(hitPoint, faceNormal, false);
-                if (groundMaterial.id === 'lava') {
-                    // Nudge point inside the surface to ensure we get the right voxel
+                targetMaterialId = groundMaterial.id;
+            }
+
+            // If the target is ice (which represents snow at the poles)
+            if (targetMaterialId === 'ice') {
+                // Case 1: The target is a player-built ice cube
+                if (cubes.includes(intersected.object)) {
+                    intersected.object.material = builtCubeMaterials['basalt'];
+                    intersected.object.userData.materialId = 'basalt';
+                    transformed = true;
+                } 
+                // Case 2: The target is natural ice/snow terrain
+                else if (intersected.object === marchingCubesMesh) {
+                    // Find the voxel coordinates to replace
                     const localPoint = hitPoint.clone().add(faceNormal.clone().multiplyScalar(-0.1)).sub(planetCenter);
                     const gridX = Math.floor(localPoint.x / BLOCK_SIZE + GRID_SIZE / 2);
                     const gridY = Math.floor(localPoint.y / BLOCK_SIZE + GRID_SIZE / 2);
                     const gridZ = Math.floor(localPoint.z / BLOCK_SIZE + GRID_SIZE / 2);
 
                     if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE && gridZ >= 0 && gridZ < GRID_SIZE) {
-                        // Carve out the lava voxel
+                        // Remove the ice voxel from the terrain data
                         voxelData[gridX][gridY][gridZ] = 0;
-                        updateMarchingCubesMesh();
+                        updateMarchingCubesMesh(); // Regenerate the terrain mesh
 
-                        // Place a basalt block in its place, at the center of the removed voxel
+                        // Place a new basalt cube in its place
                         const newBlockWorldPos = new THREE.Vector3(
                             (gridX - GRID_SIZE / 2 + 0.5) * BLOCK_SIZE,
                             (gridY - GRID_SIZE / 2 + 0.5) * BLOCK_SIZE,
                             (gridZ - GRID_SIZE / 2 + 0.5) * BLOCK_SIZE
                         );
-
                         const newCube = new THREE.Mesh(createChamferedBlockGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), builtCubeMaterials['basalt']);
                         newCube.position.copy(newBlockWorldPos);
                         newCube.userData.materialId = 'basalt';
-                        cubeParent.add(newCube); // Add to planet's cube group
+                        cubeParent.add(newCube);
+                        cubes.push(newCube);
+                        transformed = true;
+                    }
+                }
+
+                if (transformed) {
+                    messageBox.textContent = "Ice and snow melt into basalt!";
+                    setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
+                    // Consume the lava from inventory since it was "used up" in the reaction
+                    inventory[materialIdToBuild]--;
+                    updateInventoryUI();
+                    return; // Exit the function to prevent placing a lava block
+                }
+            }
+        }
+        // --- END: New logic for lava on ice/snow ---
+
+        if (materialIdToBuild === 'ice') {
+            let transformed = false;
+            let wasBuiltCube = false;
+            if (cubes.includes(intersected.object) && intersected.object.userData.materialId === 'lava') {
+                intersected.object.material = builtCubeMaterials['basalt'];
+                intersected.object.userData.materialId = 'basalt';
+                transformed = true;
+                wasBuiltCube = true;
+            }
+            else if (intersected.object === marchingCubesMesh) {
+                const groundMaterial = getMaterialAtPoint(hitPoint, faceNormal, false);
+                if (groundMaterial.id === 'lava') {
+                    const localPoint = hitPoint.clone().add(faceNormal.clone().multiplyScalar(-0.1)).sub(planetCenter);
+                    const gridX = Math.floor(localPoint.x / BLOCK_SIZE + GRID_SIZE / 2);
+                    const gridY = Math.floor(localPoint.y / BLOCK_SIZE + GRID_SIZE / 2);
+                    const gridZ = Math.floor(localPoint.z / BLOCK_SIZE + GRID_SIZE / 2);
+                    if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE && gridZ >= 0 && gridZ < GRID_SIZE) {
+                        voxelData[gridX][gridY][gridZ] = 0;
+                        updateMarchingCubesMesh();
+                        const newBlockWorldPos = new THREE.Vector3(
+                            (gridX - GRID_SIZE / 2 + 0.5) * BLOCK_SIZE,
+                            (gridY - GRID_SIZE / 2 + 0.5) * BLOCK_SIZE,
+                            (gridZ - GRID_SIZE / 2 + 0.5) * BLOCK_SIZE
+                        );
+                        const newCube = new THREE.Mesh(createChamferedBlockGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), builtCubeMaterials['basalt']);
+                        newCube.position.copy(newBlockWorldPos);
+                        newCube.userData.materialId = 'basalt';
+                        cubeParent.add(newCube);
                         cubes.push(newCube);
                         transformed = true;
                     }
                 }
             }
-
             if (transformed) {
                 messageBox.textContent = "Lava cooled into basalt!";
                 setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
-                // Consume the ice block, unless we transformed a built cube (free transformation)
                 if (!wasBuiltCube) {
                    inventory[materialIdToBuild]--;
                    updateInventoryUI();
                 }
-                return; // Exit function, we don't place the ice block itself
+                return;
             }
         }
 
-        // --- REGULAR PLACEMENT LOGIC ---
         const newPosition = hitPoint.clone().add(faceNormal.clone().multiplyScalar(BLOCK_SIZE / 2));
-
-        const distanceToPlayer = newPosition.distanceTo(player.position);
-        if (distanceToPlayer < BLOCK_SIZE) {
+        if (newPosition.distanceTo(player.position) < BLOCK_SIZE) {
             messageBox.textContent = "Cannot place block inside yourself!";
             setTimeout(() => { messageBox.textContent = "Controls active"; }, 1500);
             return;
         }
 
         let finalMaterialId = materialIdToBuild;
-        // --- NEW: Lava in Water Interaction ---
         if (finalMaterialId === 'lava' && !onMoon) {
             const isInWater = newPosition.distanceTo(planetCenter) < (PLANET_RADIUS + WATER_LEVEL_OFFSET);
             if (isInWater) {
@@ -1120,17 +945,13 @@ function placeBlockAtCrosshair() {
             }
         }
         
-        // Use the original material from inventory, but build with the final material
         inventory[materialIdToBuild]--;
-
         const newCubeGeometry = createChamferedBlockGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
         const newCube = new THREE.Mesh(newCubeGeometry, builtCubeMaterials[finalMaterialId]);
         newCube.userData.materialId = finalMaterialId;
-
         const parent = onMoon ? moonCubeParent : cubeParent;
         newCube.position.copy(newPosition);
         
-        // --- Orientation Logic ---
         const celestialCenter = onMoon ? moonPosition : planetCenter;
         const newY = newPosition.clone().sub(celestialCenter).normalize();
         const lookDir = player.position.clone().sub(newPosition);
@@ -1146,42 +967,34 @@ function placeBlockAtCrosshair() {
     }
 }
 
-
 function createLaserBeamEffect(ray) {
-    const beamLength = 1000; // A very long beam
+    const beamLength = 1000;
     const startPoint = ray.origin;
     const endPoint = ray.origin.clone().add(ray.direction.clone().multiplyScalar(beamLength));
-
     const beamGeometry = new THREE.CylinderGeometry(0.1, 0.1, beamLength, 8);
     const beamMaterial = new THREE.MeshBasicMaterial({
         color: 0xff0000,
         transparent: true,
         opacity: 0.8,
         blending: THREE.AdditiveBlending,
-        fog: false // Don't let fog affect the laser
+        fog: false
     });
     const beamMesh = new THREE.Mesh(beamGeometry, beamMaterial);
-
-    // Position and orient the cylinder
     const midPoint = new THREE.Vector3().addVectors(startPoint, endPoint).multiplyScalar(0.5);
     beamMesh.position.copy(midPoint);
     beamMesh.lookAt(endPoint);
     beamMesh.rotateX(Math.PI / 2);
-
     scene.add(beamMesh);
-
-    // Fade out and remove after a short time
     setTimeout(() => {
         if (beamMesh.parent) {
             scene.remove(beamMesh);
             beamMesh.geometry.dispose();
             beamMesh.material.dispose();
         }
-    }, 500); // Remove after 0.5 seconds
+    }, 500);
 }
 
 function firePowerLaser() {
-    // 1. Clear inventory
     for (const matId in inventory) {
         inventory[matId] = 0;
     }
@@ -1189,10 +1002,9 @@ function firePowerLaser() {
     messageBox.textContent = "Inventory Cleared! Firing Laser!";
     setTimeout(() => { messageBox.textContent = "Controls active"; }, 2000);
 
-    // 2. Raycast to find target
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
     const intersects = raycaster.intersectObjects([marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh));
-    if (intersects.length === 0) { // Fired into space
+    if (intersects.length === 0) {
         createLaserBeamEffect(raycaster.ray);
         return;
     }
@@ -1200,12 +1012,9 @@ function firePowerLaser() {
     const intersected = intersects[0];
     const targetObject = intersected.object;
     const laserRay = raycaster.ray;
-
-    // Visual effect
     createLaserBeamEffect(laserRay);
 
-    let targetGrid, targetGridSize, targetCenterOffset;
-    let updateFunction;
+    let targetGrid, targetGridSize, targetCenterOffset, updateFunction;
 
     if (targetObject === marchingCubesMesh) {
         targetGrid = voxelData;
@@ -1218,36 +1027,27 @@ function firePowerLaser() {
         targetCenterOffset = marchingCubesMeshMoon.position;
         updateFunction = updateMarchingCubesMoonMesh;
     } else {
-        return; // Should not happen
+        return;
     }
 
-    // 3. Voxel manipulation
     const laserRadius = 2.0;
     const laserRadiusSq = laserRadius * laserRadius;
     const halfGrid = targetGridSize / 2;
     const voxelWorldPos = new THREE.Vector3();
-
     for (let x = 0; x < targetGridSize; x++) {
         for (let y = 0; y < targetGridSize; y++) {
             for (let z = 0; z < targetGridSize; z++) {
-                // Calculate voxel's world position
                 voxelWorldPos.set(
                     (x - halfGrid + 0.5) * BLOCK_SIZE,
                     (y - halfGrid + 0.5) * BLOCK_SIZE,
                     (z - halfGrid + 0.5) * BLOCK_SIZE
                 ).add(targetCenterOffset);
-
-                // Check distance from voxel center to the laser ray
-                const distSq = laserRay.distanceSqToPoint(voxelWorldPos);
-
-                if (distSq < laserRadiusSq) {
-                    targetGrid[x][y][z] = 0; // Set to air
+                if (laserRay.distanceSqToPoint(voxelWorldPos) < laserRadiusSq) {
+                    targetGrid[x][y][z] = 0;
                 }
             }
         }
     }
-
-    // 4. Regenerate mesh
     updateFunction();
 }
 
@@ -1262,139 +1062,77 @@ function generatePlanet() {
                 const wy = (y - halfGrid + 0.5) * BLOCK_SIZE;
                 const wz = (z - halfGrid + 0.5) * BLOCK_SIZE;
                 const dist = Math.sqrt(wx * wx + wy * wy + wz * wz);
-                const terrainNoise = getRidgedMultifractalNoise(wx, wy, wz, simplex, initialNoiseScale, noiseStrength, octaves, lacunarity, persistence);
+                const terrainNoiseVal = getRidgedMultifractalNoise(wx, wy, wz, simplex, initialNoiseScale, noiseStrength, octaves, lacunarity, persistence);
                 const normalizedDist = dist / PLANET_RADIUS;
-                voxelData[x][y][z] = (1.0 - normalizedDist) + terrainNoise;
+                voxelData[x][y][z] = (1.0 - normalizedDist) + terrainNoiseVal;
             }
         }
     }
     updateMarchingCubesMesh();
 }
 
-// --- MOON GENERATION ---
-let moonBlobs = []; // To store the properties of the alien blobs
-let moonCraters = []; // To store properties for craters
+let moonBlobs = [];
+let moonCraters = [];
 
 function generateMoon() {
     const lightDirForMoonPlacement = new THREE.Vector3(1, 1, 1).normalize();
     moonPosition.copy(lightDirForMoonPlacement).negate().setLength(MOON_ORBIT_DISTANCE);
-
     const halfGridMoon = GRID_SIZE_MOON / 2;
 
-    // --- New Alien Landscape Generation ---
-    // 1. Define the properties for the surface blobs and craters if they haven't been created yet.
     if (moonBlobs.length === 0) {
-        const numBlobs = 5; // 5;
+        const numBlobs = 5;
         for (let i = 0; i < numBlobs; i++) {
-            // Create a random direction vector from the center of the moon.
-            const randomDirection = new THREE.Vector3(
-                Math.random() * 2 - 1,
-                Math.random() * 2 - 1,
-                Math.random() * 2 - 1
-            ).normalize();
-
-            // The center of the blob will be on the surface of the main moon sphere.
+            const randomDirection = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
             const blobCenter = randomDirection.clone().multiplyScalar((MOON_RADIUS / 2) - 1);
-
-            // Give each blob a random radius, e.g., between 20% and 40% of the moon's radius.
             const blobRadius = MOON_RADIUS * (Math.random() * 0.3 + 0.2);
-
             moonBlobs.push({ center: blobCenter, radius: blobRadius });
-
-            // Create a corresponding crater for each blob
-            // "at a radius of (1+ (The radius at which the blob-spheres are placed))"
-            // This is interpreted as placing the crater center 1 unit further out along the same direction.
-            const craterCenter = randomDirection.clone().multiplyScalar((MOON_RADIUS / 2)); // -1 + 1 = 0
-            const craterRadius = blobRadius * 0.3; // Craters are slightly smaller than the hills they are in
-            moonCraters.push({ center: craterCenter, radius: craterRadius });
         }
-
-        // --- New, Uniform Crater Generation ---
-        moonCraters = []; // Reset craters
-        const numCraters = 25; // More craters for a pockmarked look
-        const maxAttemptsPerCrater = 20; // How many times to try placing a single crater
-
+        moonCraters = [];
+        const numCraters = 25;
+        const maxAttemptsPerCrater = 20;
         for (let i = 0; i < numCraters; i++) {
             for (let attempt = 0; attempt < maxAttemptsPerCrater; attempt++) {
-                const randomDirection = new THREE.Vector3(
-                    Math.random() * 2 - 1,
-                    Math.random() * 2 - 1,
-                    Math.random() * 2 - 1
-                ).normalize();
-
-                // Place crater center on the surface of the main moon sphere.
+                const randomDirection = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
                 const craterCenter = randomDirection.clone().multiplyScalar(MOON_RADIUS / 2);
-
-                // Give each crater a random radius
-                const craterRadius = MOON_RADIUS * (Math.random() * 0.15 + 0.05); // 5% to 20% of moon radius
-
-                // Check for overlaps with existing craters
+                const craterRadius = MOON_RADIUS * (Math.random() * 0.15 + 0.05);
                 let overlaps = false;
                 for (const existingCrater of moonCraters) {
                     const distance = craterCenter.distanceTo(existingCrater.center);
-                    // Add a small buffer to space them out a bit
                     if (distance < craterRadius + existingCrater.radius + (BLOCK_SIZE * 2)) {
                         overlaps = true;
                         break;
                     }
                 }
-
                 if (!overlaps) {
                     moonCraters.push({ center: craterCenter, radius: craterRadius });
-                    break; // Exit attempt loop and move to next crater
+                    break;
                 }
             }
         }
     }
 
-    // 2. Generate the voxel data based on the new spherical-blob model.
     for (let x = 0; x < GRID_SIZE_MOON; x++) {
         voxelDataMoon[x] = [];
         for (let y = 0; y < GRID_SIZE_MOON; y++) {
             voxelDataMoon[x][y] = [];
             for (let z = 0; z < GRID_SIZE_MOON; z++) {
-                // Calculate the world position of the current voxel relative to the moon's local origin (0,0,0).
                 const worldX = (x - halfGridMoon + 0.5) * BLOCK_SIZE;
                 const worldY = (y - halfGridMoon + 0.5) * BLOCK_SIZE;
                 const worldZ = (z - halfGridMoon + 0.5) * BLOCK_SIZE;
-
-                // --- Density Calculation ---
-                // a. Calculate density contribution from the main moon sphere.
-                // Density is 1.0 at the center, and 0.0 at the radius.
                 const distFromMainCenter = Math.sqrt(worldX ** 2 + worldY ** 2 + worldZ ** 2);
                 let finalDensity = 1.0 - (distFromMainCenter / MOON_RADIUS);
-
-                // b. For each blob, calculate its density and merge it with the main sphere's density (Union operation).
                 for (const blob of moonBlobs) {
-                    const distFromBlobCenter = Math.sqrt(
-                        (worldX - blob.center.x) ** 2 +
-                        (worldY - blob.center.y) ** 2 +
-                        (worldZ - blob.center.z) ** 2
-                    );
+                    const distFromBlobCenter = Math.sqrt((worldX - blob.center.x) ** 2 + (worldY - blob.center.y) ** 2 + (worldZ - blob.center.z) ** 2);
                     const blobDensity = 1.0 - (distFromBlobCenter / blob.radius);
-
-                    // Using Math.max results in a smooth union of the two shapes (hills).
                     finalDensity = Math.max(finalDensity, blobDensity);
                 }
-
-                // c. Post-blob function: For each crater, subtract its density to carve into the surface.
                 for (const crater of moonCraters) {
-                    const distFromCraterCenter = Math.sqrt(
-                        (worldX - crater.center.x) ** 2 +
-                        (worldY - crater.center.y) ** 2 +
-                        (worldZ - crater.center.z) ** 2
-                    );
+                    const distFromCraterCenter = Math.sqrt((worldX - crater.center.x) ** 2 + (worldY - crater.center.y) ** 2 + (worldZ - crater.center.z) ** 2);
                     const craterDensity = 1.0 - (distFromCraterCenter / crater.radius);
-
-                    // If inside the crater sphere, subtract its density.
-                    // This is a subtraction operation, creating craters.
                     if (craterDensity > 0) {
                         finalDensity -= craterDensity;
                     }
                 }
-
-                // Assign the final calculated density to the voxel grid.
-                // The marching cubes algorithm will create a surface where this value equals ISO_LEVEL.
                 voxelDataMoon[x][y][z] = finalDensity;
             }
         }
@@ -1406,15 +1144,13 @@ function updateMarchingCubesMesh() {
     if (marchingCubesMesh) {
         scene.remove(marchingCubesMesh);
         marchingCubesMesh.geometry.dispose();
-        // Do not dispose material, it's shared
     }
-    const geometry = generateMarchingCubesGeometry(voxelData, ISO_LEVEL, GRID_SIZE, BLOCK_SIZE, planetCenter); // Pass centerOffset
+    const geometry = generateMarchingCubesGeometry(voxelData, ISO_LEVEL, GRID_SIZE, BLOCK_SIZE, planetCenter);
     if (geometry.attributes.position) {
         const positions = geometry.attributes.position.array;
         const normals = geometry.attributes.normal.array;
         const colors = [];
         const vertex = new THREE.Vector3(), normal = new THREE.Vector3();
-
         for (let i = 0; i < positions.length; i += 3) {
             vertex.set(positions[i], positions[i + 1], positions[i + 2]);
             normal.set(normals[i], normals[i + 1], normals[i + 2]);
@@ -1423,28 +1159,20 @@ function updateMarchingCubesMesh() {
         }
         geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     }
-    const material = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.2, side: THREE.DoubleSide, vertexColors: true }); // Added DoubleSide
+    const material = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.2, side: THREE.DoubleSide, vertexColors: true });
     marchingCubesMesh = new THREE.Mesh(geometry, material);
     scene.add(marchingCubesMesh);
-
-    // After creating the planet mesh, populate it with foliage
     populateFoliage();
 }
 
 function populateFoliage() {
-    // Reset existing foliage
     grassLODs.forEach(lod => lod.count = 0);
     anemoneLODs.forEach(lod => lod.count = 0);
     voxelToGrassMap.clear();
     voxelToAnemoneMap.clear();
-
     const dummy = new THREE.Object3D();
     let grassInstanceIndex = 0;
     let anemoneInstanceIndex = 0;
-
-    // Create inverse matrices for the foliage containers.
-    // This is used to transform the world-space position of a new foliage instance
-    // into the local space of its already-rotated container, preventing drift.
     const inverseGrassMatrix = new THREE.Matrix4();
     if (grassLODs.length > 0) {
         inverseGrassMatrix.copy(grassLODs[0].matrix).invert();
@@ -1453,21 +1181,16 @@ function populateFoliage() {
     if (anemoneLODs.length > 0) {
         inverseAnemoneMatrix.copy(anemoneLODs[0].matrix).invert();
     }
-
     const positions = marchingCubesMesh.geometry.attributes.position;
     const normals = marchingCubesMesh.geometry.attributes.normal;
     const colors = marchingCubesMesh.geometry.attributes.color;
     const grassColor = MATERIALS.GRASS.color;
     const anemoneColor = MATERIALS.ANEMONE.color;
-
     const halfGrid = GRID_SIZE / 2;
     const waterRadius = PLANET_RADIUS + WATER_LEVEL_OFFSET;
 
     for (let i = 0; i < positions.count; i++) {
-        const r = colors.getX(i);
-        const g = colors.getY(i);
-        const b = colors.getZ(i);
-
+        const r = colors.getX(i), g = colors.getY(i), b = colors.getZ(i);
         const isGrassColor = Math.abs(r - grassColor.r) < 0.1 && Math.abs(g - grassColor.g) < 0.1;
         const isAnemoneColor = Math.abs(r - anemoneColor.r) < 0.1 && Math.abs(g - anemoneColor.g) < 0.1 && Math.abs(b - anemoneColor.b) < 0.1;
 
@@ -1475,20 +1198,15 @@ function populateFoliage() {
             const pos = new THREE.Vector3().fromBufferAttribute(positions, i);
             const isUnderwater = pos.distanceTo(planetCenter) < waterRadius;
             const normal = new THREE.Vector3().fromBufferAttribute(normals, i);
-
             const gridX = Math.floor(pos.x / BLOCK_SIZE + halfGrid);
             const gridY = Math.floor(pos.y / BLOCK_SIZE + halfGrid);
             const gridZ = Math.floor(pos.z / BLOCK_SIZE + halfGrid);
             const mapKey = `${gridX},${gridY},${gridZ}`;
-
-            // Calculate the desired world matrix for the foliage instance
             dummy.position.copy(pos);
             dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), normal);
             dummy.updateMatrix();
-
             if (isUnderwater) {
                 if (anemoneInstanceIndex < MAX_GRASS_PER_LOD && !voxelToAnemoneMap.has(mapKey)) {
-                    // Transform the world matrix into the container's local space before setting
                     const localMatrix = dummy.matrix.clone().premultiply(inverseAnemoneMatrix);
                     anemoneLODs.forEach(lod => lod.setMatrixAt(anemoneInstanceIndex, localMatrix));
                     voxelToAnemoneMap.set(mapKey, anemoneInstanceIndex);
@@ -1496,7 +1214,6 @@ function populateFoliage() {
                 }
             } else {
                 if (grassInstanceIndex < MAX_GRASS_PER_LOD && !voxelToGrassMap.has(mapKey)) {
-                    // Transform the world matrix into the container's local space before setting
                     const localMatrix = dummy.matrix.clone().premultiply(inverseGrassMatrix);
                     grassLODs.forEach(lod => lod.setMatrixAt(grassInstanceIndex, localMatrix));
                     voxelToGrassMap.set(mapKey, grassInstanceIndex);
@@ -1505,8 +1222,6 @@ function populateFoliage() {
             }
         }
     }
-
-    // Set initial counts and update matrices
     if (grassLODs.length > 0) {
         grassLODs[0].count = grassInstanceIndex;
         grassLODs.forEach(lod => lod.instanceMatrix.needsUpdate = true);
@@ -1519,17 +1234,15 @@ function populateFoliage() {
 
 function updateMarchingCubesMoonMesh() {
     if (marchingCubesMeshMoon) {
-        scene.remove(marchingCubesMeshMoon);
+        moonGroup.remove(marchingCubesMeshMoon);
         if (marchingCubesMeshMoon.geometry) marchingCubesMeshMoon.geometry.dispose();
-        // Do not dispose material, it's shared
     }
-    const geometry = generateMarchingCubesGeometry(voxelDataMoon, ISO_LEVEL, GRID_SIZE_MOON, BLOCK_SIZE, moonPosition); // Pass centerOffset
+    const geometry = generateMarchingCubesGeometry(voxelDataMoon, ISO_LEVEL, GRID_SIZE_MOON, BLOCK_SIZE, moonPosition);
     if (geometry.attributes.position) {
         const positions = geometry.attributes.position.array;
         const normals = geometry.attributes.normal.array;
         const colors = [];
         const vertex = new THREE.Vector3(), normal = new THREE.Vector3(), worldVertex = new THREE.Vector3();
-
         for (let i = 0; i < positions.length; i += 3) {
             vertex.set(positions[i], positions[i + 1], positions[i + 2]);
             worldVertex.copy(vertex).add(moonPosition);
@@ -1539,55 +1252,49 @@ function updateMarchingCubesMoonMesh() {
         }
         geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     }
-    const material = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide, vertexColors: true }); // Added DoubleSide
+    const material = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide, vertexColors: true });
     marchingCubesMeshMoon = new THREE.Mesh(geometry, material);
     marchingCubesMeshMoon.position.copy(moonPosition);
-    scene.add(marchingCubesMeshMoon);
-    const moonLight = new THREE.PointLight(0x6080ff, 0.6, MOON_ORBIT_DISTANCE * 1.2, 1.5); // Added moon light
+    moonGroup.add(marchingCubesMeshMoon);
+    const moonLight = new THREE.PointLight(0x6080ff, 0.6, MOON_ORBIT_DISTANCE * 1.2, 1.5);
     marchingCubesMeshMoon.add(moonLight);
 }
 
 function createMiningEffect(position, minedMaterial) {
-    const particleCount = 10; // Reduced particle count for performance
-    const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8); // Changed to sphere
-    const particleMaterial = new THREE.MeshBasicMaterial({ color: minedMaterial.color }); // Use passed material color
-
+    const particleCount = 10;
+    const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+    const particleMaterial = new THREE.MeshBasicMaterial({ color: minedMaterial.color });
     for (let i = 0; i < particleCount; i++) {
-        const particle = new THREE.Mesh(particleGeometry.clone(), particleMaterial.clone()); // Clone to avoid conflicts
+        const particle = new THREE.Mesh(particleGeometry.clone(), particleMaterial.clone());
         particle.position.copy(position);
-
-        particle.velocity = new THREE.Vector3(
-            (Math.random() - 0.5) * 0.5, // Reduced initial velocity
-            (Math.random() - 0.5) * 0.5,
-            (Math.random() - 0.5) * 0.5
-        );
-        particle.decay = 0.02; // Consistent decay
-
+        particle.velocity = new THREE.Vector3((Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5);
+        particle.decay = 0.02;
         scene.add(particle);
-
         let opacity = 1;
         const interval = setInterval(() => {
             if (opacity <= 0) {
                 scene.remove(particle);
                 clearInterval(interval);
-                particle.geometry.dispose(); // Dispose geometry
-                particle.material.dispose(); // Dispose material
+                particle.geometry.dispose();
+                particle.material.dispose();
             } else {
                 particle.position.add(particle.velocity);
                 particle.material.opacity = opacity;
                 particle.material.transparent = true;
-                particle.scale.multiplyScalar(0.95); // Scale down
+                particle.scale.multiplyScalar(0.95);
                 opacity -= particle.decay;
             }
-        }, 50); // Adjusted interval for smoother animation
+        }, 50);
     }
 }
 
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    solarSystemCamera.aspect = window.innerWidth / window.innerHeight;
+    solarSystemCamera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    if (isMobileDevice()) { // Update joystick center on resize
+    if (isMobileDevice()) {
         const rect = joystickBase.getBoundingClientRect();
         joystickCenter.set(rect.left + rect.width / 2, rect.top + rect.height / 2);
     }
@@ -1595,6 +1302,44 @@ function onWindowResize() {
 
 function updateCamera() {
     if (!player) return;
+
+    if (isSolarSystemView) {
+        // --- Solar System View Logic ---
+        const boundingBox = new THREE.Box3();
+        if (sun) boundingBox.expandByObject(sun);
+        if (marchingCubesMesh) boundingBox.expandByObject(marchingCubesMesh);
+        if (marchingCubesMeshMoon) boundingBox.expandByObject(marchingCubesMeshMoon);
+        
+        const center = new THREE.Vector3();
+        boundingBox.getCenter(center);
+        const size = new THREE.Vector3();
+        boundingBox.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const fov = solarSystemCamera.fov * (Math.PI / 180);
+        let cameraZ = Math.abs(maxDim / 1.5 / Math.tan(fov / 2));
+
+        switch (solarSystemViewMode) {
+            case 0: solarSystemCamera.position.set(center.x, center.y, center.z + cameraZ); break; // Top-down view // Front view
+            case 1: solarSystemCamera.position.set(center.x, center.y + cameraZ, center.z); break; // Top-down view
+            case 2: solarSystemCamera.position.set(center.x + cameraZ, center.y, center.z); break; //  Front view // Was Side view
+        }
+        solarSystemCamera.lookAt(center);
+
+        // --- FIXED: Make markers visible and update player marker position ---
+        player.body.visible = true;
+        player.head.visible = true;
+        if (originMarker) originMarker.visible = true;
+        if (playerMarker) {
+            playerMarker.visible = true;
+            playerMarker.position.copy(player.position);
+        }
+        return;
+    }
+
+    // --- FIXED: Hide markers when not in solar system view ---
+    if (originMarker) originMarker.visible = false;
+    if (playerMarker) playerMarker.visible = false;
+
     camera.up.copy(player.position).sub(dominantBodyPosition).normalize();
     const headPosition = new THREE.Vector3();
     player.head.getWorldPosition(headPosition);
@@ -1602,14 +1347,11 @@ function updateCamera() {
     if (isFirstPersonView) {
         player.body.visible = false;
         player.head.visible = false;
-
-        // Position torch at camera and point it in camera's direction
         if (torchLight) {
             torchLight.position.copy(camera.position);
             torchLight.target.position.copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(10));
-            torchLight.target.updateMatrixWorld(); // Ensure the target's world position is updated
+            torchLight.target.updateMatrixWorld();
         }
-
         const headQuaternion = new THREE.Quaternion();
         player.head.getWorldQuaternion(headQuaternion);
         camera.position.copy(headPosition);
@@ -1617,106 +1359,62 @@ function updateCamera() {
     } else {
         player.body.visible = true;
         player.head.visible = true;
-
-        // Position torch at player's head and point it in head's direction
         if (torchLight) {
             torchLight.position.copy(headPosition);
             torchLight.target.position.copy(headPosition).add(player.head.getWorldDirection(new THREE.Vector3()).multiplyScalar(10));
-            torchLight.target.updateMatrixWorld(); // Ensure the target's world position is updated
+            torchLight.target.updateMatrixWorld();
         }
-
         const headQuaternion = new THREE.Quaternion();
         player.head.getWorldQuaternion(headQuaternion);
         const offsetFromHead = thirdPersonCameraOffset.clone();
-        offsetFromHead.y -= player.head.position.y; // This line is crucial for correct third-person position relative to head
+        offsetFromHead.y -= player.head.position.y;
         const cameraOffsetRotated = offsetFromHead.clone().applyQuaternion(headQuaternion);
         const desiredCameraPosition = headPosition.clone().add(cameraOffsetRotated);
         camera.position.lerp(desiredCameraPosition, 0.15);
         camera.lookAt(headPosition);
     }
-    // Ensure torch light visibility matches its intensity
     if (torchLight) {
         torchLight.visible = (torchLight.intensity > 0);
     }
 }
 
-// --- PARTICLE FUNCTIONS ---
-/**
- * Creates a single bubble particle that rises and fades out.
- */
 function createBubble() {
     const bubbleGeometry = new THREE.SphereGeometry(THREE.MathUtils.randFloat(0.02, 0.05), 8, 8);
-    const bubbleMaterial = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.6
-    });
+    const bubbleMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
     const bubble = new THREE.Mesh(bubbleGeometry, bubbleMaterial);
-
-    // Start bubble near player's head
     const headPosition = new THREE.Vector3();
     player.head.getWorldPosition(headPosition);
-    bubble.position.copy(headPosition).add(new THREE.Vector3(
-        (Math.random() - 0.5) * 0.5,
-        -0.2,
-        (Math.random() - 0.5) * 0.5
-    ));
-
+    bubble.position.copy(headPosition).add(new THREE.Vector3((Math.random() - 0.5) * 0.5, -0.2, (Math.random() - 0.5) * 0.5));
     const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
     bubble.velocity = playerUp.clone().multiplyScalar(THREE.MathUtils.randFloat(0.5, 1.0));
-    bubble.velocity.add(new THREE.Vector3(
-        (Math.random() - 0.5) * 0.1,
-        (Math.random() - 0.5) * 0.1,
-        (Math.random() - 0.5) * 0.1
-    ));
-    bubble.lifetime = 2; // seconds
+    bubble.velocity.add(new THREE.Vector3((Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1));
+    bubble.lifetime = 2;
     bubble.age = 0;
-
     scene.add(bubble);
     bubbleParticles.push(bubble);
 }
 
-/**
- * Creates a splash effect at a given position.
- * @param {THREE.Vector3} position - The world position to create the splash at.
- */
 function createSplashEffect(position) {
     const particleCount = 15;
     const splashGeometry = new THREE.SphereGeometry(0.05, 6, 6);
     const splashMaterial = new THREE.MeshBasicMaterial({ color: 0x88ccff });
-
     for (let i = 0; i < particleCount; i++) {
         const particle = new THREE.Mesh(splashGeometry, splashMaterial);
         particle.position.copy(position);
-
         const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
-        const randomDirection = new THREE.Vector3(
-            Math.random() - 0.5,
-            Math.random() * 0.5, // Bias upwards
-            Math.random() - 0.5
-        ).normalize();
-
-        // Project random direction onto the plane defined by playerUp
+        const randomDirection = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.5, Math.random() - 0.5).normalize();
         const splashVector = randomDirection.projectOnPlane(playerUp).normalize();
-        splashVector.add(playerUp.clone().multiplyScalar(THREE.MathUtils.randFloat(0.5, 1.0))); // Add upward force
-
-        particle.velocity = splashVector.multiplyScalar(THREE.MathUtils.randFloat(1, 3));
+        splashVector.add(playerUp.clone().multiplyScalar(THREE.MathUtils.randFloat(0.5, 1.0)));
+        particle.velocity = splashVector.multiplyScalar(THREE.MathUtils.randFloat(4, 9));
         particle.lifetime = 1.5;
         particle.age = 0;
-
         scene.add(particle);
         splashParticles.push(particle);
     }
 }
 
-/**
- * Updates all active particles (bubbles and splashes).
- * @param {number} delta - The time since the last frame.
- */
 function updateParticles(delta) {
     const gravityDirection = dominantBodyPosition.clone().sub(player.position).normalize();
-
-    // Update Bubbles
     for (let i = bubbleParticles.length - 1; i >= 0; i--) {
         const particle = bubbleParticles[i];
         particle.age += delta;
@@ -1730,8 +1428,6 @@ function updateParticles(delta) {
             particle.material.opacity = 0.6 * (1 - (particle.age / particle.lifetime));
         }
     }
-
-    // Update Splashes
     for (let i = splashParticles.length - 1; i >= 0; i--) {
         const particle = splashParticles[i];
         particle.age += delta;
@@ -1741,40 +1437,37 @@ function updateParticles(delta) {
             particle.material.dispose();
             splashParticles.splice(i, 1);
         } else {
-            // Apply gravity to splashes
             particle.velocity.add(gravityDirection.clone().multiplyScalar(playerSettings.gravityStrength * delta * 5));
             particle.position.add(particle.velocity.clone().multiplyScalar(delta));
         }
     }
 }
 
-// --- NEW: Atmosphere and Sky Functions ---
 function initSky() {
     sky = new THREE.Mesh(
-        new THREE.SphereGeometry(1000, 32, 32), // A large sphere to act as the skybox
+        new THREE.SphereGeometry(ATMOSPHERE_TOP_HEIGHT, 64, 64),
         new THREE.ShaderMaterial({
             vertexShader: skyVertexShader,
             fragmentShader: skyFragmentShader,
             uniforms: {
                 uSunPosition: { value: new THREE.Vector3() },
                 uPlanetCenter: { value: planetCenter },
-                uPlanetRadius: { value: PLANET_RADIUS  + WATER_LEVEL_OFFSET }, // { value: PLANET_RADIUS},
+                uPlanetRadius: { value: PLANET_RADIUS + WATER_LEVEL_OFFSET },
                 uAtmosphereRadius: { value: ATMOSPHERE_TOP_HEIGHT },
                 uCameraPos: { value: new THREE.Vector3() },
                 uTime: { value: 0.0 },
-                // Scattering uniforms
                 uRayleigh: { value: RAYLEIGH_COEFFICIENTS },
                 uMie: { value: MIE_COEFFICIENTS },
                 uMieG: { value: MIE_ECCENTRICITY },
                 uDensityFalloff: { value: DENSITY_FALLOFF },
-                // Cloud uniforms
-                uCloudCover: { value:  0.3 }, // 0.4 },
-                uCloudScale: { value: -0.05 },// 0.01 // 0.0005 },
-                uCloudSpeed: { value: 0.15 }, // 0.02 },
-                uCloudBottom: { value: PLANET_RADIUS + CLOUD_BOTTOM_ALTITUDE  + WATER_LEVEL_OFFSET  }, // { value: PLANET_RADIUS + CLOUD_BOTTOM_ALTITUDE  },
-                uCloudTop: { value: PLANET_RADIUS + CLOUD_TOP_ALTITUDE  + WATER_LEVEL_OFFSET }, // { value: PLANET_RADIUS + CLOUD_TOP_ALTITUDE },
+                uCloudCover: { value: 0.3 },
+                uCloudScale: { value: -0.05 },
+                uCloudSpeed: { value: 0.15 },
+                uCloudBottom: { value: PLANET_RADIUS + CLOUD_BOTTOM_ALTITUDE + WATER_LEVEL_OFFSET },
+                uCloudTop: { value: PLANET_RADIUS + CLOUD_TOP_ALTITUDE + WATER_LEVEL_OFFSET },
+                uScatteringEnabled: { value: 1.0 },
             },
-            side: THREE.DoubleSide, // Render the inside of the sphere
+            side: THREE.DoubleSide,
             depthWrite: false
         })
     );
@@ -1783,16 +1476,10 @@ function initSky() {
 
 function animate() {
     requestAnimationFrame(animate);
-    const delta = Math.min(clock.getDelta(), 0.1); // Clamp delta to avoid physics glitches
+    const delta = Math.min(clock.getDelta(), 0.1);
 
-    // --- Sun Position Update ---
     const time = clock.getElapsedTime() * 0.1;
-    const sunPosition = new THREE.Vector3(
-        Math.sin(time) * 1000,
-        Math.cos(time) * 1000,
-        0
-    );
-    
+    const sunPosition = new THREE.Vector3(Math.sin(time) * 1000, Math.cos(time) * 1000, 0);
     if (sun) {
         sun.position.copy(sunPosition);
     }
@@ -1804,85 +1491,58 @@ function animate() {
     }
 
     if (isLocked && player) {
-        // --- ROTATIONS ---
-        const planetRotationSpeed = 0.02; // Radians per second
-        const moonAxialRotationSpeed = 0.1; // Radians per second, faster for visibility
+        const planetRotationSpeed = 0.02;
+        const moonAxialRotationSpeed = 0.1;
         const rotationAxis = new THREE.Vector3(0, 1, 0);
-
         const planetDeltaRotation = new THREE.Quaternion().setFromAxisAngle(rotationAxis, planetRotationSpeed * delta);
         const moonAxialDeltaRotation = new THREE.Quaternion().setFromAxisAngle(rotationAxis, moonAxialRotationSpeed * delta);
-        // --- END ROTATIONS ---
+        const oldMoonPosition = moonPosition.clone();
 
-        const oldMoonPosition = moonPosition.clone(); // Capture moon position at start of frame
-
-        // --- SCENE OBJECTS UPDATE ---
-        // Rotate the planet and everything on it
+        if (sky) sky.applyQuaternion(planetDeltaRotation);
         if (marchingCubesMesh) marchingCubesMesh.applyQuaternion(planetDeltaRotation);
-        if (waterMesh) waterMesh.applyQuaternion(planetDeltaRotation);
+        if (waterMesh) {
+            waterMesh.applyQuaternion(planetDeltaRotation);
+            if (waterMesh.material.userData.shader) {
+                waterMesh.material.userData.shader.uniforms.time.value = clock.getElapsedTime();
+            }
+        }
         if (cubeParent) cubeParent.applyQuaternion(planetDeltaRotation);
         grassLODs.forEach(lod => lod.applyQuaternion(planetDeltaRotation));
         anemoneLODs.forEach(lod => lod.applyQuaternion(planetDeltaRotation));
 
-        // Orbit and rotate the moon and its children
         if (marchingCubesMeshMoon) {
-            moonPosition.applyQuaternion(planetDeltaRotation); // Orbit around planet
-
-            // Apply orbit to moon mesh and its cube container
+            moonPosition.applyQuaternion(planetDeltaRotation);
             marchingCubesMeshMoon.position.copy(moonPosition);
             moonCubeParent.position.copy(moonPosition);
-
-            // Apply axial rotation to moon mesh and its cube container
             marchingCubesMeshMoon.applyQuaternion(moonAxialDeltaRotation);
             moonCubeParent.applyQuaternion(moonAxialDeltaRotation);
         }
-        // --- END SCENE OBJECTS UPDATE ---
 
-        // --- Player Update Logic ---
         const distToPlanet = player.position.distanceTo(planetCenter);
         const distToMoon = marchingCubesMeshMoon ? player.position.distanceTo(marchingCubesMeshMoon.position) : Infinity;
 
-        let dominantBody, dominantBodyRadius;
-        dominantBodyPosition = planetCenter; // Default to planet
-
-        if (distToPlanet < distToMoon) {
-            // --- ON PLANET ---
-            dominantBody = marchingCubesMesh;
+        let dominantBodyRadius;
+        if (distToMoon < distToPlanet) {
+            dominantBodyPosition = marchingCubesMeshMoon.position;
+            dominantBodyRadius = MOON_RADIUS;
+            const playerRelativePos = player.position.clone().sub(oldMoonPosition);
+            playerRelativePos.applyQuaternion(moonAxialDeltaRotation);
+            player.position.copy(moonPosition).add(playerRelativePos);
+            player.velocity.applyQuaternion(planetDeltaRotation).applyQuaternion(moonAxialDeltaRotation);
+            player.quaternion.premultiply(planetDeltaRotation).premultiply(moonAxialDeltaRotation);
+        } else {
             dominantBodyPosition = planetCenter;
             dominantBodyRadius = PLANET_RADIUS;
-
-            // Apply planet's rotation to the player to "stick" them to the surface
             player.position.applyQuaternion(planetDeltaRotation);
             player.velocity.applyQuaternion(planetDeltaRotation);
             player.quaternion.premultiply(planetDeltaRotation);
-
-        } else if (marchingCubesMeshMoon) {
-            // --- ON MOON ---
-            dominantBody = marchingCubesMeshMoon;
-            dominantBodyPosition = marchingCubesMeshMoon.position;
-            dominantBodyRadius = MOON_RADIUS;
-
-            // To fix drift, calculate the new position based on the moon's full transformation.
-            // 1. Get player's position relative to the moon's center BEFORE this frame's rotation.
-            const playerRelativePos = player.position.clone().sub(oldMoonPosition);
-            // 2. Apply the moon's axial rotation to this relative vector.
-            playerRelativePos.applyQuaternion(moonAxialDeltaRotation);
-            // 3. The new player position is the moon's NEW center + the rotated relative vector.
-            player.position.copy(moonPosition).add(playerRelativePos);
-
-            // Update velocity and orientation to match the combined rotation.
-            player.velocity.applyQuaternion(planetDeltaRotation);
-            player.velocity.applyQuaternion(moonAxialDeltaRotation);
-            player.quaternion.premultiply(planetDeltaRotation);
-            player.quaternion.premultiply(moonAxialDeltaRotation);
         }
 
-
         const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
-        const gravityDirection = dominantBodyPosition.clone().sub(player.position).normalize();
+        const gravityDirection = playerUp.clone().negate();
 
-        // Non-linear gravity falloff
         const distFromSurface = player.position.distanceTo(dominantBodyPosition) - dominantBodyRadius;
-        const l1_distance = MOON_ORBIT_DISTANCE / 2; // Simplified L1 point
+        const l1_distance = MOON_ORBIT_DISTANCE / 2;
         let gravityFactor = 1.0;
         if (distFromSurface > 0 && distFromSurface < l1_distance) {
             gravityFactor = 1.0 - Math.pow(distFromSurface / l1_distance, 2);
@@ -1891,73 +1551,51 @@ function animate() {
         const waterRadius = waterMesh.geometry.parameters.radius;
         const distToWaterCenter = player.position.distanceTo(planetCenter);
         const isInWater = distToWaterCenter < waterRadius;
-        const maxWaterSpeed = playerSettings.speed * 0.5; // Half of the normal speed
+        const maxWaterSpeed = playerSettings.speed * 0.5;
 
-        // --- Water Effects ---
         const now = clock.getElapsedTime();
-        const isIntersectingWater = Math.abs(distToWaterCenter - waterRadius) < 0.5; // Player is at the surface
-
-        // Bubble effect - when fully submerged
+        const isIntersectingWater = Math.abs(distToWaterCenter - waterRadius) < 0.5;
         if (isInWater && !isIntersectingWater && now - lastBubbleTime > 0.2) {
             createBubble();
             lastBubbleTime = now;
         }
-
-        // Splash effect - when moving at the water surface
         const isMovingHorizontally = (keys.w || keys.a || keys.s || keys.d);
         if (isIntersectingWater && isMovingHorizontally && now - lastSplashTime > 0.1) {
             const splashPos = player.position.clone();
-            // Project player position onto the water sphere to get the exact surface point
-            const playerUp = player.position.clone().sub(dominantBodyPosition).normalize();
-            splashPos.sub(playerUp.multiplyScalar(distToWaterCenter - waterRadius));
+            const playerUpLocal = player.position.clone().sub(dominantBodyPosition).normalize();
+            splashPos.sub(playerUpLocal.multiplyScalar(distToWaterCenter - waterRadius));
             createSplashEffect(splashPos);
             lastSplashTime = now;
         }
         wasInWater = isInWater;
-        // --- End Water Effects ---
 
-        // Lava damage is now handled in the collision detection section below.
-
-        // Swimming Animation
         const targetRotation = new THREE.Quaternion();
         const targetPosition = new THREE.Vector3();
-
         if (isInWater && !player.onGround) {
-            // Rotate body back and move it up and behind the head
             targetRotation.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
             targetPosition.set(0, 0.8, 0.6);
         } else {
             targetRotation.identity();
-            targetPosition.set(0, -0.3, 0); // Original position
+            targetPosition.set(0, -0.3, 0);
         }
         player.body.quaternion.slerp(targetRotation, 0.1);
         player.body.position.lerp(targetPosition, 0.1);
 
-        // 1. Apply gravity
-        if (!player.onGround && !isInWater) { // Add !isInWater condition
-            player.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength * gravityFactor));
+        // --- FIXED: Apply gravity correctly with delta time ---
+        if (!player.onGround && !isInWater) {
+            player.velocity.add(gravityDirection.multiplyScalar(playerSettings.gravityStrength * gravityFactor * delta));
         } else if (isInWater) {
-            // If in water, apply damping and handle vertical controls
-            player.velocity.multiplyScalar(0.98); // Water resistance
-
+            player.velocity.multiplyScalar(0.98);
             if (!player.onGround) {
                 const waterVerticalSpeed = playerSettings.speed * 0.5;
-                if (keys.space) {
-                    player.velocity.add(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
-                }
-                if (keys.c || keys.ctrl) {
-                    player.velocity.sub(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
-                }
+                if (keys.space) player.velocity.add(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
+                if (keys.c || keys.ctrl) player.velocity.sub(playerUp.clone().multiplyScalar(waterVerticalSpeed * delta));
             }
-
-            const currentSpeed = player.velocity.length();
-            // If the current speed exceeds the maximum water speed, scale it down
-            if (currentSpeed > maxWaterSpeed) {
+            if (player.velocity.length() > maxWaterSpeed) {
                 player.velocity.normalize().multiplyScalar(maxWaterSpeed);
             }
         }
 
-        // 2. Get movement input and project onto tangent plane
         const moveDirection = new THREE.Vector3();
         const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
         const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
@@ -1968,12 +1606,11 @@ function animate() {
 
         const verticalComponent = player.velocity.clone().projectOnVector(playerUp);
         const horizontalComponent = player.velocity.clone().sub(verticalComponent);
-
         if (moveDirection.lengthSq() > 0) {
             const projectedMove = moveDirection.projectOnPlane(playerUp).normalize();
             const targetVelocity = projectedMove.multiplyScalar(playerSettings.speed);
             if (isInWater) {
-                player.velocity.add(targetVelocity.multiplyScalar(delta)); // Direct application in water
+                player.velocity.add(targetVelocity.multiplyScalar(delta));
             } else {
                 horizontalComponent.lerp(targetVelocity, 0.2);
             }
@@ -1984,56 +1621,41 @@ function animate() {
             player.velocity.copy(horizontalComponent).add(verticalComponent);
         }
 
-        // 3. Update position based on velocity
         player.position.add(player.velocity.clone().multiplyScalar(delta));
-
-        // 4. Collision detection and response (only if not in water)
 
         const groundObjects = [marchingCubesMesh, marchingCubesMeshMoon].filter(mesh => mesh).concat(cubes);
         const rayOrigin = player.position.clone().add(playerUp.clone().multiplyScalar(-playerSettings.height * 0.5));
         raycaster.set(rayOrigin, gravityDirection);
         const intersects = raycaster.intersectObjects(groundObjects);
-
         player.onGround = false;
         if (intersects.length > 0) {
-            const intersected = intersects[0]; // Get the full intersection object
+            const intersected = intersects[0];
             const hitPoint = intersected.point;
             const distanceToHitPoint = rayOrigin.distanceTo(hitPoint);
             const groundDetectionTolerance = 0.1;
             const verticalSpeed = player.velocity.dot(playerUp);
-
             if (distanceToHitPoint < groundDetectionTolerance && verticalSpeed < 0.05) {
                 player.onGround = true;
                 const snapOffset = 0.01;
                 player.position.copy(hitPoint.clone().add(playerUp.clone().multiplyScalar(playerSettings.height * 0.5 + snapOffset)));
                 const verticalVelocityComponent = playerUp.clone().multiplyScalar(player.velocity.dot(playerUp));
                 player.velocity.sub(verticalVelocityComponent);
-
-                // --- DEBUG AND DAMAGE LOGIC ---
                 let groundMaterialId = 'unknown';
                 const intersectedObject = intersected.object;
-
                 if (cubes.includes(intersectedObject)) {
-                    // It's a placed block
                     groundMaterialId = intersectedObject.userData.materialId || 'unknown_cube';
                 } else if (intersectedObject === marchingCubesMesh || intersectedObject === marchingCubesMeshMoon) {
-                    // It's the terrain
                     const onMoon = (intersectedObject === marchingCubesMeshMoon);
                     const material = getMaterialAtPoint(hitPoint, intersected.face.normal, onMoon);
                     groundMaterialId = material.id;
                 }
-
-                // Display debug message
                 messageBox.textContent = `Standing on: ${groundMaterialId}`;
-
-                // Apply damage if lava
                 if (groundMaterialId === 'lava' && clock.getElapsedTime() - player.lastDamageTime > 0.5) {
                     takeDamage(10);
                 }
             }
         }
 
-        // Upward collision correction
         if (!player.onGround && groundObjects.length > 0) {
             const rayOriginUpward = player.position.clone();
             raycaster.set(rayOriginUpward, playerUp);
@@ -2046,56 +1668,44 @@ function animate() {
                 if (verticalVel < 0) player.velocity.sub(playerUp.clone().multiplyScalar(verticalVel));
             }
         }
-        // }
 
-        // 5. Orient player to stand upright on the dominant body
         const playerCurrentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);
         const newUp = player.position.clone().sub(dominantBodyPosition).normalize();
         const correction = new THREE.Quaternion().setFromUnitVectors(playerCurrentUp, newUp);
         player.quaternion.slerp(correction.multiply(player.quaternion), 0.2);
     }
 
-    updateParticles(delta); // Update bubbles and splashes
+    updateParticles(delta);
     updateCamera();
-    updateFoliageLODs(); // New call for foliage LOD logic
+    updateFoliageLODs();
 
-    // Update water shader uniforms
     if (waterMesh && waterMesh.material.userData.shader) {
         const shader = waterMesh.material.userData.shader;
         shader.uniforms.time.value = clock.getElapsedTime();
-        // Values are now read from the waterSettings constant and don't need to be updated here
     }
 
-    renderer.render(scene, camera);
+    const activeCamera = isSolarSystemView ? solarSystemCamera : camera;
+    renderer.render(scene, activeCamera);
 }
+
 
 function updateFoliageLODs() {
     if (!player) return;
-
     const foliageTypes = [
         { lods: grassLODs, map: voxelToGrassMap },
         { lods: anemoneLODs, map: voxelToAnemoneMap }
     ];
-
     const playerPos = player.position;
     const tempMatrix = new THREE.Matrix4();
     const instancePos = new THREE.Vector3();
-
     foliageTypes.forEach(type => {
         if (type.lods.length === 0 || type.map.size === 0) return;
-
         type.lods.forEach(lod => lod.count = 0);
-
         type.map.forEach((instanceId, mapKey) => {
-            // Get the master matrix from the highest LOD mesh
             type.lods[0].getMatrixAt(instanceId, tempMatrix);
             instancePos.setFromMatrixPosition(tempMatrix);
-
-            // Check if the instance has been mined (scaled to zero)
             if (tempMatrix.elements[0] === 0 && tempMatrix.elements[5] === 0) return;
-
             const dist = playerPos.distanceTo(instancePos);
-
             let lodIndex = -1;
             for (let j = 0; j < GRASS_LOD_DISTANCES.length; j++) {
                 if (dist < GRASS_LOD_DISTANCES[j]) {
@@ -2103,16 +1713,12 @@ function updateFoliageLODs() {
                     break;
                 }
             }
-
             if (lodIndex !== -1) {
                 const targetLOD = type.lods[lodIndex];
-                // Copy the matrix to the correct LOD at the correct index
                 targetLOD.setMatrixAt(targetLOD.count, tempMatrix);
                 targetLOD.count++;
             }
         });
-
-        // Tell Three.js to update the instance matrices for all LODs of this type
         type.lods.forEach(lod => {
             lod.instanceMatrix.needsUpdate = true;
         });
