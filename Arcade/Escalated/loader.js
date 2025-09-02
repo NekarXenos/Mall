@@ -416,6 +416,23 @@ const loader = {
         this.ctx.drawImage(img, this.sonnyImageX, this.canvas.height - drawHeight, this.scaledSonnyWidth, drawHeight);
     },
 
+    drawInitialLoadingText() {
+        const progress = this.animationProgress / (this.numSteps * this.minCycles);
+        if (progress < 0.08) {
+            const fontSize = this.escalatorFontSize * 2;
+            this.ctx.font = `bold ${fontSize}px ${this.escalatorFont}`;
+            this.ctx.fillStyle = 'cyan';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+
+            this.ctx.save();
+            this.ctx.shadowColor = 'cyan';
+            this.ctx.shadowBlur = 20;
+            this.ctx.fillText("Loading...", this.canvas.width / 2, this.canvas.height / 2);
+            this.ctx.restore();
+        }
+    },
+
     animate() {
         this.drawMafiaImage();
         this.drawSonnyImage();
@@ -443,6 +460,7 @@ const loader = {
             stream.update();
         });
 
+        this.drawInitialLoadingText();
         this.drawEscalatorText();
         this.drawMayhem();
 
