@@ -1,3 +1,6 @@
+import * as THREE from 'three';
+import { preloadAllAssets } from './preloadAssets.js';
+
 const loader = {
     canvas: null,
     ctx: null,
@@ -18,6 +21,20 @@ const loader = {
     mayhemAlpha: 0,
     continueMessage: null,
     readyToContinue: false,
+    
+    backgroundImage: null, // To hold the image object
+    backgroundPattern: null, // To hold the canvas pattern
+
+    mafiaImage: null,
+    mafiaImageLoaded: false,
+    mafiaImageX: 0,
+    scaledMafiaWidth: null,
+
+    sonnyImage: null,
+    sonnyImageLoaded: false,
+    sonnyImageX: 0,
+    scaledSonnyWidth: null,
+
 
     start() {
         this.canvas = document.createElement('canvas');
@@ -30,6 +47,48 @@ const loader = {
         this.canvas.style.zIndex = '1001';
         this.canvas.style.backgroundColor = '#000';
         document.body.appendChild(this.canvas);
+
+        // Load the EM_Mafia image for the loading indicator
+        this.mafiaImage = new Image();
+        this.mafiaImage.onload = () => {
+            console.log('Mafia image loaded.');
+            this.mafiaImageLoaded = true;
+            // Start position based on image width, fully off-screen to the left
+            this.mafiaImageX = -this.mafiaImage.width; 
+        };
+        this.mafiaImage.onerror = () => {
+            console.error('Failed to load mafia image.');
+            this.mafiaImageLoaded = false;
+        };
+        this.mafiaImage.src = './textures/EM_Mafia.png';
+
+        // Load the Sonny image
+        this.sonnyImage = new Image();
+        this.sonnyImage.onload = () => {
+            console.log('Sonny image loaded.');
+            this.sonnyImageLoaded = true;
+            this.sonnyImageX = window.innerWidth; 
+        };
+        this.sonnyImage.onerror = () => {
+            console.error('Failed to load sonny image.');
+            this.sonnyImageLoaded = false;
+        };
+        this.sonnyImage.src = './textures/EM_Sonny_Otto.png';
+
+                // Load the background image
+        this.backgroundImage = new Image();
+        this.backgroundImage.onload = () => {
+            console.log('Loader background image loaded.');
+            // Once loaded, setup the canvas and pattern.
+            this.setupCanvas(); 
+        };
+        this.backgroundImage.onerror = () => {
+            console.error('Failed to load loader background image. Falling back to black.');
+            this.backgroundImage = null; // Ensure we don't try to use it
+        };
+        // NOTE: The path to your image. Adjust if 'Mafia2.png' is located elsewhere.
+        this.backgroundImage.src = './textures/Escalated_Mayhem.png'; // EM_Background.png';
+
 
         this.ctx = this.canvas.getContext('2d');
         this.escalatorChars = [...this.word.split(''), '•'];
@@ -69,6 +128,13 @@ const loader = {
         window.addEventListener('resize', this.setupCanvas.bind(this));
 
         this.animate();
+
+        // Create a dummy scene and renderer for preloading
+        const preloadScene = new THREE.Scene();
+        const preloadRenderer = new THREE.WebGLRenderer();
+        preloadRenderer.setSize(1, 1); // off-screen
+        preloadAllAssets(preloadScene, preloadRenderer);
+
 
         const gameLoadedPromise = this.loadGameScripts();
         const animationDonePromise = new Promise(resolve => {
@@ -141,6 +207,22 @@ const loader = {
         this.canvas.height = window.innerHeight;
         this.angle = Math.atan2(-this.canvas.height, this.canvas.width);
         this.escalatorFontSize = Math.min(this.canvas.width, this.canvas.height) * 0.09;
+
+        
+        // Create/recreate the background pattern if the image is loaded
+        if (this.backgroundImage && this.backgroundImage.complete && this.backgroundImage.naturalWidth > 0) {
+            // To make the pattern cover the whole canvas, we draw the scaled image
+            // to a temporary canvas and create the pattern from that. This handles resizing.
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = this.canvas.width;
+            tempCanvas.height = this.canvas.height;
+            tempCtx.drawImage(this.backgroundImage, 0, 0, tempCanvas.width, tempCanvas.height);
+            this.backgroundPattern = this.ctx.createPattern(tempCanvas, 'no-repeat');
+        } else {
+            this.backgroundPattern = null;
+        }
+
         this.initializeStreams();
     },
 
@@ -225,6 +307,46 @@ const loader = {
         }
     },
 
+    drawMafiaImage() {
+        if (!this.mafiaImageLoaded) return;
+
+        const img = this.mafiaImage;
+        let drawHeight = img.height;
+        let drawWidth = img.width;
+        
+        // Scale image if its height is greater than the canvas height
+        if (img.height > this.canvas.height) {
+            drawHeight = this.canvas.height;
+            const aspectRatio = img.width / img.height;
+            drawWidth = drawHeight * aspectRatio;
+        }
+
+        // On the first frame this is called, adjust the initial X position to match the scaled width.
+        if (this.scaledMafiaWidth === null) {
+            this.mafiaImageX = -drawWidth;
+        }
+        this.scaledMafiaWidth = drawWidth;
+
+
+        // Calculate progress of the "ESCALATED" text animation to sync the slide-in
+        let progress = this.animationProgress / (this.numSteps * this.minCycles);
+        progress = Math.min(1, progress); // Clamp progress to 1
+
+        // When loading is fully complete, ensure the image is at its final destination
+        if (this.readyToContinue) {
+            progress = 1;
+        }
+
+        // The target X position goes from -drawWidth (off-screen) to 0 (left edge aligned).
+        const targetX = (progress - 1) * this.scaledMafiaWidth;
+
+        // Interpolate for smooth movement.
+        this.mafiaImageX += (targetX - this.mafiaImageX) * 0.05;
+
+        // Draw the image at the bottom of the screen, scaled.
+        this.ctx.drawImage(img, this.mafiaImageX, this.canvas.height - drawHeight, this.scaledMafiaWidth, drawHeight);
+    },
+
     drawMayhem() {
         if (!this.escalatorAnimationDone) return;
 
@@ -253,9 +375,68 @@ const loader = {
         this.ctx.restore();
     },
 
+    drawSonnyImage() {
+        if (!this.sonnyImageLoaded) return;
+
+        // --- Scaling Logic ---
+        const img = this.sonnyImage;
+        let drawHeight = img.height;
+        let drawWidth = img.width;
+        
+        if (img.height > this.canvas.height) {
+            drawHeight = this.canvas.height;
+            const aspectRatio = img.width / img.height;
+            drawWidth = drawHeight * aspectRatio;
+        }
+
+        if (this.scaledSonnyWidth === null) {
+            this.sonnyImageX = this.canvas.width; // Start off-screen right
+        }
+        this.scaledSonnyWidth = drawWidth;
+
+        // --- Progress Calculation ---
+        const overallProgress = Math.min(1, this.animationProgress / (this.numSteps * this.minCycles));
+        let sonnyProgress = 0;
+        if (overallProgress >= 0.5) {
+            sonnyProgress = (overallProgress - 0.5) * 2;
+        }
+        sonnyProgress = Math.min(1, sonnyProgress);
+
+        if (this.readyToContinue) {
+            sonnyProgress = 1;
+        }
+
+        // --- Position Calculation ---
+        const startX = this.canvas.width;
+        const endX = this.canvas.width - this.scaledSonnyWidth;
+        const targetX = startX + (endX - startX) * sonnyProgress;
+
+        this.sonnyImageX += (targetX - this.sonnyImageX) * 0.05;
+
+        this.ctx.drawImage(img, this.sonnyImageX, this.canvas.height - drawHeight, this.scaledSonnyWidth, drawHeight);
+    },
+
     animate() {
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.drawMafiaImage();
+        this.drawSonnyImage();
+
+        /* this.ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height); */
+
+        // This is the replacement for the original fillRect logic.
+        // Instead of a semi-transparent black, we use a semi-transparent
+        // pattern created from the background image. This will cause the
+        // Matrix rain to fade into the image, creating a very cool effect.
+        if (this.backgroundPattern) {
+            this.ctx.globalAlpha = 0.1; // This controls the fade speed
+            this.ctx.fillStyle = this.backgroundPattern;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.globalAlpha = 1.0; // Reset alpha for other drawings
+        } else {
+            // Fallback to the original effect if the image isn't loaded or failed
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';  
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
 
         this.streams.forEach(stream => {
             stream.draw();
