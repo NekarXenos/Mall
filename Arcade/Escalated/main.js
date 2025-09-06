@@ -618,8 +618,10 @@ function createEnemy(x, y, z, floorIndex, patrolMinZ, patrolMaxZ) {
     // mobster.position.y = floorY + desiredLift + mobsterFeetOffset
     const adjustedY = floorY + desiredLift + mobsterFeetOffset;
 
+    const isBoss = x < 0 || x > SETTINGS.corridorWidth; // Determine if it's a boss
+
     const initialPosition = new THREE.Vector3(x, adjustedY, z);
-    const mobster = new Mobster(scene, initialPosition, floorIndex, patrolMinZ, patrolMaxZ);
+    const mobster = new Mobster(scene, initialPosition, floorIndex, patrolMinZ, patrolMaxZ, isBoss); // Pass isBoss flag
     mobster.clock = clock; // use the game's main clock
     enemies.push(mobster);
     // Add individual meshes of the mobster to worldObjects for collision detection
@@ -3826,6 +3828,60 @@ function interact() {
                     door.userData.isOpen = true;
                     door.rotation.y = openAngle;
                     console.log("Door opened away from player.");
+
+                    // --- Custom Light Logic ---
+                    const doorPos = door.position;
+                    const nearbyBoss = enemies.find(enemy => {
+                        const enemyObject = enemy.getObject();
+                        if (!enemyObject || !enemy.isBoss) return false;
+
+                        // Check if boss is on the same floor as the door
+                        if (enemy.floorIndex !== door.userData.floor) return false;
+
+                        const bossPos = enemyObject.position;
+                        if (Math.abs(bossPos.z - doorPos.z) > 1) return false;
+
+                        const isRightSideDoor = doorPos.x < 2; // Door at x=0
+                        const isLeftSideDoor = doorPos.x > 2; // Door at x=4
+
+                        const isBossOnRight = bossPos.x >= -3 && bossPos.x <= 0;
+                        const isBossOnLeft = bossPos.x >= 4 && bossPos.x <= 9;
+
+                        return (isRightSideDoor && isBossOnRight) || (isLeftSideDoor && isBossOnLeft);
+                    });
+
+                    if (nearbyBoss) {
+                        const bossPos = nearbyBoss.getObject().position;
+                        const lightToTurnOn = lights.find(light => {
+                            if (!light.userData.isRoomLight) return false;
+
+                            // Check if light is on the same floor as the door
+                            if (light.userData.floorIndex !== door.userData.floor) return false;
+
+                            const lightPos = light.position;
+                            return Math.abs(lightPos.x - bossPos.x) <= 1 &&
+                                   Math.abs(lightPos.z - bossPos.z) <= 1 &&
+                                   lightPos.y > bossPos.y &&
+                                   lightPos.y < bossPos.y + 4;
+                        });
+
+                        if (lightToTurnOn && !lightToTurnOn.userData.isOn) {
+                            lightToTurnOn.userData.isOn = true;
+                            const { pointLight, bulbMesh, bottomLightDisk, animationState } = lightToTurnOn.userData;
+                            animationState.isAnimating = true;
+                            animationState.startTime = performance.now();
+                            animationState.duration = 500;
+                            animationState.startLightIntensity = pointLight.intensity;
+                            animationState.targetLightIntensity = 1.0;
+                            animationState.startBulbEmissive = bulbMesh.material.emissiveIntensity;
+                            animationState.targetBulbEmissive = 2.0;
+                            animationState.startDiskEmissive = bottomLightDisk.material.emissiveIntensity;
+                            animationState.targetDiskEmissive = 1.0;
+                            console.log(`Room light ${lightToTurnOn.userData.roomId} turned ON by finding boss`);
+                        }
+                    }
+                    // --- End Custom Light Logic ---
+
                 } else {
                     door.userData.isOpen = false;
                     door.rotation.y = 0;
