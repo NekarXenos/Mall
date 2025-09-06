@@ -12,13 +12,15 @@ export class Mobster {
      * @param {number} floorIndex The floor index the mobster is on.
      * @param {number} patrolMinZ The minimum Z boundary for patrolling.
      * @param {number} patrolMaxZ The maximum Z boundary for patrolling.
+     * @param {boolean} isBoss Whether the mobster is a boss (no hat).
      */
-    constructor(scene, initialPosition = new THREE.Vector3(0, 0, 0), floorIndex = 0, patrolMinZ, patrolMaxZ) {
+    constructor(scene, initialPosition = new THREE.Vector3(0, 0, 0), floorIndex = 0, patrolMinZ, patrolMaxZ, isBoss = false) {
         this.scene = scene;
         //this.clock = new THREE.Clock();
         this.clock = null; // Will be set from main.js when mobster is created
         this.lastShotTime = 0;
         this.floorIndex = floorIndex;
+        this.isBoss = isBoss; // Store the boss status
 
         // --- Animation parameters ---
         this.animationTime = 0;
@@ -80,6 +82,7 @@ export class Mobster {
      */
     _createCharacter() {
         this.characterGroup = new THREE.Group();
+        this.characterGroup.name = this.isBoss ? 'mafiaBoss' : 'mobster';
 
         // Materials
         const coatMaterial = new THREE.MeshStandardMaterial({ color: 0x212121, flatShading: true });
@@ -120,31 +123,33 @@ export class Mobster {
         this.headGroup.add(shades);
 
         // Fedora
-        const fedoraTop1Geometry = new THREE.SphereGeometry(1, 6, 4);
-        fedoraTop1Geometry.scale(0.7, 1, 1);
-        const fedoraTop1 = new THREE.Mesh(fedoraTop1Geometry, fedoraMaterial);
-        fedoraTop1.position.set(0.3, 2.1, 0);
-        this.headGroup.add(fedoraTop1);
+        if (!this.isBoss) {
+            const fedoraTop1Geometry = new THREE.SphereGeometry(1, 6, 4);
+            fedoraTop1Geometry.scale(0.7, 1, 1);
+            const fedoraTop1 = new THREE.Mesh(fedoraTop1Geometry, fedoraMaterial);
+            fedoraTop1.position.set(0.3, 2.1, 0);
+            this.headGroup.add(fedoraTop1);
 
-        const fedoraTop2Geometry = new THREE.SphereGeometry(1, 6, 4);
-        fedoraTop2Geometry.scale(0.7, 1, 1);
-        const fedoraTop2 = new THREE.Mesh(fedoraTop2Geometry, fedoraMaterial);
-        fedoraTop2.position.set(-0.3, 2.1, 0);
-        this.headGroup.add(fedoraTop2);
+            const fedoraTop2Geometry = new THREE.SphereGeometry(1, 6, 4);
+            fedoraTop2Geometry.scale(0.7, 1, 1);
+            const fedoraTop2 = new THREE.Mesh(fedoraTop2Geometry, fedoraMaterial);
+            fedoraTop2.position.set(-0.3, 2.1, 0);
+            this.headGroup.add(fedoraTop2);
 
-        const fedoraBrimGeometry = new THREE.TorusGeometry(1.3, 0.5, 3, 6);
-        fedoraBrimGeometry.scale(1, 1, 0.5);
-        const fedoraBrim = new THREE.Mesh(fedoraBrimGeometry, fedoraMaterial);
-        fedoraBrim.rotation.set(Math.PI / 2 + 0.1, 0, Math.PI / 2);
-        fedoraBrim.position.y = 1.8;
-        this.headGroup.add(fedoraBrim);
+            const fedoraBrimGeometry = new THREE.TorusGeometry(1.3, 0.5, 3, 6);
+            fedoraBrimGeometry.scale(1, 1, 0.5);
+            const fedoraBrim = new THREE.Mesh(fedoraBrimGeometry, fedoraMaterial);
+            fedoraBrim.rotation.set(Math.PI / 2 + 0.1, 0, Math.PI / 2);
+            fedoraBrim.position.y = 1.8;
+            this.headGroup.add(fedoraBrim);
 
-        const fedoraBandGeometry = new THREE.TorusGeometry(1, 0.2, 4, 6);
-        fedoraBandGeometry.scale(1, 1, 1.5);
-        const fedoraBand = new THREE.Mesh(fedoraBandGeometry, fedBandMaterial);
-        fedoraBand.rotation.x = Math.PI / 2 + 0.1;
-        fedoraBand.position.y = 2;
-        this.headGroup.add(fedoraBand);
+            const fedoraBandGeometry = new THREE.TorusGeometry(1, 0.2, 4, 6);
+            fedoraBandGeometry.scale(1, 1, 1.5);
+            const fedoraBand = new THREE.Mesh(fedoraBandGeometry, fedBandMaterial);
+            fedoraBand.rotation.x = Math.PI / 2 + 0.1;
+            fedoraBand.position.y = 2;
+            this.headGroup.add(fedoraBand);
+        }
 
         // Limbs
         const upperArmGeometry = new THREE.CylinderGeometry(0.5, 0.45, 1.5, 6);
@@ -390,6 +395,14 @@ export class Mobster {
 
     fireProjectile(targetPosition, createProjectileFunc) {
         if (this.characterState !== 'aiming') return; // Only fire when in aiming state
+
+        // Bosses only shoot if the player is close
+        if (this.isBoss) {
+            const distanceToPlayer = this.characterGroup.position.distanceTo(targetPosition);
+            if (distanceToPlayer > 2) {
+                return; // Boss doesn't shoot if player is too far
+            }
+        }
 
         const now = this.clock.getElapsedTime();
 
