@@ -124,6 +124,18 @@ const loader = {
         this.continueMessage.innerHTML = 'Loading... <span class="blinking-cursor">_</span>';
         document.body.appendChild(this.continueMessage);
 
+        THREE.DefaultLoadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
+            if (this.readyToContinue) return;
+            const progress = Math.round((itemsLoaded / itemsTotal) * 100);
+            if (this.continueMessage) {
+                if (progress === 100) {
+                    this.continueMessage.innerHTML = `Loading... <span class="blinking-cursor">_</span> Completed.`;
+                } else {
+                    this.continueMessage.innerHTML = `Loading... <span class="blinking-cursor">_</span> ${progress}%`;
+                }
+            }
+        };
+
         this.setupCanvas();
         window.addEventListener('resize', this.setupCanvas.bind(this));
 
@@ -183,6 +195,7 @@ const loader = {
         if (styleElement) {
             styleElement.remove();
         }
+        THREE.DefaultLoadingManager.onProgress = () => {};
     },
 
     loadGameScripts() {
@@ -418,17 +431,56 @@ const loader = {
 
     drawInitialLoadingText() {
         const progress = this.animationProgress / (this.numSteps * this.minCycles);
-        if (progress < 0.08) {
-            const fontSize = this.escalatorFontSize * 2;
-            this.ctx.font = `bold ${fontSize}px ${this.escalatorFont}`;
-            this.ctx.fillStyle = 'cyan';
-            this.ctx.textAlign = 'center';
-            this.ctx.textBaseline = 'middle';
+        if (progress < 0.33) {
+            this.ctx.fillStyle = 'teal';
+            this.ctx.textAlign = 'left'; // Use left alignment for drawing line by line
+            this.ctx.textBaseline = 'top'; // Use top alignment
 
             this.ctx.save();
-            this.ctx.shadowColor = 'cyan';
-            this.ctx.shadowBlur = 20;
-            this.ctx.fillText("Loading...", this.canvas.width / 2, this.canvas.height / 2);
+
+            const ascii_art = {
+                'L': ['█    ', '█    ', '█    ', '█    ', '█████'],
+                'O': [' ███ ', '█   █', '█   █', '█   █', ' ███ '],
+                'A': [' ███ ', '█   █', '█████', '█   █', '█   █'],
+                'D': ['████ ', '█   █', '█   █', '█   █', '████ '],
+                'I': ['█████', '  █  ', '  █  ', '  █  ', '█████'],
+                'N': ['█   █', '██  █', '█ █ █', '█  ██', '█   █'],
+                'G': [' ███ ', '█    ', '█ ███', '█   █', ' ███ '],
+                '.': ['     ', '     ', '     ', '     ', '  █  '],
+            };
+            const text = "LOADING...";
+            const output = ['', '', '', '', ''];
+            for (const char of text) {
+                // Use a space for unknown characters to avoid errors
+                const letter = ascii_art[char] || ascii_art['.']; // Fallback for '...'
+                for (let i = 0; i < 5; i++) {
+                    output[i] += letter[i] + ' ';
+                }
+            }
+
+            // --- Calculate font size and position ---
+            // Aim for the total width to be about 80% of the canvas width
+            const desiredWidth = this.canvas.width * 0.8;
+            const charWidthInPixels = desiredWidth / output[0].length;
+            
+            // In monospace fonts, character width is roughly 0.6 * font-size.
+            // So, font-size is roughly charWidth / 0.6
+            const fontSize = charWidthInPixels / 0.6;
+            const lineHeight = fontSize; // A bit more space between lines
+
+            this.ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+
+            const totalHeight = 5 * lineHeight;
+            const yStart = (this.canvas.height - totalHeight) / 2;
+
+            for (let i = 0; i < output.length; i++) {
+                const line = output[i];
+                const lineWidth = this.ctx.measureText(line).width;
+                const x = (this.canvas.width - lineWidth) / 2;
+                const y = yStart + i * lineHeight;
+                this.ctx.fillText(line, x, y);
+            }
+
             this.ctx.restore();
         }
     },
