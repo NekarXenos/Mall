@@ -9,7 +9,7 @@ export function preloadAllAssets(scene, renderer) {
     renderer.setSize(1, 1); // Minimal offscreen size
 
     // --- Preload Mobster ---
-    const dummyMobster = new Mobster(scene, new THREE.Vector3(9999, 9999, 9999), 0, 0, 1);
+    const dummyMobster = new Mobster(scene, new THREE.Vector3(9999, 9999, 9999), 0, 0, 1, false); // isBoss = false
 
     // --- Add an aim and firing sequence for pre-compiling shaders ---
     const dummyPlayerPosition = new THREE.Vector3(9999, 9999, 9989); // A target in front of the mobster
