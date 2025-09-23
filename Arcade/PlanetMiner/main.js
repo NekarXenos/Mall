@@ -312,6 +312,11 @@ function init() {
     if (isMobileDevice()) {
         mobileControls.style.display = 'flex';
         setupMobileControls();
+        // Hide overlay immediately on mobile and activate the game
+        overlay.style.display = 'none';
+        messageBox.style.display = 'block';
+        document.getElementById('health-bar-container').style.display = 'block';
+        isLocked = true; // Consider mobile as "locked" by default
         messageBox.textContent = "Tap joystick to move, drag right side to look, tap buttons to interact!";
     } else {
         messageBox.textContent = "WASD: Move, Space: Jump, Mouse: Look, Click: Interact, Arrow Keys or 1-9: Switch Material, L: Teleport, T: Toggle Torch";
@@ -323,14 +328,17 @@ function setupEventListeners() {
     document.addEventListener('keyup', onKeyUp);
     document.addEventListener('pointerlockchange', onPointerLockChange);
 
-    overlay.addEventListener('click', () => {
-        const request = canvas.requestPointerLock();
-        if (request && typeof request.catch === 'function') {
-            request.catch(err => {
-                console.warn("Pointer lock request was cancelled or failed.", err);
-            });
-        }
-    });
+    // Only set up pointer lock for desktop
+    if (!isMobileDevice()) {
+        overlay.addEventListener('click', () => {
+            const request = canvas.requestPointerLock();
+            if (request && typeof request.catch === 'function') {
+                request.catch(err => {
+                    console.warn("Pointer lock request was cancelled or failed.", err);
+                });
+            }
+        });
+    }
 
     document.addEventListener('mousedown', onMouseDownDesktop);
     document.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -643,13 +651,25 @@ function onMouseMove(event) {
 
 function onPointerLockChange() {
     isLocked = document.pointerLockElement === canvas;
-    overlay.style.display = isLocked ? 'none' : 'flex';
-    messageBox.style.display = isLocked ? 'block' : 'none';
-    document.getElementById('health-bar-container').style.display = isLocked ? 'block' : 'none';
-    if (isLocked) {
-        document.addEventListener('mousemove', onMouseMove, false);
+    
+    // On mobile, hide overlay and show UI elements immediately
+    if (isMobileDevice()) {
+        overlay.style.display = 'none';
+        messageBox.style.display = 'block';
+        document.getElementById('health-bar-container').style.display = 'block';
+        // Consider the game "locked" on mobile since we don't use pointer lock
+        isLocked = true;
     } else {
-        document.removeEventListener('mousemove', onMouseMove, false);
+        // Desktop behavior
+        overlay.style.display = isLocked ? 'none' : 'flex';
+        messageBox.style.display = isLocked ? 'block' : 'none';
+        document.getElementById('health-bar-container').style.display = isLocked ? 'block' : 'none';
+        
+        if (isLocked) {
+            document.addEventListener('mousemove', onMouseMove, false);
+        } else {
+            document.removeEventListener('mousemove', onMouseMove, false);
+        }
     }
 }
 
@@ -1724,7 +1744,6 @@ function updateFoliageLODs() {
         });
     });
 }
-
 window.onload = function () {
     init();
     animate();
