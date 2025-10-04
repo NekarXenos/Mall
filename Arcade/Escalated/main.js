@@ -2,13 +2,15 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
-import { addGarageCar, getLastGarageCar } from './car.js'; // Import the car model function
 import { calculateEscalatorBoost, animateActiveEscalatorSteps, updateEscalatorStepVisuals } from './escalator.js';
 import { Mobster } from './mobster.js'; // Import the Mobster class
 
 // IMPORTANT: Left is +X and Right is -X in this world
 // Up is +Y and Down is -Y in this world
 // +Z is forward and -Z is backward in this world
+
+// Import car module
+import { addGarageCar, updateCar, resetCarPhysics, getLastGarageCar, vehiclePhysics, checkCarCollision, checkCarBoundaries } from './car.js';
 
 let isGamePaused = false; let animationFrameIdGame; // Or whatever you call your game's animation frame ID
 
@@ -36,10 +38,31 @@ const SETTINGS = {
     escalatorWidth: 3.0,
     escalatorSpeed: 1.0,
     roomSize: 5.0,
+    // Car settings
+    carCollisionRadius: 2.5,  // Distance for car interaction
+    carCameraHeight: 5/2,       // Third-person camera height
+    carCameraDistance: 8/2,     // Third-person camera distance
 };
 
 // --- Core Variables ---
 let scene, camera, renderer, controls;
+
+// Helper function to safely access controls
+function getControls() {
+    return controls || { 
+        getObject: () => camera || { 
+            position: new THREE.Vector3(), 
+            rotation: new THREE.Euler(),
+            getWorldPosition: () => new THREE.Vector3() 
+        },
+        isLocked: false,
+        lock: () => {}, // No-op function
+        unlock: () => {}, // No-op function
+        connect: () => {}, // No-op function
+        dispose: () => {}, // No-op function
+        getDirection: (v) => camera ? camera.getWorldDirection(v) : v.set(0, 0, -1)
+    };
+}
 
 // --- Global Arrays ---
 const fallenLampshades = [];
@@ -52,6 +75,15 @@ let playerHeight = 1.7; // Camera height offset
 let isCrouching = false; // New crouch state
 let playerState = 'upright'; // Possible states: 'upright', 'crouching', 'prone'
 let isWireframeView = false; // For wireframe debug view
+
+// --- Car Interaction Variables ---
+let carObject = null; // Reference to the car instance
+// isPlayerInCar is already defined below - using that one
+let originalControls = null; // Store original controls for switching back
+let thirdPersonCamera = null; // Third-person camera for car view
+let carKeyState = {}; // Track key states for car controls
+let originalCameraPosition = null; // Store player's position before entering car
+let originalCameraRotation = null; // Store player's rotation before entering car
 
 // let elevator, elevatorTargetY = 0, isElevatorMoving = false, elevatorDirection = 0; // Old single elevator state
 // let currentFloorIndex = 0; // Old single elevator state
@@ -78,6 +110,8 @@ const animatedGarageDoors = []; // To store garage doors that need animation
 const enemies = []; // Array to store enemy objects
 let currentElevatorConfig = null; // To help generateWorld access the current elevator's properties
 let isPlayerInCar = false; // New state variable to track if player is in the car
+let carExitPosition = null; // Position to place player when exiting car
+let isCarKeyPressed = false; // Flag to prevent multiple car enter/exit events
 
 let aimedAtEnemy = null;
 
@@ -282,7 +316,9 @@ function init() {
             toggleMenu(true); // Show the menu-container
         }
     });
-    document.body.addEventListener('click', () => controls.lock());
+    document.body.addEventListener('click', () => {
+        if (controls) controls.lock();
+    });
 
     // --- Procedural Generation ---
     generateWorld();
@@ -331,7 +367,7 @@ function init() {
     playerVelocity.y = 2.0;
 
     document.addEventListener('keydown', function (event) {
-        if (!controls.isLocked) return; // Only allow menu if game is active
+        if (!getControls().isLocked) return; // Only allow menu if game is active
         if (event.key === 'm' || event.key === 'M' || event.key === 'Escape') {
             event.preventDefault();
             const currentGameUrl = window.location.pathname.replace(/^\//, '') + window.location.search + window.location.hash;
@@ -652,7 +688,7 @@ function createProjectile(startPosition, direction, firedByPlayer = false, firer
 
 // --- Lampshade Projectile Shooter ---
 function shootLampshade() {
-    if (!controls.isLocked) return;
+    if (!getControls().isLocked) return;
     if (playerInventory.lampshades <= 0) return;
 
     // Player shoots a lampshade projectile
@@ -746,8 +782,8 @@ function updateUI() {
     document.getElementById('lives').innerText = `Lives: ${playerLives}`;
 
     // Calculate and display current floor
-    if (controls && controls.isLocked) {
-        const playerCameraY = controls.getObject().position.y;
+    if (getControls().isLocked) {
+        const playerCameraY = getControls().getObject().position.y;
         // Assuming playerHeight is the height from feet to camera. // This comment is fine.
         // Floor index is based on the Y position of the player's feet.
         const playerFeetY = playerCameraY - playerHeight;
@@ -1559,9 +1595,35 @@ function generateWorld() {
                     garageDoor.userData = { type: 'garageDoor', isOpen: false, isAnimating: false, targetRotationX: 0, floor: i };
                     scene.add(garageDoor); worldObjects.push(garageDoor); doors.push(garageDoor); // Add to doors for interaction
 
+                    
                     // --- Add Garage Structure Behind the Door ---
                     const garageDepthVal = 8; // How deep the garage extends
                     const garageWallThickness = wallDepth; // Use existing wallDepth
+                    // --- Add Car to Garage ---
+                    // Position car in the center of the garage area
+                    const carPosition = new THREE.Vector3(
+                        basementCenterX,                                // X center of basement
+                        floorY + 0.3,                                  // Just above floor level
+                         wallFarZPlane + wallDepth / 2 + garageDepthVal / 2 // Inside the garage area
+                        //basementMaxZ - wallDepth - 6                    // Back from the wall a bit
+                    );
+                    
+                    // Add the car to the scene and store reference
+                    carObject = addGarageCar(scene, carPosition);
+                    /* addGarageCar(scene, new THREE.Vector3(basementCenterX, floorY, wallFarZPlane + wallDepth / 2 + garageDepthVal / 2));  */
+                    
+                    // Create collision box for car
+                    const carBox = new THREE.Box3().setFromObject(carObject);
+                    const carSize = carBox.getSize(new THREE.Vector3());
+                    carObject.userData = { 
+                        type: 'car', 
+                        collisionRadius: SETTINGS.carCollisionRadius,
+                        size: carSize
+                    };
+
+                    // --- Add Garage Structure Behind the Door ---
+                    //const garageDepthVal = 8; // How deep the garage extends
+                    //const garageWallThickness = wallDepth; // Use existing wallDepth
 
                     // Garage Floor
                     const garageFloorGeo = new THREE.BoxGeometry(garageDoorWidth, floorDepth, garageDepthVal);
@@ -1621,7 +1683,7 @@ function generateWorld() {
 
                     // Add the car model to the garage floor
                     // The garage floor's top surface is at y = floorY.
-                    addGarageCar(scene, new THREE.Vector3(basementCenterX, floorY, wallFarZPlane + wallDepth / 2 + garageDepthVal / 2));
+                    /* addGarageCar(scene, new THREE.Vector3(basementCenterX, floorY, wallFarZPlane + wallDepth / 2 + garageDepthVal / 2)); */
 
                 }
 
@@ -3255,7 +3317,7 @@ function generateWorld() {
         // NEW: Set player start position explicitly on the roof level, at X=corridorWidth/2, Z=0, facing -Z
         const startRoofY = SETTINGS.numFloors * SETTINGS.floorHeight;
         camera.position.set(SETTINGS.corridorWidth / 2, startRoofY + playerHeight, -16);
-        controls.getObject().rotation.y = Math.PI; // Rotate 180 degrees (facing opposite direction
+        getControls().getObject().rotation.y = Math.PI; // Rotate 180 degrees (facing opposite direction
     }); // End of fontLoader.load callback
 } // End of generateWorld function
 
@@ -3452,6 +3514,9 @@ function createOuterWall_SegmentFeatures(wallPlaneX, segmentCenterZ, segmentLeng
 
 // --- Event Handlers ---
 function onKeyDown(event) {
+    // Track car keys regardless of game mode
+    carKeyState[event.key.toLowerCase()] = true;
+    
     switch (event.code) {
         case 'KeyW': moveForward = true; break;
         case 'KeyA': moveLeft = true; break;
@@ -3462,14 +3527,15 @@ function onKeyDown(event) {
         case 'Space':
             if (isPlayerInCar) {
                 const garageCar = getLastGarageCar();
-                if (garageCar && garageCar.parent === controls.getObject()) {
+                const controlsObj = getControls().getObject();
+                if (garageCar && controlsObj && garageCar.parent === controlsObj) {
                     // Get car's world position and orientation before detaching
                     const carWorldPos = new THREE.Vector3();
                     garageCar.getWorldPosition(carWorldPos);
                     const carWorldQuat = new THREE.Quaternion();
                     garageCar.getWorldQuaternion(carWorldQuat);
 
-                    controls.getObject().remove(garageCar);
+                    getControls().getObject().remove(garageCar);
                     scene.add(garageCar);
                     garageCar.position.copy(carWorldPos);
                     garageCar.quaternion.copy(carWorldQuat);
@@ -3478,9 +3544,9 @@ function onKeyDown(event) {
                     const offsetDirection = new THREE.Vector3(1, 0, 0).applyQuaternion(carWorldQuat); // Local +X (left) in world space
                     // Clone carWorldPos to avoid modifying it before setting the car's final position
                     const playerExitPos = carWorldPos.clone().addScaledVector(offsetDirection, carDims.x / 2 + 0.5);
-                    controls.getObject().position.copy(playerExitPos);
+                    getControls().getObject().position.copy(playerExitPos);
                     // Place player's feet at the same level as the car's base (carWorldPos.y)
-                    controls.getObject().position.y = carWorldPos.y + playerHeight;
+                    getControls().getObject().position.y = carWorldPos.y + playerHeight;
                     playerVelocity.set(0, 0, 0);
                     playerOnGround = true;
                     isPlayerInCar = false;
@@ -3490,13 +3556,13 @@ function onKeyDown(event) {
                     // Jump from prone to crouch
                     playerState = 'crouching';
                     playerHeight = 1.0; // Adjust height for crouching
-                    controls.getObject().position.y += 0.5; // Adjust camera height
+                    getControls().getObject().position.y += 0.5; // Adjust camera height
                     SETTINGS.playerSpeed *= 2; // Restore crouch speed
                 } else if (playerState === 'crouching') {
                     // Jump from crouch to upright
                     playerState = 'upright';
                     playerHeight = 1.7; // Restore upright height
-                    controls.getObject().position.y += 0.7; // Adjust camera height
+                    getControls().getObject().position.y += 0.7; // Adjust camera height
                     SETTINGS.playerSpeed *= 2; // Restore normal speed
                 } else {
                     playerVelocity.y = SETTINGS.jumpVelocity; // Normal jump
@@ -3520,13 +3586,26 @@ function onKeyDown(event) {
             break;
         case 'KeyU': callElevator(1); break;
         case 'KeyJ': callElevator(-1); break;
-        case 'KeyE': interact(); break;
+        case 'KeyE': 
+            if (isPlayerInCar) {
+                // Exit car when in car mode
+                exitCar();
+            } else {
+                // Check for car interaction when not in car
+                checkCarInteraction();
+                // Original interact behavior for doors, etc.
+                interact();
+            }
+            break;
         //case 'KeyF': pickUpLampshade(); break; // Add pickup action
         case 'KeyP': toggleWireframeView(); break; // Toggle wireframe view
     }
 }
 
 function onKeyUp(event) {
+    // Track car keys regardless of game mode
+    carKeyState[event.key.toLowerCase()] = false;
+    
     switch (event.code) {
         case 'KeyW': moveForward = false; break;
         case 'KeyA': moveLeft = false; break;
@@ -3563,7 +3642,7 @@ function getClosestElevator() {
     if (elevators.length === 0) return null;
     if (elevators.length === 1) return elevators[0]; // Optimization for single elevator
 
-    const playerPos = controls.getObject().position;
+    const playerPos = getControls().getObject().position;
     let closestDistanceSq = Infinity;
     let closestElev = elevators[0];
 
@@ -3626,7 +3705,7 @@ function updateElevators(deltaTime) {
         handlePlayerCrush(elev, currentY, nextY);
 
         // Move player if they are on this specific elevator or its roof
-        const playerPos = controls.getObject().position;
+        const playerPos = getControls().getObject().position;
         const playerIsOnThisPlatform =
             Math.abs(playerPos.x - elev.platform.position.x) < (elev.config.shaftWidth / 2) &&
             Math.abs(playerPos.z - elev.platform.position.z) < (elev.config.shaftDepth / 2) &&
@@ -3679,7 +3758,7 @@ function updateElevators(deltaTime) {
 };
 
 function handlePlayerCrush(elevatorInstance, currentPlatformY, nextPlatformY) {
-    const playerPos = controls.getObject().position;
+    const playerPos = getControls().getObject().position;
     const platform = elevatorInstance.platform;
     const internalRoof = elevatorInstance.roof; // Elevator's own internal roof
     const shaftCeiling = elevatorInstance.shaftCeiling; // Topmost ceiling of the shaft
@@ -3695,13 +3774,13 @@ function handlePlayerCrush(elevatorInstance, currentPlatformY, nextPlatformY) {
             // Elevator touches the player's head
             playerState = 'crouching';
             playerHeight = 1.0; // Adjust height for crouching
-            controls.getObject().position.y -= 0.7; // Adjust camera height
+            getControls().getObject().position.y -= 0.7; // Adjust camera height
             SETTINGS.playerSpeed /= 2; // Restore crouch speed
         } else if (playerState === 'crouching' && nextPlatformY <= playerPos.y + playerHeight) {
             // Elevator touches the player again
             playerState = 'prone';
             playerHeight = 0.5; // Adjust height for prone
-            controls.getObject().position.y -= 0.5; // Adjust camera height
+            getControls().getObject().position.y -= 0.5; // Adjust camera height
             SETTINGS.playerSpeed /= 2; // Further reduce speed for prone
         } else if (playerState === 'prone' && nextPlatformY <= playerPos.y + playerHeight) {
             // Elevator crushes the player completely
@@ -3725,11 +3804,11 @@ function handlePlayerCrush(elevatorInstance, currentPlatformY, nextPlatformY) {
 
             if (playerEffectiveTopY >= shaftCeilingBottomY - 0.1) { // Collision with shaft ceiling
                 if (playerState === 'upright') {
-                    playerState = 'crouching'; playerHeight = 1.0; controls.getObject().position.y -= 0.7; SETTINGS.playerSpeed /= 2;
+                    playerState = 'crouching'; playerHeight = 1.0; getControls().getObject().position.y -= 0.7; SETTINGS.playerSpeed /= 2;
                     applyDamageToPlayer(50);
                     console.log("Player forced to crouch (shaft ceiling)!");
                 } else if (playerState === 'crouching') {
-                    playerState = 'prone'; playerHeight = 0.5; controls.getObject().position.y -= 0.5; SETTINGS.playerSpeed /= 2;
+                    playerState = 'prone'; playerHeight = 0.5; getControls().getObject().position.y -= 0.5; SETTINGS.playerSpeed /= 2;
                     applyDamageToPlayer(50);
                     console.log("Player forced to prone (shaft ceiling)!");
                 } else if (playerState === 'prone') {
@@ -3763,7 +3842,7 @@ function displayCrushBanner() {
 }
 
 function interact() {
-    if (!controls.isLocked) return;
+    if (!getControls().isLocked) return;
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2(0, 0); // Center of the screen
     raycaster.setFromCamera(pointer, camera);
@@ -3800,7 +3879,7 @@ function interact() {
                 door.remove(intersected); // remove knob
                 // Swing door open instantly based on player's position
                 {
-                    const playerX = controls.getObject().position.x;
+                    const playerX = getControls().getObject().position.x;
                     const doorX = door.position.x;
                     let openAngle;
                     if (doorX === 0) { // Right-side door
@@ -3817,7 +3896,7 @@ function interact() {
             if (!door.userData.locked) {
                 // Toggle open/close
                 if (!door.userData.isOpen) {
-                    const playerX = controls.getObject().position.x;
+                    const playerX = getControls().getObject().position.x;
                     const doorX = door.position.x;
                     let openAngle;
                     if (doorX === 0) { // Right-side door
@@ -4011,7 +4090,7 @@ function callSpecificElevatorToFloor(elevatorInstance, targetFloorIndex) {
 }
 
 function shoot() {
-    if (!controls.isLocked) return;
+    if (!getControls().isLocked || !camera) return;
 
     // Player shoots a projectile
     const projectileStartOffset = 0.5; // Distance in front of camera to spawn projectile
@@ -4553,6 +4632,170 @@ function respawnPlayer() {
     }
 }
 
+// --- Car Interaction Functions ---
+
+// Check if player is near a car and handle interaction
+function checkCarInteraction() {
+    if (isCarKeyPressed) {
+        return; // Prevent multiple rapid interactions
+    }
+    
+    if (isPlayerInCar) {
+        exitCar();
+    } else if (carObject) {
+        const carPosition = carObject.position;
+        const playerPosition = getControls().getObject().position;
+        const distance = playerPosition.distanceTo(carPosition);
+        
+        if (distance < SETTINGS.carCollisionRadius) {
+            enterCar();
+        }
+    }
+}
+
+// Set up player entering car
+function enterCar() {
+    isCarKeyPressed = true;
+    setTimeout(() => isCarKeyPressed = false, 500); // Debounce
+    
+    if (!carObject || !camera) return;
+    
+    // Store player's original position and rotation
+    originalCameraPosition = camera.position.clone();
+    originalCameraRotation = camera.rotation.clone();
+    
+    // Store position behind car for exit
+    carExitPosition = carObject.position.clone();
+    carExitPosition.z += 3; // Position behind car
+    
+    // Save original controls for restoring later
+    originalControls = getControls();
+    
+    // Set up third-person camera
+    setupCarCamera();
+    
+    // Disable first-person controls
+    controls.dispose();
+    controls = null;
+    
+    // Hide the crosshair
+    document.getElementById('crosshair').style.display = 'none';
+    
+    // Update UI to show car driving mode
+    document.getElementById('instructions').innerHTML = `
+        W: Accelerate<br/>
+        S: Brake / Reverse<br/>
+        A: Steer Left<br/>
+        D: Steer Right<br/>
+        E: Exit Vehicle<br/>
+    `;
+    
+    // Change game state
+    isPlayerInCar = true;
+}
+
+// Set up player exiting car
+function exitCar() {
+    isCarKeyPressed = true;
+    setTimeout(() => isCarKeyPressed = false, 500); // Debounce
+    
+    if (!carObject) return;
+    
+    // Restore player controls
+    if (originalControls) {
+        controls = originalControls;
+        if (controls && typeof controls.connect === 'function') {
+            controls.connect();
+        }
+    }
+    
+    // Position player behind the car
+    const controlsObj = getControls().getObject();
+    if (carExitPosition && controlsObj) {
+        controlsObj.position.copy(carExitPosition);
+    }
+    
+    // Reset car physics
+    resetCarPhysics();
+    
+    // Show crosshair again
+    document.getElementById('crosshair').style.display = 'block';
+    
+    // Restore original instructions
+    document.getElementById('instructions').innerHTML = `
+        Click to Lock Pointer<br/>
+        W/A/S/D: Move<br/>
+        SPACE: Jump (Basic)<br/>
+        SHIFT: Sprint<br/>
+        CROUCH: Ctrl<br/>
+        U: Call Elevator Up<br/>
+        J: Call Elevator Down<br/>
+        E: Interact with Doors (when looking at them)<br/>
+        Left Mouse: Shoot<br/>
+        Right Mouse: Throw Attack<br/>
+    `;
+    
+    // Change game state
+    isPlayerInCar = false;
+}
+
+// Set up third-person camera for car view
+function setupCarCamera() {
+    // Position camera behind car
+    const cameraOffset = new THREE.Vector3(0, SETTINGS.carCameraHeight, -SETTINGS.carCameraDistance);
+    cameraOffset.applyQuaternion(carObject.quaternion);
+    camera.position.copy(carObject.position).add(cameraOffset);
+    
+    // Make camera look at car
+    camera.lookAt(carObject.position);
+}
+
+// ...existing code...
+
+// Update the car and camera in driving mode
+function updateCarAndCamera(deltaTime) {
+    if (!isPlayerInCar || !carObject) return;
+    
+    // Update car position and rotation based on input with collision detection
+    const collisionResult = updateCar(carObject, deltaTime, carKeyState, worldObjects);
+    
+    // Handle collision feedback
+    if (collisionResult && collisionResult.collided) {
+        // Optional: Add screen shake, sound effects, or damage
+        console.log('Car collision detected!');
+        
+        // You could add damage to the player or car here
+        // applyDamageToPlayer(5); // 5% damage for collision
+    }
+    
+    // Check boundaries (prevent car from going too far out of bounds)
+    const boundaries = {
+        minX: -100,
+        maxX: 100,
+        minZ: -100,
+        maxZ: 100
+    };
+    checkCarBoundaries(carObject, boundaries);
+    
+    // Update camera position to follow car
+    const offset = new THREE.Vector3(0, SETTINGS.carCameraHeight, -SETTINGS.carCameraDistance);
+    offset.applyQuaternion(carObject.quaternion);
+    const targetPosition = new THREE.Vector3().addVectors(carObject.position, offset);
+    
+    // Smoothly move the camera
+    camera.position.lerp(targetPosition, 0.1);
+    
+    // Look at a point slightly above the car
+    const lookAtPoint = new THREE.Vector3(
+        carObject.position.x, 
+        carObject.position.y + 1.0, 
+        carObject.position.z
+    );
+    camera.lookAt(lookAtPoint);
+}
+
+// ...existing code...
+
 function resetGame() {
     playerLives = 3;
     playerScore = 0;
@@ -4612,67 +4855,14 @@ function updatePlayer(deltaTime) {
     const speed = (isSprinting ? SETTINGS.playerSpeed * SETTINGS.sprintMultiplier : SETTINGS.playerSpeed) * deltaTime;
     const cameraObject = controls.getObject(); // This is the holder for the camera
 
-    // --- Attach car to player camera if colliding ---
-    const garageCar = getLastGarageCar && getLastGarageCar();
-    if (garageCar && garageCar.parent === scene) {
-        // Check collision with car by name
-        const playerBox = new THREE.Box3().setFromCenterAndSize(
-            cameraObject.position, // Player's current camera position
-            new THREE.Vector3(0.5, playerHeight, 0.5)
-        );
-        let carBox;
-        if (garageCar.geometry && garageCar.geometry.boundingBox) {
-            carBox = garageCar.geometry.boundingBox.clone().applyMatrix4(garageCar.matrixWorld);
-        } else {
-            carBox = new THREE.Box3().setFromObject(garageCar);
-        }
-        if (playerBox.intersectsBox(carBox)) {
-            const playerEyeLevelInCar = 1.09; // Desired player eye level above car's base
-            const carWorldPos = new THREE.Vector3();
-            garageCar.getWorldPosition(carWorldPos);
-            const carWorldQuat = new THREE.Quaternion();
-            garageCar.getWorldQuaternion(carWorldQuat);
+    // If player is in car mode, skip regular player movement
+    if (isPlayerInCar) return;
 
-            let carDims = new THREE.Vector3(2, 1.2, 4.556); // Default fallback
-            if (garageCar.geometry && garageCar.geometry.boundingBox) {
-                carDims = garageCar.geometry.boundingBox.getSize(new THREE.Vector3());
-            } else {
-                const box = new THREE.Box3().setFromObject(garageCar);
-                carDims = box.getSize(new THREE.Vector3());
-            } // carDims now represents the actual dimensions of the loaded car model
-
-            // 1. Calculate where the player's camera should be in world space
-            // Player's XZ offset relative to car's center, rotated by car's orientation
-            const playerLocalOffsetXZ = new THREE.Vector3(-carDims.x / 4, 0, 0); // Left-center XZ
-            const playerWorldOffsetXZ = playerLocalOffsetXZ.applyQuaternion(carWorldQuat); // Use clone to avoid modifying original
-
-            const newCameraPos = carWorldPos.clone().add(playerWorldOffsetXZ);
-            newCameraPos.y = carWorldPos.y + playerEyeLevelInCar; // Player's Y is car's base Y + eye level
-
-            cameraObject.position.copy(newCameraPos);
-
-            // 2. Attach car to camera
-            // IMPORTANT: Get car's world orientation *before* it's parented to cameraObject
-            // because its world quaternion will change once it becomes a child.
-            const carWorldQuatBeforeParenting = new THREE.Quaternion();
-            garageCar.getWorldQuaternion(carWorldQuatBeforeParenting);
-
-            cameraObject.add(garageCar);
-
-            // Orient player's head to face the front of the car (-Z direction)
-            const carWorldForwardVector = new THREE.Vector3(0, 0, -1); // Car's local forward is -Z
-            carWorldForwardVector.applyQuaternion(carWorldQuatBeforeParenting);
-            const targetPlayerRotationY = Math.atan2(carWorldForwardVector.x, carWorldForwardVector.z);
-            controls.getObject().rotation.y = targetPlayerRotationY;
-            isPlayerInCar = true;
-
-            // 3. Set car's position relative to the camera
-            // Car's local position relative to camera = car's world position - camera's world position
-            const carLocalPosFromCamera = new THREE.Vector3();
-            carLocalPosFromCamera.subVectors(carWorldPos, newCameraPos);
-            garageCar.position.copy(carLocalPosFromCamera);
-        }
-    }
+    // Create player collision box for general collision detection
+    playerBox = new THREE.Box3().setFromCenterAndSize(
+        cameraObject.position, // Player's current camera position
+        new THREE.Vector3(0.5, playerHeight, 0.5)
+    );
 
     // Determine player's XZ input for this frame
     const moveDirection = new THREE.Vector3();
@@ -4685,11 +4875,7 @@ function updatePlayer(deltaTime) {
     const playerIntentHorizontalDisplacement = new THREE.Vector3(moveDirection.x * speed, 0, moveDirection.z * speed);
 
     // Check if player is attempting to jump this frame
-    // This flag should ideally be set by onKeyDown and cleared by onKeyUp or after use.
-    // For simplicity here, we'll assume a mechanism exists to know if jump was just pressed.
-    // Let's use a temporary check based on current playerOnGround and if velocity is near zero.
-    // A more robust solution would use a flag set directly by the 'Space' key press in onKeyDown.
-    const isPlayerTryingToJumpThisFrame = playerVelocity.y === SETTINGS.jumpVelocity; // This is a simplification
+    const isPlayerTryingToJumpThisFrame = playerVelocity.y === SETTINGS.jumpVelocity;
 
     const escalatorResult = calculateEscalatorBoost(
         cameraObject,
@@ -4697,7 +4883,7 @@ function updatePlayer(deltaTime) {
         escalatorStepsB, escalatorStartsB, escalatorEndsB,
         SETTINGS, deltaTime, playerHeight,
         playerIntentHorizontalDisplacement,
-        isPlayerTryingToJumpThisFrame // True if jump key was pressed and player was on ground
+        isPlayerTryingToJumpThisFrame
     );
 
     if (escalatorResult.disembarkedDown) {
@@ -5105,8 +5291,10 @@ function checkCollision() {
 }
 
 function updateEnemies(delta) {
+    if (!camera) return;
+    
     const playerPosition = new THREE.Vector3();
-    controls.getObject().getWorldPosition(playerPosition);
+    getControls().getObject().getWorldPosition(playerPosition);
     const playerFeetY = playerPosition.y - playerHeight;
     const playerFloor = Math.round(playerFeetY / SETTINGS.floorHeight);
 
@@ -5294,7 +5482,18 @@ function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
 
-    if (controls.isLocked) {
+    // Car driving mode
+    if (isPlayerInCar && carObject) {
+        updateCarAndCamera(deltaTime);
+        updateElevators(deltaTime);
+        updateEnemies(deltaTime);
+        updateProjectiles(deltaTime);
+        updateGarageDoors(deltaTime);
+        updateUI();
+        updateLODSystem();
+    } 
+    // Regular first-person mode
+    else if (getControls().isLocked) {
         updatePlayer(deltaTime);
         updateElevators(deltaTime);
         updateEnemies(deltaTime);
@@ -5693,7 +5892,7 @@ function updateSingleRoomVisibility(roomData) {
 }
 
 function updateLODSystem() {
-    const playerPos = controls.getObject().position;
+    const playerPos = getControls().getObject().position;
     const playerDirection = new THREE.Vector3();
     camera.getWorldDirection(playerDirection);
 
