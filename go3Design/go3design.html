@@ -714,6 +714,7 @@
 
             const lines = [
                 '• Graphic Design',
+                '• Custom Camo Design',
                 '• Logo Design',
                 '• 3D Modeling'
             ];
@@ -736,9 +737,13 @@
             const textureLoader = new THREE.TextureLoader();
             
             // Monitors
-            const monitorMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
+            const monitorMaterial = new THREE.MeshStandardMaterial({ color: 0x010203, roughness: 0.2 });
 
             const blueprintTexture = textureLoader.load('images/blueprint.jpg');
+            const camoWrapTexture = textureLoader.load('images/Designs/CustomCamoWraps.jpg');
+            const camoWrapMaterial = new THREE.MeshStandardMaterial({ map: camoWrapTexture });
+            const wrapTexture = textureLoader.load('images/Designs/Wrap.jpg');
+            const wrapMaterial = new THREE.MeshStandardMaterial({ map: wrapTexture });
             const defaultScreenMaterial = new THREE.MeshStandardMaterial({ map: blueprintTexture });
             
             // New material for the design services monitor
@@ -755,12 +760,16 @@
                 screen.position.y = deskTopY + 0.3;
                 
                 let display;
-                // The user said "a random desktop monitor". I'll choose the right one (i=1).
+                // Design Services on right side monitor (i=1).
                 if (i === 1) { 
                     display = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.43), designServicesMaterial);
                     display.userData.isDesignRequest = true; // Flag for click event
+                } else if (i === 0) {
+                    display = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.43), wrapMaterial);
+                    display.userData.isDesignRequest = true; // Flag for click event
                 } else {
-                    display = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.43), defaultScreenMaterial.clone());
+                    display = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.43), camoWrapMaterial);
+                    display.userData.isDesignRequest = true; // Flag for click event
                 }
 
                 display.position.z = 0.011;
