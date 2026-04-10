@@ -1,0 +1,232 @@
+Maze: <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Three.js Concentric Maze</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        canvas {
+            display: block;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-family: sans-serif;
+            pointer-events: none;
+            text-shadow: 1px 1px 2px black;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="info">Dynamic Three.js Maze<br/>Left Click + Drag to Rotate | Right Click + Drag to Pan | Scroll to Zoom</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- MAZE CONFIGURATION ---
+        const WIDTH = 21;  // Length/Width of the maze (Use odd numbers for a perfect center)
+        const HEIGHT = 15;
+        const WALL = 1;
+        const OBSTACLE = 2;
+        const EMPTY = 0;
+
+        // --- GENERATE GRID ---
+        const grid = [];
+        for (let y = 0; y < HEIGHT; y++) {
+            let row = [];
+            for (let x = 0; x < WIDTH; x++) {
+                // Determine concentric rings using distance from the closest edge
+                let dx = Math.min(x, WIDTH - 1 - x);
+                let dy = Math.min(y, HEIGHT - 1 - y);
+                let dist = Math.min(dx, dy);
+                
+                // Even distance means a Wall (0 is outer perimeter, 2 is inner wall, etc)
+                // Odd distance means a Corridor (1 is outer corridor, 3 is inner corridor, etc)
+                row.push((dist % 2 === 0) ? WALL : EMPTY);
+            }
+            grid.push(row);
+        }
+
+        // --- PLACE OBSTACLES & DETOURS ---
+        // Helper function to process segments of the corridors
+        const addObstacles = (startX, startY, dX, dY, len, cutDX, cutDY) => {
+            let lastS = -10; // Track last obstacle to prevent overlapping detours
+            
+            // Iterate in chunks of 5 blocks
+            for (let chunk = 0; chunk < len; chunk += 5) {
+                let possibleSteps = [];
+                // Check steps within this 5-block chunk
+                for (let s = chunk; s < chunk + 5 && s < len; s++) {
+                    // Only even steps. Prevent placing too close to corners (s >= 2 && s <= len - 3)
+                    // Ensure space between obstacles so inner wall cuts don't overlap (s - lastS >= 4)
+                    if (s % 2 === 0 && s >= 2 && s <= len - 3 && (s - lastS) >= 4) {
+                        possibleSteps.push(s);
+                    }
+                }
+
+                if (possibleSteps.length > 0) {
+                    // Pick a random valid even step
+                    let s = possibleSteps[Math.floor(Math.random() * possibleSteps.length)];
+                    lastS = s;
+                    
+                    // Obstacle coordinates
+                    let ox = startX + s * dX;
+                    let oy = startY + s * dY;
+                    
+                    // Place obstacle block in the corridor
+                    grid[oy][ox] = OBSTACLE;
+                    
+                    // The detour cuts through the inner wall. 
+                    // 1 block before the obstacle (inward cut) and 1 block after (outward return).
+                    let cut1X = ox - dX + cutDX;
+                    let cut1Y = oy - dY + cutDY;
+                    let cut2X = ox + dX + cutDX;
+                    let cut2Y = oy + dY + cutDY;
+                    
+                    // Remove wall blocks to create the tight 2-block inward, forward, and backward path
+                    grid[cut1Y][cut1X] = EMPTY;
+                    grid[cut2Y][cut2X] = EMPTY;
+                }
+            }
+        };
+
+        const maxD = Math.floor(Math.min(WIDTH, HEIGHT) / 2);
+        
+        // Iterate over corridors (d = 1, 3, 5...). Stop before the center so detours don't go out of bounds.
+        for (let d = 1; d < maxD - 2; d += 2) {
+            let lenX = WIDTH - 2 * d - 2;
+            let lenY = HEIGHT - 2 * d - 2;
+            
+            // Process the 4 segments of the current rectangular ring
+            // Top: move +X, cut inward is +Y
+            addObstacles(d + 1, d, 1, 0, lenX, 0, 1);
+            // Right: move +Y, cut inward is -X
+            addObstacles(WIDTH - 1 - d, d + 1, 0, 1, lenY, -1, 0);
+            // Bottom: move -X, cut inward is -Y
+            addObstacles(WIDTH - 2 - d, HEIGHT - 1 - d, -1, 0, lenX, 0, -1);
+            // Left: move -Y, cut inward is +X
+            addObstacles(d, HEIGHT - 2 - d, 0, -1, lenY, 1, 0);
+        }
+
+        // --- THREE.JS SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+        // Add a slight fog to give it depth
+        scene.fog = new THREE.Fog(0x1a1a1a, 20, 100);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        // Position camera to look down at the maze
+        camera.position.set(0, Math.max(WIDTH, HEIGHT) * 0.8, Math.max(WIDTH, HEIGHT) * 0.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 0, 0);
+        controls.enableDamping = true;
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(WIDTH / 2, 50, HEIGHT / 2);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.left = -WIDTH / 2;
+        dirLight.shadow.camera.right = WIDTH / 2;
+        dirLight.shadow.camera.top = HEIGHT / 2;
+        dirLight.shadow.camera.bottom = -HEIGHT / 2;
+        scene.add(dirLight);
+
+        // --- RENDER GRID BLOCKS USING INSTANCED MESH ---
+        // Using InstancedMesh for high performance rendering of thousands of blocks
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const wallMaterial = new THREE.MeshLambertMaterial({ color: 0x4a5568 });
+        const obstacleMaterial = new THREE.MeshLambertMaterial({ color: 0xe53e3e }); // Red to highlight obstacles
+
+        // Count blocks
+        let wallCount = 0;
+        let obstacleCount = 0;
+        for (let y = 0; y < HEIGHT; y++) {
+            for (let x = 0; x < WIDTH; x++) {
+                if (grid[y][x] === WALL) wallCount++;
+                if (grid[y][x] === OBSTACLE) obstacleCount++;
+            }
+        }
+
+        const wallsMesh = new THREE.InstancedMesh(geometry, wallMaterial, wallCount);
+        wallsMesh.castShadow = true;
+        wallsMesh.receiveShadow = true;
+
+        const obstaclesMesh = new THREE.InstancedMesh(geometry, obstacleMaterial, obstacleCount);
+        obstaclesMesh.castShadow = true;
+        obstaclesMesh.receiveShadow = true;
+
+        const dummy = new THREE.Object3D();
+        let wIndex = 0;
+        let oIndex = 0;
+
+        for (let y = 0; y < HEIGHT; y++) {
+            for (let x = 0; x < WIDTH; x++) {
+                if (grid[y][x] !== EMPTY) {
+                    // Center the maze at (0,0,0)
+                    dummy.position.set(x - WIDTH / 2 + 0.5, 0.5, y - HEIGHT / 2 + 0.5);
+                    dummy.updateMatrix();
+                    
+                    if (grid[y][x] === WALL) {
+                        wallsMesh.setMatrixAt(wIndex++, dummy.matrix);
+                    } else if (grid[y][x] === OBSTACLE) {
+                        obstaclesMesh.setMatrixAt(oIndex++, dummy.matrix);
+                    }
+                }
+            }
+        }
+        scene.add(wallsMesh);
+        scene.add(obstaclesMesh);
+
+        // --- FLOOR ---
+        const floorGeo = new THREE.PlaneGeometry(WIDTH, HEIGHT);
+        const floorMat = new THREE.MeshLambertMaterial({ color: 0x2d3748 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // --- RESIZE LISTENER ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
