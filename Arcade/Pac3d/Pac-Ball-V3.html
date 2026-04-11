@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gravity Pac-Ball Maze</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050510;
+            font-family: 'Courier New', Courier, monospace;
+            touch-action: none; 
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        canvas {
+            display: block;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        #top-bar {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        #score {
+            color: #ffea00;
+            font-size: clamp(20px, 4vw, 28px);
+            font-weight: bold;
+            text-shadow: 0 0 10px #ffea0088;
+        }
+        #instructions {
+            color: #4df;
+            font-size: clamp(12px, 3vw, 16px);
+            text-align: right;
+            text-shadow: 0 0 8px #4df8;
+            max-width: 300px;
+        }
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            z-index: 10;
+        }
+        h1 {
+            color: #4df; 
+            text-shadow: 0 0 15px #4df; 
+            margin-bottom: 40px;
+            text-align: center;
+            font-size: clamp(32px, 6vw, 48px);
+            padding: 0 20px;
+        }
+        #start-btn {
+            padding: 15px 40px;
+            font-size: 24px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            color: #000;
+            background: #ffea00;
+            border: 4px solid #fff;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 0 20px #ffea00;
+            transition: transform 0.1s;
+        }
+        #start-btn:active {
+            transform: scale(0.95);
+        }
+        #end-msg {
+            display: none;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-size: clamp(36px, 8vw, 56px);
+            font-weight: bold;
+            text-shadow: 0 0 20px #ffea00;
+            text-align: center;
+            background: rgba(0,0,0,0.85);
+            padding: 30px 50px;
+            border-radius: 15px;
+            border: 4px solid #fff;
+            z-index: 20;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+                "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="ui-layer">
+        <div id="top-bar">
+            <div id="score">SCORE: 0 / 0</div>
+            <div id="instructions">Tilt device or DRAG screen to roll the Pac-Ball! Beware of the Ghost!</div>
+        </div>
+        <div id="end-msg">MAZE CLEARED!</div>
+    </div>
+
+    <div id="overlay">
+        <h1>GRAVITY PAC-BALL</h1>
+        <button id="start-btn">TAP TO START</button>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import * as CANNON from 'cannon-es';
+
+        // --- CONFIGURATION ---
+        const isPortrait = window.innerHeight > window.innerWidth;
+        const WIDTH = isPortrait ? 15 : 21;  
+        const HEIGHT = isPortrait ? 21 : 15;
+        
+        const EMPTY = 0;
+        const WALL = 1;
+        const OBSTACLE = 2;
+        const EMPTY_NO_DOT = 3; 
+        const GHOST_DOOR = 4;   
+
+        const GROUP_WALL = 1;
+        const GROUP_PLAYER = 2;
+        const GROUP_GHOST = 4;
+        const GROUP_DOOR = 8;
+
+        const grid = [];
+        for (let y = 0; y < HEIGHT; y++) {
+            let row = [];
+            for (let x = 0; x < WIDTH; x++) {
+                let dx = Math.min(x, WIDTH - 1 - x);
+                let dy = Math.min(y, HEIGHT - 1 - y);
+                let dist = Math.min(dx, dy);
+                row.push((dist % 2 === 0) ? WALL : EMPTY);
+            }
+            grid.push(row);
+        }
+
+        const addObstacles = (startX, startY, dX, dY, len, cutDX, cutDY) => {
+            let lastS = -10; 
+            for (let chunk = 0; chunk < len; chunk += 5) {
+                let possibleSteps = [];
+                for (let s = chunk; s < chunk + 5 && s < len; s++) {
+                    if (s % 2 === 0 && s >= 2 && s <= len - 3 && (s - lastS) >= 4) {
+                        possibleSteps.push(s);
+                    }
+                }
+                if (possibleSteps.length > 0) {
+                    let s = possibleSteps[Math.floor(Math.random() * possibleSteps.length)];
+                    lastS = s;
+                    let ox = startX + s * dX;
+                    let oy = startY + s * dY;
+                    grid[oy][ox] = OBSTACLE;
+                    let cut1X = ox - dX + cutDX;
+                    let cut1Y = oy - dY + cutDY;
+                    let cut2X = ox + dX + cutDX;
+                    let cut2Y = oy + dY + cutDY;
+                    grid[cut1Y][cut1X] = EMPTY;
+                    grid[cut2Y][cut2X] = EMPTY;
+                }
+            }
+        };
+
+        const maxD = Math.floor(Math.min(WIDTH, HEIGHT) / 2);
+        for (let d = 1; d < maxD - 2; d += 2) {
+            let lenX = WIDTH - 2 * d - 2;
+            let lenY = HEIGHT - 2 * d - 2;
+            addObstacles(d + 1, d, 1, 0, lenX, 0, 1);
+            addObstacles(WIDTH - 1 - d, d + 1, 0, 1, lenY, -1, 0);
+            addObstacles(WIDTH - 2 - d, HEIGHT - 1 - d, -1, 0, lenX, 0, -1);
+            addObstacles(d, HEIGHT - 2 - d, 0, -1, lenY, 1, 0);
+        }
+
+        const cx = Math.floor(WIDTH / 2);
+        const cy = Math.floor(HEIGHT / 2);
+
+        for (let y = cy - 2; y <= cy + 2; y++) {
+            for (let x = cx - 2; x <= cx + 2; x++) {
+                if (y === cy - 2 || y === cy + 2 || x === cx - 2 || x === cx + 2) {
+                    grid[y][x] = WALL; 
+                } else {
+                    grid[y][x] = EMPTY_NO_DOT; 
+                }
+            }
+        }
+        
+        for (let y = cy - 3; y <= cy + 3; y++) {
+            for (let x = cx - 3; x <= cx + 3; x++) {
+                if (y === cy - 3 || y === cy + 3 || x === cx - 3 || x === cx + 3) {
+                    if (grid[y][x] === OBSTACLE) grid[y][x] = EMPTY;
+                }
+            }
+        }
+        grid[cy - 2][cx] = GHOST_DOOR; 
+        grid[cy - 3][cx] = EMPTY; 
+
+        // --- TRACE TEST / FLOOD FILL ---
+        let connected = false;
+        let iter = 0;
+        while (!connected && iter < 50) {
+            iter++;
+            let visited = Array(HEIGHT).fill().map(() => Array(WIDTH).fill(false));
+            let queue = [[1, 1]];
+            visited[1][1] = true;
+            while (queue.length > 0) {
+                let [qx, qy] = queue.shift();
+                [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dx,dy])=>{
+                    let nx = qx+dx, ny = qy+dy;
+                    if(nx>0 && nx<WIDTH-1 && ny>0 && ny<HEIGHT-1 && !visited[ny][nx] && 
+                       (grid[ny][nx]===EMPTY || grid[ny][nx]===EMPTY_NO_DOT || grid[ny][nx]===GHOST_DOOR)) {
+                        visited[ny][nx] = true;
+                        queue.push([nx,ny]);
+                    }
+                });
+            }
+            let unvisited = null;
+            for(let y=1; y<HEIGHT-1; y++) {
+                for(let x=1; x<WIDTH-1; x++) {
+                    if(grid[y][x]===EMPTY && !visited[y][x]) { unvisited = {x,y}; break; }
+                }
+                if(unvisited) break;
+            }
+            if(!unvisited) connected = true;
+            else {
+                let nearest = null, minDist = Infinity;
+                for(let y=1; y<HEIGHT-1; y++) {
+                    for(let x=1; x<WIDTH-1; x++) {
+                        if(visited[y][x] && grid[y][x]!==WALL && grid[y][x]!==OBSTACLE) {
+                            let d = Math.abs(x-unvisited.x)+Math.abs(y-unvisited.y);
+                            if(d < minDist) { minDist=d; nearest={x,y}; }
+                        }
+                    }
+                }
+                if(nearest) {
+                    let cxp = unvisited.x, cyp = unvisited.y;
+                    while(cxp!==nearest.x || cyp!==nearest.y) {
+                        if(Math.abs(nearest.x-cxp) > Math.abs(nearest.y-cyp)) cxp += (cxp<nearest.x?1:-1);
+                        else cyp += (cyp<nearest.y?1:-1);
+                        if(!(cyp >= cy-2 && cyp <= cy+2 && cxp >= cx-2 && cxp <= cx+2)) {
+                            if(grid[cyp][cxp]===WALL || grid[cyp][cxp]===OBSTACLE) grid[cyp][cxp]=EMPTY;
+                        }
+                    }
+                } else { grid[unvisited.y][unvisited.x] = WALL; }
+            }
+        }
+
+        // --- SCENE SETUP ---
+        let score = 0, totalDots = 0, dotsEatenCount = 0, isPlaying = false, isHunterMode = false, hunterTimer = 0;
+        const activeDots = [], activeCherries = [];
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050510);
+        scene.fog = new THREE.Fog(0x050510, 20, 80);
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        function updateCameraFit() {
+            camera.aspect = window.innerWidth/window.innerHeight;
+            camera.updateProjectionMatrix();
+            const viewSize = Math.max(WIDTH/camera.aspect, HEIGHT) * 0.85;
+            camera.position.set(0, viewSize, viewSize * 0.35);
+            camera.lookAt(0, 0, 0);
+        }
+        updateCameraFit();
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        dirLight.position.set(WIDTH/2, 30, HEIGHT/2);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        const mazeGroup = new THREE.Group();
+        scene.add(mazeGroup);
+
+        const world = new CANNON.World();
+        world.gravity.set(0, -40, 0);
+        const physicsMaterial = new CANNON.Material("standard");
+        world.addContactMaterial(new CANNON.ContactMaterial(physicsMaterial, physicsMaterial, { friction: 0.1, restitution: 0.2 }));
+
+        const floorBody = new CANNON.Body({ mass: 0, material: physicsMaterial, collisionFilterGroup: GROUP_WALL, collisionFilterMask: GROUP_PLAYER|GROUP_GHOST });
+        floorBody.addShape(new CANNON.Plane());
+        floorBody.quaternion.setFromEuler(-Math.PI/2, 0, 0);
+        world.addBody(floorBody);
+
+        const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(WIDTH, HEIGHT), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+        floorMesh.rotation.x = -Math.PI/2;
+        floorMesh.receiveShadow = true;
+        mazeGroup.add(floorMesh);
+
+        const wallGeo = new THREE.BoxGeometry(1, 1, 1);
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x1919A6, emissive: 0x050540 });
+        const obstacleMat = new THREE.MeshStandardMaterial({ color: 0x3333FF, emissive: 0x111150 });
+        const doorMat = new THREE.MeshStandardMaterial({ color: 0xff00bb, transparent: true, opacity: 0.4 });
+
+        let wallCount=0, obsCount=0, dotCount=0;
+        for(let y=0; y<HEIGHT; y++) for(let x=0; x<WIDTH; x++) {
+            if(grid[y][x]===WALL) wallCount++; else if(grid[y][x]===OBSTACLE) obsCount++; else if(grid[y][x]===EMPTY) dotCount++;
+        }
+        const wallsMesh = new THREE.InstancedMesh(wallGeo, wallMat, wallCount);
+        const obsMesh = new THREE.InstancedMesh(wallGeo, obstacleMat, obsCount);
+        const dotsMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffeebb }), dotCount);
+        
+        const dummy = new THREE.Object3D();
+        const boxShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5));
+        let wi=0, oi=0, di=0, spawnPos=null, ghostSpawnPos=null;
+
+        for (let y = 0; y < HEIGHT; y++) {
+            for (let x = 0; x < WIDTH; x++) {
+                let px = x - WIDTH/2 + 0.5, py = 0.5, pz = y - HEIGHT/2 + 0.5;
+                dummy.position.set(px, py, pz);
+                dummy.updateMatrix();
+
+                if (grid[y][x] === GHOST_DOOR) {
+                    const dBody = new CANNON.Body({ mass: 0, material: physicsMaterial, collisionFilterGroup: GROUP_DOOR, collisionFilterMask: GROUP_PLAYER });
+                    dBody.addShape(boxShape); dBody.position.set(px, py, pz); world.addBody(dBody);
+                    const dMesh = new THREE.Mesh(wallGeo, doorMat); dMesh.position.set(px, py, pz); mazeGroup.add(dMesh);
+                } else if (grid[y][x] === WALL || grid[y][x] === OBSTACLE) {
+                    const wBody = new CANNON.Body({ mass: 0, material: physicsMaterial, collisionFilterGroup: GROUP_WALL, collisionFilterMask: GROUP_PLAYER|GROUP_GHOST });
+                    wBody.addShape(boxShape); wBody.position.set(px, py, pz); world.addBody(wBody);
+                    if (grid[y][x]===WALL) wallsMesh.setMatrixAt(wi++, dummy.matrix); else obsMesh.setMatrixAt(oi++, dummy.matrix);
+                } else {
+                    if(!spawnPos && x===1 && y===1) spawnPos = {x:px, y:py, z:pz};
+                    if(grid[y][x]===EMPTY_NO_DOT && x===cx && y===cy) ghostSpawnPos = {x:px, y:py, z:pz};
+                    if(grid[y][x]===EMPTY) {
+                        let isCherry = (x===1 && y===HEIGHT-2)||(x===WIDTH-2 && y===1)||(x===WIDTH-2 && y===HEIGHT-2);
+                        if(isCherry) {
+                            const cg = new THREE.Group();
+                            const c1 = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshStandardMaterial({color:0xff0055}));
+                            c1.position.set(-0.1, 0.15, 0); cg.add(c1);
+                            cg.position.set(px, 0, pz); mazeGroup.add(cg);
+                            activeCherries.push({ group: cg, x: px, z: pz, eaten: false });
+                        } else {
+                            dummy.position.set(px, 0.2, pz); dummy.updateMatrix();
+                            dotsMesh.setMatrixAt(di, dummy.matrix);
+                            activeDots.push({ index: di++, x: px, z: pz, eaten: false });
+                        }
+                    }
+                }
+            }
+        }
+        mazeGroup.add(wallsMesh); mazeGroup.add(obsMesh); mazeGroup.add(dotsMesh);
+        totalDots = di;
+
+        // --- ENTITIES ---
+        const ballRadius = 0.35;
+        const ballMesh = new THREE.Mesh(new THREE.SphereGeometry(ballRadius, 32, 32), new THREE.MeshStandardMaterial({ color: 0xffea00 }));
+        ballMesh.castShadow = true; ballMesh.add(new THREE.PointLight(0xffea00, 0.8, 6)); mazeGroup.add(ballMesh);
+        const ballBody = new CANNON.Body({ mass: 1, material: physicsMaterial, linearDamping: 0.35, collisionFilterGroup: GROUP_PLAYER, collisionFilterMask: GROUP_WALL|GROUP_GHOST|GROUP_DOOR });
+        ballBody.addShape(new CANNON.Sphere(ballRadius)); ballBody.position.set(spawnPos.x, spawnPos.y, spawnPos.z); world.addBody(ballBody);
+
+        const ghostGroup = new THREE.Group();
+        const ghostMat = new THREE.MeshStandardMaterial({ color: 0x39ff14, emissive: 0x115500 });
+        ghostGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.35), ghostMat));
+        const ghostLight = new THREE.PointLight(0x39ff14, 1.2, 5); ghostGroup.add(ghostLight); mazeGroup.add(ghostGroup);
+        const ghostRadius = 0.35;
+        const ghostBody = new CANNON.Body({ mass: 1, material: physicsMaterial, linearDamping: 0.6, collisionFilterGroup: GROUP_GHOST, collisionFilterMask: GROUP_WALL|GROUP_PLAYER });
+        ghostBody.addShape(new CANNON.Sphere(ghostRadius)); ghostBody.position.set(ghostSpawnPos.x, ghostSpawnPos.y, ghostSpawnPos.z); world.addBody(ghostBody);
+
+        // --- CONTROLS ---
+        let targetTiltX = 0, targetTiltZ = 0;
+        const MAX_TILT = 0.25;
+        window.addEventListener('mousemove', (e) => { if(!isPlaying) return; targetTiltZ = -((e.clientX/window.innerWidth)*2-1)*MAX_TILT; targetTiltX = -(-(e.clientY/window.innerHeight)*2+1)*MAX_TILT; });
+        
+        document.getElementById('start-btn').addEventListener('click', async () => {
+            document.getElementById('overlay').style.display = 'none';
+            try { 
+                if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+                if (screen.orientation?.lock) await screen.orientation.lock(screen.orientation.type);
+            } catch(e) {}
+            isPlaying = true;
+        });
+
+        const hiddenMatrix = new THREE.Matrix4().makeTranslation(0, -100, 0);
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (!isPlaying) { renderer.render(scene, camera); return; }
+            const dt = Math.min(clock.getDelta(), 0.1);
+
+            mazeGroup.rotation.x += (targetTiltX - mazeGroup.rotation.x) * 12 * dt;
+            mazeGroup.rotation.z += (targetTiltZ - mazeGroup.rotation.z) * 12 * dt;
+            world.gravity.set(-Math.sin(mazeGroup.rotation.z)*60, -40, Math.sin(mazeGroup.rotation.x)*60);
+
+            if (isHunterMode) {
+                hunterTimer -= dt;
+                if (hunterTimer <= 0) { isHunterMode = false; ghostMat.color.setHex(0x39ff14); ghostLight.color.setHex(0x39ff14); }
+                else if (hunterTimer < 2 && Math.floor(hunterTimer*10)%2===0) ghostMat.color.setHex(0xffffff);
+                else ghostMat.color.setHex(0x0033ff);
+            }
+
+            let bpos = ballBody.position, gpos = ghostBody.position;
+            let dx = bpos.x - gpos.x, dz = bpos.z - gpos.z;
+            
+            // Exit logic: if in house, ignore player, go for door
+            if (Math.abs(gpos.x) < 1.8 && gpos.z > -2.2 && gpos.z < 1.8 && !isHunterMode) {
+                dx = 0 - gpos.x; dz = -3.0 - gpos.z;
+            }
+
+            let dist = Math.sqrt(dx*dx + dz*dz);
+            if (dist > 0.05) {
+                // REDUCED FORCE: Lowering strength from 25 to 12
+                let strength = isHunterMode ? 18 : 12;
+                if (isHunterMode) { dx = -dx; dz = -dz; }
+                ghostBody.applyForce(new CANNON.Vec3((dx/dist) * strength, 0, (dz/dist) * strength), gpos);
+                ghostGroup.rotation.y += (Math.atan2(dx, dz) - ghostGroup.rotation.y) * dt * 5;
+            }
+
+            // SPEED CAP: Prevent tunneling by capping ghost velocity
+            const MAX_GHOST_SPEED = 6;
+            let vel = ghostBody.velocity;
+            let speed = vel.length();
+            if (speed > MAX_GHOST_SPEED) {
+                vel.scale(MAX_GHOST_SPEED / speed, ghostBody.velocity);
+            }
+
+            // PRECISION: Increased sub-steps from 3 to 10 to help collision detection
+            world.step(1/60, dt, 10);
+
+            ballMesh.position.copy(bpos); ballMesh.quaternion.copy(ballBody.quaternion);
+            ghostGroup.position.copy(gpos);
+
+            let finalDx = bpos.x - gpos.x, finalDz = bpos.z - gpos.z;
+            let finalDist = Math.sqrt(finalDx*finalDx + finalDz*finalDz);
+
+            if (finalDist < (ballRadius + ghostRadius) * 0.9) {
+                if (isHunterMode) {
+                    score += 5; ghostBody.position.set(ghostSpawnPos.x, ghostSpawnPos.y, ghostSpawnPos.z);
+                    ghostBody.velocity.set(0,0,0); isHunterMode = false;
+                    document.getElementById('score').innerText = `SCORE: ${score}`;
+                } else {
+                    isPlaying = false;
+                    const m = document.getElementById('end-msg'); m.innerText = 'CAUGHT BY GHOST!';
+                    m.style.color = '#f03'; m.style.display = 'block';
+                }
+            }
+
+            let dotsUpdated = false;
+            activeCherries.forEach(c => {
+                if(!c.eaten && Math.hypot(bpos.x-c.x, bpos.z-c.z) < 0.6) {
+                    c.eaten=true; c.group.visible=false; isHunterMode=true; hunterTimer=10;
+                    ghostMat.color.setHex(0x0033ff); ghostLight.color.setHex(0x0033ff);
+                }
+            });
+            activeDots.forEach(dot => {
+                if(!dot.eaten && Math.hypot(bpos.x-dot.x, bpos.z-dot.z) < 0.5) {
+                    dot.eaten=true; score++; dotsEatenCount++;
+                    dotsMesh.setMatrixAt(dot.index, hiddenMatrix); dotsUpdated=true;
+                    document.getElementById('score').innerText = `SCORE: ${score}`;
+                }
+            });
+            if(dotsUpdated) {
+                dotsMesh.instanceMatrix.needsUpdate = true;
+                if(dotsEatenCount >= totalDots) { isPlaying=false; document.getElementById('end-msg').style.display='block'; }
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
