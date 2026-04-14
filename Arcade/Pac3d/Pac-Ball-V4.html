@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>PacMan Gravity Ball</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #050510; overflow: hidden; font-family: sans-serif; }
+  #overlay, #gameover { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(5,5,16,0.92); z-index: 10; }
+  #gameover { display: none; }
+  h1 { color: #ffea00; font-size: 2.5rem; letter-spacing: 0.15em; margin-bottom: 1rem; }
+  p { color: #aaa; margin-bottom: 1.5rem; text-align: center; max-width: 340px; line-height: 1.5; }
+  button { background: #ffea00; color: #050510; border: none; padding: 0.75rem 2.5rem; font-size: 1.1rem; font-weight: bold; border-radius: 6px; cursor: pointer; letter-spacing: 0.1em; }
+  #score { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); color: #ffea00; font-size: 1.1rem; font-weight: bold; letter-spacing: 0.1em; z-index: 5; pointer-events: none; }
+  #end-msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 2rem; font-weight: bold; color: #39ff14; display: none; z-index: 5; text-align: center; pointer-events: none; }
+  #warp-flash { position: fixed; inset: 0; background: rgba(0,200,255,0.18); pointer-events: none; opacity: 0; z-index: 4; transition: opacity 0.15s; }
+</style>
+</head>
+<body>
+<div id="overlay">
+  <h1>PAC-BALL</h1>
+  <p>Tilt the maze with your mouse (or device gyro) to roll the ball. Eat all the dots. Avoid the ghost — or eat a cherry to hunt it! Warp tunnels connect the left and right walls.</p>
+  <button id="start-btn">PLAY</button>
+</div>
+<div id="gameover">
+  <h1 id="go-title">GAME OVER</h1>
+  <p id="go-msg">You were caught!</p>
+  <button id="restart-btn">PLAY AGAIN</button>
+</div>
+<div id="score">SCORE: 0</div>
+<div id="end-msg"></div>
+<div id="warp-flash"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
+
+const isPortrait = window.innerHeight > window.innerWidth;
+const WIDTH  = isPortrait ? 15 : 21;
+const HEIGHT = isPortrait ? 21 : 15;
+
+const EMPTY = 0, WALL = 1, OBSTACLE = 2, EMPTY_NO_DOT = 3, GHOST_DOOR = 4;
+const GROUP_WALL = 1, GROUP_PLAYER = 2, GROUP_GHOST = 4, GROUP_DOOR = 8;
+
+// ---- GRID GENERATION ----
+const grid = [];
+for (let y = 0; y < HEIGHT; y++) {
+  let row = [];
+  for (let x = 0; x < WIDTH; x++) {
+    let dx = Math.min(x, WIDTH-1-x), dy = Math.min(y, HEIGHT-1-y);
+    row.push((Math.min(dx,dy) % 2 === 0) ? WALL : EMPTY);
+  }
+  grid.push(row);
+}
+
+const addObstacles = (startX, startY, dX, dY, len, cutDX, cutDY) => {
+  let lastS = -10;
+  for (let chunk = 0; chunk < len; chunk += 5) {
+    let possible = [];
+    for (let s = chunk; s < chunk+5 && s < len; s++)
+      if (s%2===0 && s>=2 && s<=len-3 && (s-lastS)>=4) possible.push(s);
+    if (possible.length > 0) {
+      let s = possible[Math.floor(Math.random()*possible.length)]; lastS = s;
+      let ox = startX+s*dX, oy = startY+s*dY;
+      grid[oy][ox] = OBSTACLE;
+      grid[oy-dY+cutDY][ox-dX+cutDX] = EMPTY;
+      grid[oy+dY+cutDY][ox+dX+cutDX] = EMPTY;
+    }
+  }
+};
+
+const maxD = Math.floor(Math.min(WIDTH,HEIGHT)/2);
+for (let d = 1; d < maxD-2; d += 2) {
+  addObstacles(d+1, d,          1,  0, WIDTH-2*d-2,  0,  1);
+  addObstacles(WIDTH-1-d, d+1,  0,  1, HEIGHT-2*d-2,-1,  0);
+  addObstacles(WIDTH-2-d, HEIGHT-1-d,-1,0,WIDTH-2*d-2, 0, -1);
+  addObstacles(d, HEIGHT-2-d,   0, -1, HEIGHT-2*d-2,  1,  0);
+}
+
+const cx = Math.floor(WIDTH/2), cy = Math.floor(HEIGHT/2);
+for (let y = cy-2; y <= cy+2; y++)
+  for (let x = cx-2; x <= cx+2; x++)
+    grid[y][x] = (y===cy-2||y===cy+2||x===cx-2||x===cx+2) ? WALL : EMPTY_NO_DOT;
+for (let y = cy-3; y <= cy+3; y++)
+  for (let x = cx-3; x <= cx+3; x++)
+    if ((y===cy-3||y===cy+3||x===cx-3||x===cx+3) && grid[y][x]===OBSTACLE) grid[y][x]=EMPTY;
+grid[cy-2][cx] = GHOST_DOOR;
+grid[cy-3][cx] = EMPTY;
+
+// ---- WARP TUNNEL: punch holes in left and right walls at mid-height row ----
+// warpRow is the grid row closest to center height (on an EMPTY row if possible)
+const warpRow = cy; // center row — guaranteed to be navigable corridor
+// Left wall is x=0, right wall is x=WIDTH-1.
+// We make x=0 and x=WIDTH-1 at warpRow become EMPTY so the ball can pass through.
+// We'll handle teleport in JS; the cells are kept WALL visually but we carve the physics gap.
+const WARP_LEFT_X  = 0;
+const WARP_RIGHT_X = WIDTH - 1;
+// We don't change the grid values (keep WALL for rendering) but we need the world px coords:
+const warpLeftPX  = WARP_LEFT_X  - WIDTH/2 + 0.5;
+const warpRightPX = WARP_RIGHT_X - WIDTH/2 + 0.5;
+const warpPZ      = warpRow - HEIGHT/2 + 0.5;
+
+// ---- FLOOD FILL CONNECTIVITY FIX ----
+let connected = false, iter = 0;
+while (!connected && iter < 50) {
+  iter++;
+  let visited = Array(HEIGHT).fill().map(()=>Array(WIDTH).fill(false));
+  let q = [[1,1]]; visited[1][1] = true;
+  while (q.length) {
+    let [qx,qy] = q.shift();
+    [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dx,dy])=>{
+      let nx=qx+dx, ny=qy+dy;
+      if (nx>0&&nx<WIDTH-1&&ny>0&&ny<HEIGHT-1&&!visited[ny][nx]&&
+          (grid[ny][nx]===EMPTY||grid[ny][nx]===EMPTY_NO_DOT||grid[ny][nx]===GHOST_DOOR)) {
+        visited[ny][nx]=true; q.push([nx,ny]);
+      }
+    });
+  }
+  let unvisited = null;
+  for (let y=1;y<HEIGHT-1;y++) { for (let x=1;x<WIDTH-1;x++) { if(grid[y][x]===EMPTY&&!visited[y][x]){unvisited={x,y};break;} } if(unvisited)break; }
+  if (!unvisited) { connected=true; break; }
+  let nearest=null, minD=Infinity;
+  for (let y=1;y<HEIGHT-1;y++) for (let x=1;x<WIDTH-1;x++)
+    if (visited[y][x]&&grid[y][x]!==WALL&&grid[y][x]!==OBSTACLE) {
+      let d=Math.abs(x-unvisited.x)+Math.abs(y-unvisited.y);
+      if(d<minD){minD=d;nearest={x,y};}
+    }
+  if (nearest) {
+    let px=unvisited.x, py=unvisited.y;
+    while (px!==nearest.x||py!==nearest.y) {
+      if (Math.abs(nearest.x-px)>Math.abs(nearest.y-py)) px+=(px<nearest.x?1:-1);
+      else py+=(py<nearest.y?1:-1);
+      if (!(py>=cy-2&&py<=cy+2&&px>=cx-2&&px<=cx+2))
+        if (grid[py][px]===WALL||grid[py][px]===OBSTACLE) grid[py][px]=EMPTY;
+    }
+  } else grid[unvisited.y][unvisited.x]=WALL;
+}
+
+// ---- SCENE ----
+let score=0, totalDots=0, dotsEaten=0, isPlaying=false, isHunterMode=false, hunterTimer=0;
+let warpCooldown=0; // prevent re-warp immediately
+const activeDots=[], activeCherries=[];
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050510);
+scene.fog = new THREE.Fog(0x050510, 20, 80);
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+function updateCameraFit() {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  const viewSize = Math.max(WIDTH/camera.aspect, HEIGHT)*0.85;
+  camera.position.set(0, viewSize, viewSize*0.35);
+  camera.lookAt(0,0,0);
+}
+updateCameraFit();
+window.addEventListener('resize', updateCameraFit);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+dirLight.position.set(WIDTH/2, 30, HEIGHT/2); dirLight.castShadow = true;
+scene.add(dirLight);
+
+const mazeGroup = new THREE.Group();
+scene.add(mazeGroup);
+
+const world = new CANNON.World();
+world.gravity.set(0,-40,0);
+const phyMat = new CANNON.Material('std');
+world.addContactMaterial(new CANNON.ContactMaterial(phyMat, phyMat, { friction:0.1, restitution:0.2 }));
+
+const floorBody = new CANNON.Body({ mass:0, material:phyMat, collisionFilterGroup:GROUP_WALL, collisionFilterMask:GROUP_PLAYER|GROUP_GHOST });
+floorBody.addShape(new CANNON.Plane());
+floorBody.quaternion.setFromEuler(-Math.PI/2,0,0);
+world.addBody(floorBody);
+
+const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(WIDTH, HEIGHT), new THREE.MeshStandardMaterial({color:0x111111}));
+floorMesh.rotation.x = -Math.PI/2; floorMesh.receiveShadow = true;
+mazeGroup.add(floorMesh);
+
+const wallGeo = new THREE.BoxGeometry(1,1,1);
+const wallMat = new THREE.MeshStandardMaterial({ color:0x1919A6, emissive:0x050540 });
+const obsMat  = new THREE.MeshStandardMaterial({ color:0x3333FF, emissive:0x111150 });
+const doorMat = new THREE.MeshStandardMaterial({ color:0xff00bb, transparent:true, opacity:0.4 });
+// Warp portal material — cyan glow
+const warpMat = new THREE.MeshStandardMaterial({ color:0x00ccff, emissive:0x004466, transparent:true, opacity:0.85 });
+
+let wc=0, oc=0, dc=0;
+for (let y=0;y<HEIGHT;y++) for (let x=0;x<WIDTH;x++) {
+  if (grid[y][x]===WALL) wc++;
+  else if (grid[y][x]===OBSTACLE) oc++;
+  else if (grid[y][x]===EMPTY) dc++;
+}
+const wallsMesh = new THREE.InstancedMesh(wallGeo, wallMat, wc);
+const obsMesh   = new THREE.InstancedMesh(wallGeo, obsMat,  oc);
+const dotsMesh  = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12,8,8), new THREE.MeshStandardMaterial({color:0xffeebb}), dc);
+
+const dummy = new THREE.Object3D();
+const boxShape = new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5));
+let wi=0, oi=0, di=0, spawnPos=null, ghostSpawnPos=null;
+
+// Track which physics bodies are the warp-wall blocks so we can skip them
+const warpPhysicsSkip = new Set();
+
+for (let y=0;y<HEIGHT;y++) {
+  for (let x=0;x<WIDTH;x++) {
+    let px = x-WIDTH/2+0.5, py=0.5, pz = y-HEIGHT/2+0.5;
+    dummy.position.set(px,py,pz); dummy.updateMatrix();
+
+    // WARP openings: left wall (x=0) and right wall (x=WIDTH-1) at warpRow — skip physics body
+    const isWarpHole = (y===warpRow && (x===WARP_LEFT_X || x===WARP_RIGHT_X));
+
+    if (grid[y][x]===GHOST_DOOR) {
+      const dBody = new CANNON.Body({ mass:0, material:phyMat, collisionFilterGroup:GROUP_DOOR, collisionFilterMask:GROUP_PLAYER });
+      dBody.addShape(boxShape); dBody.position.set(px,py,pz); world.addBody(dBody);
+      const dMesh = new THREE.Mesh(wallGeo, doorMat); dMesh.position.set(px,py,pz); mazeGroup.add(dMesh);
+    } else if (grid[y][x]===WALL || grid[y][x]===OBSTACLE) {
+      if (!isWarpHole) {
+        // Normal solid wall
+        const wBody = new CANNON.Body({ mass:0, material:phyMat, collisionFilterGroup:GROUP_WALL, collisionFilterMask:GROUP_PLAYER|GROUP_GHOST });
+        wBody.addShape(boxShape); wBody.position.set(px,py,pz); world.addBody(wBody);
+      }
+      // Still render the wall visually (warp hole will get a portal overlay on top)
+      if (grid[y][x]===WALL) wallsMesh.setMatrixAt(wi++, dummy.matrix);
+      else obsMesh.setMatrixAt(oi++, dummy.matrix);
+    } else {
+      if (!spawnPos && x===1 && y===1) spawnPos={x:px,y:py,z:pz};
+      if (grid[y][x]===EMPTY_NO_DOT && x===cx && y===cy) ghostSpawnPos={x:px,y:py,z:pz};
+      if (grid[y][x]===EMPTY) {
+        const isCherry = (x===1&&y===HEIGHT-2)||(x===WIDTH-2&&y===1)||(x===WIDTH-2&&y===HEIGHT-2);
+        if (isCherry) {
+          const cg = new THREE.Group();
+          const c1 = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshStandardMaterial({color:0xff0055}));
+          c1.position.set(-0.1,0.15,0); cg.add(c1);
+          cg.position.set(px,0,pz); mazeGroup.add(cg);
+          activeCherries.push({group:cg, x:px, z:pz, eaten:false});
+        } else {
+          dummy.position.set(px,0.2,pz); dummy.updateMatrix();
+          dotsMesh.setMatrixAt(di, dummy.matrix);
+          activeDots.push({index:di++, x:px, z:pz, eaten:false});
+        }
+      }
+    }
+  }
+}
+mazeGroup.add(wallsMesh); mazeGroup.add(obsMesh); mazeGroup.add(dotsMesh);
+totalDots = di;
+
+// ---- WARP PORTAL VISUALS ----
+// Two glowing rings, one on each side wall at warpRow
+const portalGeo = new THREE.TorusGeometry(0.42, 0.09, 12, 32);
+const portalMat = new THREE.MeshStandardMaterial({ color:0x00ccff, emissive:0x005588 });
+
+const portalLeft = new THREE.Mesh(portalGeo, portalMat);
+portalLeft.rotation.y = Math.PI/2; // face outward (yz plane)
+portalLeft.position.set(warpLeftPX, 0.5, warpPZ);
+mazeGroup.add(portalLeft);
+
+const portalRight = new THREE.Mesh(portalGeo, portalMat.clone());
+portalRight.rotation.y = Math.PI/2;
+portalRight.position.set(warpRightPX, 0.5, warpPZ);
+mazeGroup.add(portalRight);
+
+// Warp point lights
+const warpLightL = new THREE.PointLight(0x00ccff, 1.5, 5);
+warpLightL.position.set(warpLeftPX, 0.5, warpPZ);
+mazeGroup.add(warpLightL);
+const warpLightR = new THREE.PointLight(0x00ccff, 1.5, 5);
+warpLightR.position.set(warpRightPX, 0.5, warpPZ);
+mazeGroup.add(warpLightR);
+
+// ---- ENTITIES ----
+const ballRadius = 0.35;
+const ballMesh = new THREE.Mesh(new THREE.SphereGeometry(ballRadius,32,32), new THREE.MeshStandardMaterial({color:0xffea00}));
+ballMesh.castShadow = true; ballMesh.add(new THREE.PointLight(0xffea00, 0.8, 6));
+mazeGroup.add(ballMesh);
+const ballBody = new CANNON.Body({ mass:1, material:phyMat, linearDamping:0.35, collisionFilterGroup:GROUP_PLAYER, collisionFilterMask:GROUP_WALL|GROUP_GHOST|GROUP_DOOR });
+ballBody.addShape(new CANNON.Sphere(ballRadius));
+ballBody.position.set(spawnPos.x, spawnPos.y, spawnPos.z);
+world.addBody(ballBody);
+
+const ghostGroup = new THREE.Group();
+const ghostMat = new THREE.MeshStandardMaterial({color:0x39ff14, emissive:0x115500});
+ghostGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.35), ghostMat));
+const ghostLight = new THREE.PointLight(0x39ff14, 1.2, 5);
+ghostGroup.add(ghostLight); mazeGroup.add(ghostGroup);
+const ghostRadius = 0.35;
+const ghostBody = new CANNON.Body({ mass:1, material:phyMat, linearDamping:0.6, collisionFilterGroup:GROUP_GHOST, collisionFilterMask:GROUP_WALL|GROUP_PLAYER });
+ghostBody.addShape(new CANNON.Sphere(ghostRadius));
+ghostBody.position.set(ghostSpawnPos.x, ghostSpawnPos.y, ghostSpawnPos.z);
+world.addBody(ghostBody);
+
+// ---- CONTROLS ----
+let targetTiltX=0, targetTiltZ=0;
+const MAX_TILT = 0.25;
+window.addEventListener('mousemove', (e) => {
+  if (!isPlaying) return;
+  targetTiltZ = -((e.clientX/window.innerWidth)*2-1)*MAX_TILT;
+  targetTiltX = -(-(e.clientY/window.innerHeight)*2+1)*MAX_TILT;
+});
+window.addEventListener('deviceorientation', (e) => {
+  if (!isPlaying || e.gamma===null) return;
+  targetTiltZ = -(e.gamma/45)*MAX_TILT;
+  targetTiltX =  (e.beta /45)*MAX_TILT;
+});
+
+// ---- WARP FLASH ----
+const warpFlash = document.getElementById('warp-flash');
+let flashTimer = 0;
+function triggerWarpFlash() { warpFlash.style.opacity='1'; flashTimer=0.25; }
+
+// ---- START / RESTART ----
+function startGame() {
+  // Reset state
+  score=0; dotsEaten=0; isHunterMode=false; hunterTimer=0; warpCooldown=0; isPlaying=true;
+  document.getElementById('score').innerText='SCORE: 0';
+  document.getElementById('end-msg').style.display='none';
+  document.getElementById('gameover').style.display='none';
+  ballBody.position.set(spawnPos.x, spawnPos.y, spawnPos.z);
+  ballBody.velocity.set(0,0,0); ballBody.angularVelocity.set(0,0,0);
+  ghostBody.position.set(ghostSpawnPos.x, ghostSpawnPos.y, ghostSpawnPos.z);
+  ghostBody.velocity.set(0,0,0); ghostBody.angularVelocity.set(0,0,0);
+  ghostMat.color.setHex(0x39ff14); ghostLight.color.setHex(0x39ff14);
+  activeDots.forEach(d=>{ d.eaten=false; });
+  activeCherries.forEach(c=>{ c.eaten=false; c.group.visible=true; });
+  // Restore all dot matrices
+  activeDots.forEach(d=>{
+    dummy.position.set(d.x, 0.2, d.z); dummy.updateMatrix();
+    dotsMesh.setMatrixAt(d.index, dummy.matrix);
+  });
+  dotsMesh.instanceMatrix.needsUpdate=true;
+}
+
+document.getElementById('start-btn').addEventListener('click', async () => {
+  document.getElementById('overlay').style.display='none';
+  try {
+    if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+    if (screen.orientation?.lock) await screen.orientation.lock(screen.orientation.type);
+  } catch(e) {}
+  startGame();
+});
+document.getElementById('restart-btn').addEventListener('click', startGame);
+
+const hiddenMatrix = new THREE.Matrix4().makeTranslation(0,-100,0);
+const clock = new THREE.Clock();
+
+// ---- WARP TELEPORT LOGIC ----
+// Safe exit speed after warp (prevents tunnelling)
+const WARP_EXIT_SPEED = 5.5;
+// Warp trigger zone: ball X within this distance of left/right edge AND Z near warpPZ
+const WARP_TRIGGER_X_MARGIN = 0.7;
+const WARP_TRIGGER_Z_MARGIN = 0.9;
+
+function checkWarp() {
+  if (warpCooldown > 0) return;
+  const bx = ballBody.position.x, bz = ballBody.position.z;
+
+  const nearWarpZ = Math.abs(bz - warpPZ) < WARP_TRIGGER_Z_MARGIN;
+  if (!nearWarpZ) return;
+
+  // Left warp: ball exits left edge
+  if (bx < warpLeftPX + WARP_TRIGGER_X_MARGIN) {
+    // Teleport to just inside the right wall
+    ballBody.position.set(warpRightPX - WARP_TRIGGER_X_MARGIN - 0.1, ballBody.position.y, warpPZ);
+    // Launch inward (negative X direction)
+    ballBody.velocity.set(-WARP_EXIT_SPEED, 0, 0);
+    ballBody.angularVelocity.set(0,0,0);
+    warpCooldown = 0.6;
+    triggerWarpFlash();
+    return;
+  }
+  // Right warp: ball exits right edge
+  if (bx > warpRightPX - WARP_TRIGGER_X_MARGIN) {
+    // Teleport to just inside the left wall
+    ballBody.position.set(warpLeftPX + WARP_TRIGGER_X_MARGIN + 0.1, ballBody.position.y, warpPZ);
+    // Launch inward (positive X direction)
+    ballBody.velocity.set(WARP_EXIT_SPEED, 0, 0);
+    ballBody.angularVelocity.set(0,0,0);
+    warpCooldown = 0.6;
+    triggerWarpFlash();
+  }
+}
+
+// ---- ANIMATE ----
+function animate() {
+  requestAnimationFrame(animate);
+  if (!isPlaying) { renderer.render(scene, camera); return; }
+  const dt = Math.min(clock.getDelta(), 0.1);
+
+  if (warpCooldown > 0) warpCooldown -= dt;
+  if (flashTimer > 0) { flashTimer -= dt; if (flashTimer <= 0) warpFlash.style.opacity='0'; }
+
+  // Portal pulse
+  const pulse = 0.85 + 0.15*Math.sin(Date.now()*0.004);
+  portalLeft.scale.setScalar(pulse);
+  portalRight.scale.setScalar(pulse);
+  warpLightL.intensity = 1.2 + 0.8*Math.sin(Date.now()*0.004);
+  warpLightR.intensity = 1.2 + 0.8*Math.sin(Date.now()*0.004+1);
+
+  mazeGroup.rotation.x += (targetTiltX - mazeGroup.rotation.x)*12*dt;
+  mazeGroup.rotation.z += (targetTiltZ - mazeGroup.rotation.z)*12*dt;
+  world.gravity.set(-Math.sin(mazeGroup.rotation.z)*60, -40, Math.sin(mazeGroup.rotation.x)*60);
+
+  if (isHunterMode) {
+    hunterTimer -= dt;
+    if (hunterTimer <= 0) { isHunterMode=false; ghostMat.color.setHex(0x39ff14); ghostLight.color.setHex(0x39ff14); }
+    else if (hunterTimer < 2 && Math.floor(hunterTimer*10)%2===0) ghostMat.color.setHex(0xffffff);
+    else ghostMat.color.setHex(0x0033ff);
+  }
+
+  const bpos = ballBody.position, gpos = ghostBody.position;
+  let dx = bpos.x-gpos.x, dz = bpos.z-gpos.z;
+  if (Math.abs(gpos.x) < 1.8 && gpos.z > -2.2 && gpos.z < 1.8 && !isHunterMode) {
+    dx = 0-gpos.x; dz = -3.0-gpos.z;
+  }
+  let dist = Math.sqrt(dx*dx+dz*dz);
+  if (dist > 0.05) {
+    let strength = isHunterMode ? 18 : 12;
+    if (isHunterMode) { dx=-dx; dz=-dz; }
+    ghostBody.applyForce(new CANNON.Vec3((dx/dist)*strength, 0, (dz/dist)*strength), gpos);
+    ghostGroup.rotation.y += (Math.atan2(dx,dz)-ghostGroup.rotation.y)*dt*5;
+  }
+  const MAX_GHOST_SPEED = 6;
+  const vel = ghostBody.velocity;
+  const spd = vel.length();
+  if (spd > MAX_GHOST_SPEED) vel.scale(MAX_GHOST_SPEED/spd, ghostBody.velocity);
+
+  world.step(1/60, dt, 10);
+
+  // Warp check AFTER physics step
+  checkWarp();
+
+  ballMesh.position.copy(bpos); ballMesh.quaternion.copy(ballBody.quaternion);
+  ghostGroup.position.copy(gpos);
+
+  // Collision — skip if we just warped (cooldown provides brief invincibility)
+  if (warpCooldown <= 0) {
+    const fdx = bpos.x-gpos.x, fdz = bpos.z-gpos.z;
+    const fdist = Math.sqrt(fdx*fdx+fdz*fdz);
+    if (fdist < (ballRadius+ghostRadius)*0.9) {
+      if (isHunterMode) {
+        score+=5; ghostBody.position.set(ghostSpawnPos.x, ghostSpawnPos.y, ghostSpawnPos.z);
+        ghostBody.velocity.set(0,0,0); isHunterMode=false;
+        document.getElementById('score').innerText=`SCORE: ${score}`;
+      } else {
+        isPlaying=false;
+        document.getElementById('go-title').innerText='CAUGHT!';
+        document.getElementById('go-msg').innerText=`Score: ${score}`;
+        document.getElementById('gameover').style.display='flex';
+      }
+    }
+  }
+
+  activeCherries.forEach(c => {
+    if (!c.eaten && Math.hypot(bpos.x-c.x, bpos.z-c.z) < 0.6) {
+      c.eaten=true; c.group.visible=false; isHunterMode=true; hunterTimer=10;
+      ghostMat.color.setHex(0x0033ff); ghostLight.color.setHex(0x0033ff);
+    }
+  });
+
+  let dotsUpdated=false;
+  activeDots.forEach(dot => {
+    if (!dot.eaten && Math.hypot(bpos.x-dot.x, bpos.z-dot.z) < 0.5) {
+      dot.eaten=true; score++; dotsEaten++;
+      dotsMesh.setMatrixAt(dot.index, hiddenMatrix); dotsUpdated=true;
+      document.getElementById('score').innerText=`SCORE: ${score}`;
+    }
+  });
+  if (dotsUpdated) {
+    dotsMesh.instanceMatrix.needsUpdate=true;
+    if (dotsEaten>=totalDots) {
+      isPlaying=false;
+      document.getElementById('go-title').innerText='YOU WIN!';
+      document.getElementById('go-msg').innerText=`Final score: ${score}`;
+      document.getElementById('gameover').style.display='flex';
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
