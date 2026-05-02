@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>p5 Painter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<style>
+  body { margin:0; background:#222; color:#fff; font-family:sans-serif; }
+  #ui {
+    position:fixed;
+    top:10px;
+    left:10px;
+    background:#000a;
+    padding:10px;
+    border-radius:8px;
+  }
+  input { margin-top:5px; }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <input type="file" id="upload" accept="image/*"><br>
+  <label>Colours: <span id="colVal">64</span></label><br>
+  <input type="range" id="colorSlider" min="2" max="256" value="64"><br>
+  <button onclick="processImage()">Paint</button>
+</div>
+
+<script>
+
+let img;
+let pieces = [];
+let painted = false;
+let ready = false;
+let colorCount = 64;
+
+document.getElementById("upload").addEventListener("change", handleUpload);
+document.getElementById("colorSlider").addEventListener("input", e => {
+  colorCount = parseInt(e.target.value);
+  document.getElementById("colVal").innerText = colorCount;
+});
+
+function handleUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    loadImage(e.target.result, loaded => {
+      img = loaded;
+      resizeCanvas(img.width, img.height);
+      ready = true;
+      painted = false;
+      background(0);
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function setup() {
+  createCanvas(300, 300);
+  background(0);
+}
+
+function processImage() {
+  if (!img) return;
+
+  img.loadPixels();
+  pieces = [];
+
+  let avg = getAverageColor(img);
+  background(avg[0], avg[1], avg[2]);
+
+  let quantized = quantizeImage(img, colorCount);
+  let blobs = extractBlobs(quantized);
+
+  for (let blob of blobs) {
+    let hull = convexHull(blob.pixels);
+    let angle = findBestAngle(hull);
+    pieces.push({
+      pixels: blob.pixels,
+      color: blob.color,
+      angle: angle
+    });
+  }
+
+  painted = false;
+}
+
+function draw() {
+  if (!ready || painted) return;
+
+  for (let piece of pieces) {
+    drawBrushStroke(piece);
+  }
+
+  painted = true;
+}
+
+// ----------------------------
+// Average Color
+// ----------------------------
+function getAverageColor(img) {
+  let r=0,g=0,b=0;
+  let total = img.pixels.length / 4;
+
+  for (let i = 0; i < img.pixels.length; i += 4) {
+    r += img.pixels[i];
+    g += img.pixels[i+1];
+    b += img.pixels[i+2];
+  }
+
+  return [r/total, g/total, b/total];
+}
+
+// ----------------------------
+// Dynamic Quantization
+// ----------------------------
+function quantizeImage(img, colorCount) {
+
+  // derive per-channel levels (cube root)
+  let levels = max(2, floor(pow(colorCount, 1/3)));
+  let step = 256 / levels;
+
+  let map = [];
+
+  for (let y = 0; y < img.height; y++) {
+    map[y] = [];
+    for (let x = 0; x < img.width; x++) {
+      let i = (x + y * img.width) * 4;
+
+      let r = floor(img.pixels[i] / step);
+      let g = floor(img.pixels[i+1] / step);
+      let b = floor(img.pixels[i+2] / step);
+
+      map[y][x] = `${r},${g},${b}`;
+    }
+  }
+
+  return { map, levels, step };
+}
+
+// ----------------------------
+// Blob extraction
+// ----------------------------
+function extractBlobs(data) {
+  let map = data.map;
+  let visited = [];
+  let blobs = [];
+
+  for (let y = 0; y < map.length; y++) {
+    visited[y] = [];
+    for (let x = 0; x < map[0].length; x++) {
+      visited[y][x] = false;
+    }
+  }
+
+  let dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+
+  for (let y = 0; y < map.length; y++) {
+    for (let x = 0; x < map[0].length; x++) {
+
+      if (visited[y][x]) continue;
+
+      let color = map[y][x];
+      let stack = [[x,y]];
+      let pixels = [];
+
+      while (stack.length) {
+        let [cx, cy] = stack.pop();
+
+        if (cx < 0 || cy < 0 || cx >= map[0].length || cy >= map.length) continue;
+        if (visited[cy][cx]) continue;
+        if (map[cy][cx] !== color) continue;
+
+        visited[cy][cx] = true;
+        pixels.push(createVector(cx, cy));
+
+        for (let d of dirs) {
+          stack.push([cx + d[0], cy + d[1]]);
+        }
+      }
+
+      if (pixels.length > 20) {
+        blobs.push({ pixels, color });
+      }
+    }
+  }
+
+  return blobs;
+}
+
+// ----------------------------
+// Convex Hull
+// ----------------------------
+function convexHull(points) {
+  points = points.slice();
+
+  points.sort((a,b)=> a.x === b.x ? a.y - b.y : a.x - b.x);
+
+  let cross = (o,a,b)=> (a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);
+
+  let lower = [];
+  for (let p of points) {
+    while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+
+  let upper = [];
+  for (let i = points.length - 1; i >= 0; i--) {
+    let p = points[i];
+    while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+
+  upper.pop();
+  lower.pop();
+
+  return lower.concat(upper);
+}
+
+// ----------------------------
+// Best angle
+// ----------------------------
+function findBestAngle(hull) {
+  let bestAngle = 0;
+  let bestRatio = 0;
+
+  for (let a = 0; a < 180; a += 15) {
+    let rad = radians(a);
+    let xs = [];
+    let ys = [];
+
+    for (let p of hull) {
+      let x = p.x * cos(rad) - p.y * sin(rad);
+      let y = p.x * sin(rad) + p.y * cos(rad);
+      xs.push(x);
+      ys.push(y);
+    }
+
+    let w = max(xs) - min(xs);
+    let h = max(ys) - min(ys);
+    let ratio = w / (h + 0.0001);
+
+    if (ratio > bestRatio) {
+      bestRatio = ratio;
+      bestAngle = a;
+    }
+  }
+
+  return bestAngle;
+}
+
+// ----------------------------
+// Brush stroke
+// ----------------------------
+function drawBrushStroke(piece) {
+  push();
+
+  let levels = max(2, floor(pow(colorCount, 1/3)));
+  let step = 256 / levels;
+
+  let [r,g,b] = piece.color.split(",").map(v => v * step);
+  stroke(r,g,b,120);
+
+  let center = getCenter(piece.pixels);
+  translate(center.x, center.y);
+  rotate(radians(piece.angle));
+
+  for (let p of piece.pixels) {
+    let dx = p.x - center.x;
+    let dy = p.y - center.y;
+
+    let len = random(5, 15);
+
+    // 🔥 KEY CHANGE:
+    // bristles now extend along X (stroke direction)
+    // and spread along Y (brush width)
+    for (let i = 0; i < 3; i++) {
+      let spread = random(-1.5, 1.5); // width of brush
+      line(
+        dx + random(-0.5,0.5), dy + spread,
+        dx + len + random(-1,1), dy + spread + random(-0.3,0.3)
+      );
+    }
+  }
+
+  pop();
+}
+
+function getCenter(points) {
+  let x=0,y=0;
+  for (let p of points) {
+    x += p.x;
+    y += p.y;
+  }
+  return createVector(x/points.length, y/points.length);
+}
+
+</script>
+</body>
+</html>
