@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>p5 Painter - Enhanced</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<style>
+  body { 
+    margin: 0; 
+    background: #1a1a1a; 
+    color: #fff; 
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+  
+  #ui {
+    width: 280px;
+    background: #252525;
+    padding: 20px;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    border-right: 1px solid #333;
+    position: relative;
+    overflow-y: auto;
+  }
+
+  .canvas-container {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #111;
+    position: relative;
+    overflow: auto;
+  }
+
+  h2 { margin: 0 0 5px 0; font-size: 1.2rem; color: #aaa; }
+
+  .control-group {
+    background: #333;
+    padding: 12px;
+    border-radius: 6px;
+  }
+
+  label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #ccc; }
+  
+  input[type="range"] { width: 100%; cursor: pointer; }
+  
+  select {
+    width: 100%;
+    padding: 8px;
+    background: #444;
+    color: white;
+    border: 1px solid #555;
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  button {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.2s;
+    margin-bottom: 5px;
+  }
+
+  .btn-paint { background: #4caf50; color: white; }
+  .btn-paint:hover { background: #45a049; }
+  .btn-save { background: #2196f3; color: white; }
+  .btn-save:hover { background: #1e88e5; }
+
+  #preview-container {
+    margin-top: 10px;
+    border: 2px solid #444;
+    border-radius: 4px;
+    background: #000;
+    min-height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  #imgPreview {
+    max-width: 100%;
+    max-height: 200px;
+    display: none;
+  }
+
+  .placeholder-text { color: #555; font-size: 0.8rem; text-align: center; }
+
+  #loading-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    text-align: center;
+    color: #4caf50;
+    font-weight: bold;
+  }
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #333;
+    border-top: 4px solid #4caf50;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 10px;
+  }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+  .slider-marker {
+    width: 100%;
+    height: 4px;
+    background: #444;
+    margin-top: 2px;
+    position: relative;
+  }
+  .marker-mid {
+    position: absolute;
+    left: 50%;
+    top: -2px;
+    width: 2px;
+    height: 8px;
+    background: #888;
+    transform: translateX(-50%);
+  }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <div id="loading-text">Painting Canvas...</div>
+  </div>
+
+  <h2>PainterGO</h2>
+  
+  <div class="control-group">
+    <label>1. Upload Photo</label>
+    <input type="file" id="upload" accept="image/*">
+  </div>
+
+  <div class="control-group">
+    <label>2. Colors: <span id="colVal">256</span></label>
+    <input type="range" id="colorSlider" min="2" max="1024" value="256">
+  </div>
+
+  <div class="control-group">
+    <label>3. Palette Style</label>
+    <select id="paletteMode">
+      <option value="realistic" selected>Realistic (Averaged)</option>
+      <option value="poster">Poster (High Contrast)</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label>4. Bristle Length: <span id="lenVal">1.0</span>x</label>
+    <input type="range" id="lengthSlider" min="0.1" max="5.0" step="0.1" value="1.0">
+  </div>
+
+  <div class="control-group">
+    <label>5. Paint Thickness: <span id="alphaVal">50%</span></label>
+    <input type="range" id="alphaSlider" min="0" max="100" value="50">
+    <div class="slider-marker"><div class="marker-mid"></div></div>
+    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #666; margin-top: 4px;">
+      <span>Thin/Clear</span>
+      <span>Opaque</span>
+      <span>Thick/Bold</span>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label>6. Angle Offset: <span id="angleVal">0&deg;</span></label>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <input type="range" id="angleSlider" min="-180" max="180" value="0" style="flex-grow: 1;">
+      <div id="angleWheel" style="width: 24px; height: 24px; border-radius: 50%; border: 2px solid #aaa; position: relative; display: flex; justify-content: center; transform: rotate(0deg);">
+        <div style="width: 2px; height: 10px; background: #4caf50; border-radius: 2px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn-paint" onclick="startProcessing()">Start Painting</button>
+  <button class="btn-save" onclick="saveArtwork()">Save Image</button>
+
+  <label style="margin-top:10px;">Source Preview:</label>
+  <div id="preview-container">
+    <span class="placeholder-text" id="previewLabel">No image selected</span>
+    <img id="imgPreview" alt="Preview">
+  </div>
+</div>
+
+<div class="canvas-container" id="p5-holder"></div>
+
+<script>
+let img;
+let pieces = [];
+let painted = false;
+let ready = false;
+
+// Settings captured at the time of "Start Painting"
+let activeBristleAngleOffset = 0;
+let activeBristleLengthScale = 1.0;
+let activeBristleAlpha = 255;
+let activeBristleStrokeWeight = 1;
+let activeBristleSkip = 1; // Used to prevent overlapping
+
+let avgColor = [20, 20, 20];
+
+const uploadInput = document.getElementById("upload");
+const colorSlider = document.getElementById("colorSlider");
+const colValLabel = document.getElementById("colVal");
+const imgPreview = document.getElementById("imgPreview");
+const previewLabel = document.getElementById("previewLabel");
+const angleSlider = document.getElementById("angleSlider");
+const angleValLabel = document.getElementById("angleVal");
+const angleWheel = document.getElementById("angleWheel");
+const loadingOverlay = document.getElementById("loading-overlay");
+const paletteModeSelect = document.getElementById("paletteMode");
+
+const lengthSlider = document.getElementById("lengthSlider");
+const lenValLabel = document.getElementById("lenVal");
+const alphaSlider = document.getElementById("alphaSlider");
+const alphaValLabel = document.getElementById("alphaVal");
+
+uploadInput.addEventListener("change", handleUpload);
+
+colorSlider.addEventListener("input", e => colValLabel.innerText = e.target.value);
+lengthSlider.addEventListener("input", e => lenValLabel.innerText = parseFloat(e.target.value).toFixed(1));
+alphaSlider.addEventListener("input", e => alphaValLabel.innerText = e.target.value + "%");
+angleSlider.addEventListener("input", e => {
+  const val = parseInt(e.target.value);
+  angleValLabel.innerHTML = val + '&deg;';
+  angleWheel.style.transform = `rotate(${val}deg)`;
+});
+
+function handleUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    imgPreview.src = e.target.result;
+    imgPreview.style.display = "block";
+    previewLabel.style.display = "none";
+
+    loadImage(e.target.result, loaded => {
+      img = loaded;
+      resizeCanvas(img.width, img.height);
+      ready = true;
+      painted = false;
+      background(20);
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function setup() {
+  const canvas = createCanvas(300, 300);
+  canvas.parent('p5-holder');
+  background(20);
+}
+
+function startProcessing() {
+  if (!img) return;
+  
+  const thicknessPercent = parseInt(alphaSlider.value);
+  
+  if (thicknessPercent <= 50) {
+    // Stage 1: 0 to 50%
+    // Opacity goes 0 -> 255. Weight stays 1. Skip stays 1 (full density).
+    activeBristleAlpha = map(thicknessPercent, 0, 50, 0, 255);
+    activeBristleStrokeWeight = 1;
+    activeBristleSkip = 1;
+  } else {
+    // Stage 2: 50% to 100%
+    // Opacity stays 255. Weight goes 1 -> 5. 
+    // To prevent overlap more than 1px, skip should be roughly strokeWeight - 1.
+    activeBristleAlpha = 255;
+    activeBristleStrokeWeight = map(thicknessPercent, 50, 100, 1, 5);
+    // Calculate skip to prevent overcrowding. 
+    // If weight is 5, drawing every pixel creates 5x overlap.
+    // We skip pixels based on floor of strokeWeight to keep performance high and look clean.
+    activeBristleSkip = max(1, floor(activeBristleStrokeWeight));
+  }
+  
+  activeBristleLengthScale = parseFloat(lengthSlider.value);
+  activeBristleAngleOffset = parseInt(angleSlider.value);
+
+  loadingOverlay.style.display = "flex";
+  // Small delay to allow UI to update before heavy processing
+  setTimeout(() => {
+    processImage();
+    loadingOverlay.style.display = "none";
+  }, 100);
+}
+
+function processImage() {
+  img.loadPixels();
+  pieces = [];
+
+  avgColor = getAverageColor(img);
+  background(avgColor[0], avgColor[1], avgColor[2]);
+
+  let quantized = quantizeImage(img, parseInt(colorSlider.value));
+  let blobs = extractBlobs(quantized);
+  let isRealistic = paletteModeSelect.value === 'realistic';
+
+  for (let blob of blobs) {
+    let hull = convexHull(blob.pixels);
+    let angle = findBestAngle(hull);
+    
+    let finalColor;
+    if (isRealistic) {
+      finalColor = getBlobAverageColor(img, blob.pixels);
+    } else {
+      let levels = max(2, floor(pow(parseInt(colorSlider.value), 1/3)));
+      let step = 256 / levels;
+      finalColor = blob.colorKey.split(",").map(v => v * step);
+    }
+
+    pieces.push({
+      pixels: blob.pixels,
+      color: finalColor,
+      angle: angle,
+      size: blob.pixels.length
+    });
+  }
+
+  pieces.sort((a, b) => b.size - a.size);
+  painted = false;
+}
+
+function saveArtwork() {
+  saveCanvas('my_painting', 'png');
+}
+
+function draw() {
+  if (!ready || painted || pieces.length === 0) return;
+
+  for (let piece of pieces) {
+    drawBrushStroke(piece);
+  }
+
+  painted = true;
+}
+
+function getAverageColor(img) {
+  let r=0,g=0,b=0;
+  let total = img.pixels.length / 4;
+  for (let i = 0; i < img.pixels.length; i += 4) {
+    r += img.pixels[i];
+    g += img.pixels[i+1];
+    b += img.pixels[i+2];
+  }
+  return [r/total, g/total, b/total];
+}
+
+function getBlobAverageColor(img, pixels) {
+  let r=0, g=0, b=0;
+  for (let p of pixels) {
+    let i = (floor(p.x) + floor(p.y) * img.width) * 4;
+    r += img.pixels[i];
+    g += img.pixels[i+1];
+    b += img.pixels[i+2];
+  }
+  let count = pixels.length;
+  return [r/count, g/count, b/count];
+}
+
+function quantizeImage(img, count) {
+  let levels = max(2, floor(pow(count, 1/3)));
+  let step = 256 / levels;
+  let mapData = [];
+  for (let y = 0; y < img.height; y++) {
+    mapData[y] = [];
+    for (let x = 0; x < img.width; x++) {
+      let i = (x + y * img.width) * 4;
+      let r = floor(img.pixels[i] / step);
+      let g = floor(img.pixels[i+1] / step);
+      let b = floor(img.pixels[i+2] / step);
+      mapData[y][x] = `${r},${g},${b}`;
+    }
+  }
+  return { map: mapData, levels, step };
+}
+
+function extractBlobs(data) {
+  let map = data.map;
+  let visited = Array.from({length: map.length}, () => Array(map[0].length).fill(false));
+  let blobs = [];
+  let dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+
+  for (let y = 0; y < map.length; y++) {
+    for (let x = 0; x < map[0].length; x++) {
+      if (visited[y][x]) continue;
+
+      let colorKey = map[y][x];
+      let stack = [[x,y]];
+      let pixels = [];
+
+      while (stack.length) {
+        let [cx, cy] = stack.pop();
+        if (cx < 0 || cy < 0 || cx >= map[0].length || cy >= map.length) continue;
+        if (visited[cy][cx] || map[cy][cx] !== colorKey) continue;
+
+        visited[cy][cx] = true;
+        pixels.push(createVector(cx, cy));
+        for (let d of dirs) stack.push([cx + d[0], cy + d[1]]);
+      }
+      if (pixels.length > 20) blobs.push({ pixels, colorKey });
+    }
+  }
+  return blobs;
+}
+
+function convexHull(points) {
+  if (points.length < 3) return points;
+  points.sort((a,b)=> a.x === b.x ? a.y - b.y : a.x - b.x);
+  let cross = (o,a,b)=> (a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);
+  let lower = [];
+  for (let p of points) {
+    while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  let upper = [];
+  for (let i = points.length - 1; i >= 0; i--) {
+    let p = points[i];
+    while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop(); lower.pop();
+  return lower.concat(upper);
+}
+
+function findBestAngle(hull) {
+  let bestAngle = 0;
+  let bestRatio = 0;
+  for (let a = 0; a < 180; a += 15) {
+    let rad = radians(a);
+    let xs = [], ys = [];
+    for (let p of hull) {
+      xs.push(p.x * cos(rad) - p.y * sin(rad));
+      ys.push(p.x * sin(rad) + p.y * cos(rad));
+    }
+    let w = max(xs) - min(xs);
+    let h = max(ys) - min(ys);
+    let ratio = w / (h + 0.0001);
+    if (ratio > bestRatio) { bestRatio = ratio; bestAngle = a; }
+  }
+  return bestAngle;
+}
+
+function drawBrushStroke(piece) {
+  push();
+  stroke(piece.color[0], piece.color[1], piece.color[2], activeBristleAlpha);
+  strokeWeight(activeBristleStrokeWeight);
+  
+  let rad = radians((piece.angle !== undefined ? piece.angle : 0) + activeBristleAngleOffset);
+  let cosA = cos(rad);
+  let sinA = sin(rad);
+
+  let baseLen = sqrt(piece.size) * 1.5;
+
+  // We iterate through pixels, but using activeBristleSkip to prevent overcrowding
+  for (let i = 0; i < piece.pixels.length; i += activeBristleSkip) {
+    let p = piece.pixels[i];
+    let len = baseLen * activeBristleLengthScale * random(0.8, 1.2);
+    
+    // We only need one stroke per "bristle pixel" now because the strokeWeight
+    // is handling the visual thickness.
+    let spread = random(-1, 1);
+    let startX = random(-0.5, 0.5);
+    let startY = spread;
+    let endX = len + random(-1, 1);
+    let endY = spread + random(-0.3, 0.3);
+
+    let x1 = p.x + startX * cosA - startY * sinA;
+    let y1 = p.y + startX * sinA + startY * cosA;
+    let x2 = p.x + endX * cosA - endY * sinA;
+    let y2 = p.y + endX * sinA + endY * cosA;
+
+    line(x1, y1, x2, y2);
+  }
+  pop();
+}
+</script>
+</body>
+</html>
