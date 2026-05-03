@@ -12,6 +12,7 @@
     color: #fff; 
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
     display: flex;
+    flex-direction: row-reverse; /* Toolbar on the right side */
     height: 100vh;
     overflow: hidden;
     touch-action: none; /* Prevent pinch zoom globally for better drawing experience */
@@ -21,14 +22,15 @@
     width: 280px;
     background: #252525;
     padding: 20px;
-    box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+    box-shadow: -2px 0 10px rgba(0,0,0,0.5);
     z-index: 10;
     display: flex;
     flex-direction: column;
     gap: 15px;
-    border-right: 1px solid #333;
+    border-left: 1px solid #333;
     position: relative;
     overflow-y: auto;
+    flex-shrink: 0;
   }
 
   /* Scrollbar styling for UI panel */
@@ -215,6 +217,26 @@
     width: 100%;
     height: 100%;
   }
+
+  /* Mobile Responsive Layout - Toolbar moves to bottom */
+  @media (max-width: 768px) {
+    body {
+      flex-direction: column-reverse;
+    }
+    #ui {
+      width: 100%;
+      height: 45vh;
+      border-left: none;
+      border-top: 1px solid #333;
+      padding: 15px;
+      box-sizing: border-box;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.5);
+    }
+    .canvas-container {
+      height: 55vh;
+      flex-grow: 0;
+    }
+  }
 </style>
 </head>
 <body>
@@ -296,11 +318,15 @@
     </div>
 
     <button class="btn-paint" onclick="startProcessing()">AutoPaint Canvas</button>
-  </div> <button id="btn-toggle-manual" class="btn-toggle" onclick="toggleManualMode()">🖌️ Switch to Manual Paint</button>
+  </div> <!-- End Auto UI -->
+
+  <!-- Manual Mode Toggle & UI -->
+  <button id="btn-toggle-manual" class="btn-toggle" onclick="toggleManualMode()">🖌️ Switch to Manual Paint</button>
 
   <div id="manual-ui">
     <h3 class="manual-header">🖌️ Manual Tools</h3>
     
+    <!-- Brush Size Preview -->
     <div id="brush-preview-box">
       <canvas id="brush-preview-canvas"></canvas>
     </div>
@@ -413,8 +439,10 @@ function resetSlider(id, val) {
 
 function applyScale() {
   if (!p5CanvasElt) return;
-  p5CanvasElt.style.width = (p5CanvasElt.width * currentScale) + 'px';
-  p5CanvasElt.style.height = (p5CanvasElt.height * currentScale) + 'px';
+  // Use logical width/height from p5 to set CSS styling
+  // This guarantees scale perfectly matches logical pixels
+  p5CanvasElt.style.width = (width * currentScale) + 'px';
+  p5CanvasElt.style.height = (height * currentScale) + 'px';
 }
 
 function handleUpload(event) {
@@ -430,6 +458,7 @@ function handleUpload(event) {
     loadImage(e.target.result, loaded => {
       img = loaded;
       resizeCanvas(img.width, img.height);
+      pixelDensity(1); // Ensure density is clamped at 1 again after resizing
       
       // Calculate fit-to-screen scale
       const container = document.getElementById('p5-holder');
@@ -451,6 +480,7 @@ function handleUpload(event) {
 
 function setup() {
   let p5Canvas = createCanvas(300, 300);
+  pixelDensity(1); // CRITICAL: Stop retina screens from doubling backing store size and messing up manual math
   p5Canvas.parent('p5-holder');
   background(20);
   p5CanvasElt = p5Canvas.elt;
@@ -498,8 +528,9 @@ function setup() {
   let initialPinchScale = 1;
 
   container.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) {
+    if (e.touches.length >= 2) {
       e.preventDefault();
+      isManualPainting = false; // Instantly abort painting
       initialPinchDist = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
           e.touches[0].clientY - e.touches[1].clientY
@@ -509,7 +540,7 @@ function setup() {
   }, { passive: false });
 
   container.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 2) {
+    if (e.touches.length >= 2) {
       e.preventDefault();
       const currentDist = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
@@ -893,8 +924,10 @@ function toggleManualMode() {
 function updateBrushState(event) {
     if(!p5CanvasElt) return;
     const rect = p5CanvasElt.getBoundingClientRect();
-    const scaleX = p5CanvasElt.width / rect.width;
-    const scaleY = p5CanvasElt.height / rect.height;
+    
+    // Ensure we are using logical p5 width/height rather than the CSS pixel measurements
+    const scaleX = width / rect.width;
+    const scaleY = height / rect.height;
     
     let clientX, clientY;
     let pressure = DEFAULT_PRESSURE;
@@ -919,7 +952,10 @@ function updateBrushState(event) {
 
 function startManualPainting(event) {
     if(!isManualModeActive) return;
-    if (event.touches && event.touches.length >= 2) return; // Prevent paint on pinch zoom
+    if (event.touches && event.touches.length >= 2) {
+        isManualPainting = false;
+        return; // Prevent paint on pinch zoom
+    }
     event.preventDefault();
     isManualPainting = true;
     updateBrushState(event);
@@ -941,7 +977,10 @@ function stopManualPainting() {
 
 function doManualPaint(event) {
     if (!isManualModeActive || !isManualPainting) return;
-    if (event.touches && event.touches.length >= 2) return; // Allow two fingers for zoom
+    if (event.touches && event.touches.length >= 2) {
+        isManualPainting = false; // abort immediately when 2nd finger touches
+        return; 
+    }
     event.preventDefault();
     updateBrushState(event);
 
