@@ -34,77 +34,26 @@
       flex-shrink: 0;
     }
 
-    #ui::-webkit-scrollbar {
-      width: 8px;
-    }
+    #ui::-webkit-scrollbar { width: 8px; }
+    #ui::-webkit-scrollbar-track { background: #1a1a1a; }
+    #ui::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
 
-    #ui::-webkit-scrollbar-track {
-      background: #1a1a1a;
-    }
+    h1 { font-size: 1.2rem; margin: 0 0 5px; color: #00d2ff; }
+    .version { font-size: 0.7rem; color: #888; margin-top: -10px; margin-bottom: 10px; }
 
-    #ui::-webkit-scrollbar-thumb {
-      background: #444;
-      border-radius: 4px;
-    }
+    .section { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 5px; }
+    .section-title { font-size: 0.85rem; font-weight: bold; text-transform: uppercase; color: #aaa; margin-bottom: 10px; display: block; }
 
+    .control-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+    label { font-size: 0.8rem; display: flex; justify-content: space-between; align-items: center;}
+    label span { color: #00d2ff; }
 
-    h1 {
-      font-size: 1.2rem;
-      margin: 0 0 5px;
-      color: #00d2ff;
-    }
+    .label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 
-    .version {
-      font-size: 0.7rem;
-      color: #888;
-      margin-top: -10px;
-      margin-bottom: 10px;
-    }
+    input[type="range"] { width: 100%; accent-color: #00d2ff; cursor: pointer; }
+    input[type="color"] { width: 100%; height: 35px; border: none; border-radius: 4px; cursor: pointer; background: none; }
 
-    .section {
-      border-bottom: 1px solid #333;
-      padding-bottom: 10px;
-      margin-bottom: 5px;
-    }
-
-    .section-title {
-      font-size: 0.85rem;
-      font-weight: bold;
-      text-transform: uppercase;
-      color: #aaa;
-      margin-bottom: 10px;
-      display: block;
-    }
-
-    .control-group {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      margin-bottom: 8px;
-    }
-
-    label {
-      font-size: 0.8rem;
-      display: flex;
-      justify-content: space-between;
-    }
-
-    label span {
-      color: #00d2ff;
-    }
-
-    input[type="range"] {
-      width: 100%;
-      accent-color: #00d2ff;
-      cursor: pointer;
-    }
-
-    .btn-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     button {
       background: #3d3d3d;
       border: none;
@@ -113,28 +62,26 @@
       border-radius: 4px;
       cursor: pointer;
       font-size: 0.8rem;
-      transition: background 0.2s;
+      transition: background 0.2s, transform 0.1s;
+      width: 100%;
+      margin-bottom: 5px;
     }
+    button:hover { background: #555; }
+    button:active { transform: scale(0.98); }
+    button.active { background: #00d2ff; color: #000; font-weight: bold; }
+    button.primary { background: #00d2ff; color: #000; font-weight: bold; }
+    button.primary:hover { background: #00b8e6; }
 
-    button:hover {
-      background: #555;
-    }
+    .btn-reset { width: auto; padding: 2px 6px; font-size: 0.7rem; background: #444; color: #bbb; border: 1px solid #555; border-radius: 3px; margin: 0; font-weight: normal; }
+    .btn-reset:hover { background: #555; color: #fff; }
 
-    button.active {
-      background: #00d2ff;
-      color: #000;
-      font-weight: bold;
-    }
+    .btn-mini-toggle { background: #444; color: #fff; padding: 2px 6px; font-size: 0.65rem; border-radius: 4px; border: 1px solid #666; width: auto; margin: 0; }
+    .btn-mini-toggle.active { background: #4caf50; border-color: #45a049; }
 
-    button.primary {
-      background: #00d2ff;
-      color: #000;
-      font-weight: bold;
-    }
+    .btn-toggle { background: #ff9800; color: white; margin-top: 10px; }
+    .btn-toggle:hover { background: #e68a00; }
 
-    button.primary:hover {
-      background: #00b8e6;
-    }
+    select { width: 100%; padding: 8px; background: #444; color: white; border: 1px solid #555; border-radius: 4px; outline: none; cursor: pointer; }
 
     .canvas-container {
       flex-grow: 1;
@@ -150,145 +97,7 @@
       transform-origin: top left;
     }
 
-    h2 {
-      margin: 0 0 5px 0;
-      font-size: 1.2rem;
-      color: #aaa;
-    }
-
-    .control-group {
-      background: #333;
-      padding: 12px;
-      border-radius: 6px;
-    }
-
-    .label-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-
-    label {
-      font-size: 0.9rem;
-      color: #ccc;
-    }
-
-    .slider-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    input[type="range"] {
-      flex-grow: 1;
-      cursor: pointer;
-    }
-
-    input[type="color"] {
-      width: 100%;
-      height: 30px;
-      padding: 0;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      background: none;
-    }
-
-    .btn-reset {
-      width: auto;
-      padding: 2px 6px;
-      font-size: 0.7rem;
-      background: #444;
-      color: #bbb;
-      border: 1px solid #555;
-      border-radius: 3px;
-      cursor: pointer;
-      margin: 0;
-      font-weight: normal;
-    }
-
-    .btn-reset:hover {
-      background: #555;
-      color: #fff;
-    }
-
-    .btn-mini-toggle {
-      background: #444;
-      color: #fff;
-      padding: 2px 6px;
-      font-size: 0.65rem;
-      border-radius: 4px;
-      border: 1px solid #666;
-      cursor: pointer;
-      width: auto;
-      margin: 0;
-    }
-
-    .btn-mini-toggle.active {
-      background: #4caf50;
-      border-color: #45a049;
-    }
-
-    .btn-mini-toggle.disabled {
-      background: #600;
-      border-color: #800;
-      color: #ccc;
-    }
-
-    select {
-      width: 100%;
-      padding: 8px;
-      background: #444;
-      color: white;
-      border: 1px solid #555;
-      border-radius: 4px;
-      outline: none;
-      cursor: pointer;
-    }
-
-    button {
-      width: 100%;
-      padding: 10px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
-      transition: background 0.2s, transform 0.1s;
-      margin-bottom: 5px;
-    }
-
-    button:active {
-      transform: scale(0.98);
-    }
-
-    .btn-paint {
-      background: #4caf50;
-      color: white;
-    }
-
-    .btn-paint:hover {
-      background: #45a049;
-    }
-
-    .btn-save {
-      background: #2196f3;
-      color: white;
-    }
-
-    .btn-save:hover {
-      background: #1e88e5;
-    }
-
-    .btn-toggle {
-      background: #ff9800;
-      color: white;
-      margin-top: 10px;
-    }
-
-    .btn-toggle:hover {
-      background: #e68a00;
-    }
+    .hidden { display: none; }
 
     #preview-container {
       margin-top: 10px;
@@ -302,24 +111,12 @@
       overflow: hidden;
     }
 
-    #imgPreview {
-      max-width: 100%;
-      max-height: 200px;
-      display: none;
-    }
-
-    .placeholder-text {
-      color: #555;
-      font-size: 0.8rem;
-      text-align: center;
-    }
+    #imgPreview { max-width: 100%; max-height: 200px; display: none; }
+    .placeholder-text { color: #555; font-size: 0.8rem; text-align: center; }
 
     #loading-overlay {
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0, 0, 0, 0.8);
       display: none;
       flex-direction: column;
@@ -327,109 +124,42 @@
       justify-content: center;
       z-index: 100;
       text-align: center;
-      color: #4caf50;
+      color: #00d2ff;
       font-weight: bold;
     }
 
     .spinner {
-      width: 40px;
-      height: 40px;
-      border: 4px solid #333;
-      border-top: 4px solid #4caf50;
+      width: 40px; height: 40px;
+      border: 4px solid #333; border-top: 4px solid #00d2ff;
       border-radius: 50%;
       animation: spin 1s linear infinite;
       margin-bottom: 10px;
     }
 
-    @keyframes spin {
-      0% {
-        transform: rotate(0deg);
-      }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-      100% {
-        transform: rotate(360deg);
-      }
-    }
+    .slider-marker { width: 100%; height: 4px; background: #444; margin-top: 2px; position: relative; }
+    .marker-mid { position: absolute; left: 50%; top: -2px; width: 2px; height: 8px; background: #888; transform: translateX(-50%); }
 
-    .slider-marker {
-      width: 100%;
-      height: 4px;
-      background: #444;
-      margin-top: 2px;
-      position: relative;
-    }
-
-    .marker-mid {
-      position: absolute;
-      left: 50%;
-      top: -2px;
-      width: 2px;
-      height: 8px;
-      background: #888;
-      transform: translateX(-50%);
-    }
-
-    #manual-ui {
-      display: none;
-      background: #2b2b2b;
-      border: 1px solid #ff9800;
-      border-radius: 6px;
-      padding: 12px;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .manual-header {
-      color: #ff9800;
-      font-size: 1rem;
-      margin: 0;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+    #manual-ui { display: none; flex-direction: column; }
+    .manual-header { color: #ff9800; font-size: 1rem; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
 
     #brush-preview-box {
-      width: 100%;
-      height: 150px;
-      background: #111;
-      border: 1px solid #444;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      position: relative;
+      width: 100%; height: 150px;
+      background: #111; border: 1px solid #444; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; position: relative;
     }
-
-    #brush-preview-canvas {
-      width: 100%;
-      height: 100%;
-    }
+    #brush-preview-canvas { width: 100%; height: 100%; }
 
     @media (max-width: 768px) {
-      body {
-        flex-direction: column-reverse;
-      }
-
-      #ui {
-        width: 100%;
-        height: 45vh;
-        border-left: none;
-        border-top: 1px solid #333;
-        padding: 15px;
-        box-sizing: border-box;
-      }
-
-      .canvas-container {
-        height: 55vh;
-        flex-grow: 0;
-      }
+      body { flex-direction: column-reverse; }
+      #ui { width: 100%; height: 45vh; border-left: none; border-top: 1px solid #333; padding: 15px; box-sizing: border-box; }
+      .canvas-container { height: 55vh; flex-grow: 0; }
     }
   </style>
 </head>
-
 <body>
-
   <div id="ui">
     <div id="loading-overlay">
       <div class="spinner"></div>
@@ -437,136 +167,134 @@
     </div>
 
     <h1>Painter GO</h1>
+    <div class="version">v2.7.0 • Detail & Scale Zoom</div>
 
     <div id="auto-ui">
-      <div class="control-group">
-        <label style="display: block; margin-bottom: 8px;">1. Upload Photo</label>
-        <input type="file" id="upload" accept="image/*" style="width: 100%;">
+      <div class="section">
+        <span class="section-title">Source Image</span>
+        <button class="primary" onclick="document.getElementById('upload').click()">UPLOAD IMAGE</button>
+        <input type="file" id="upload" class="hidden" accept="image/*">
       </div>
 
-      <div class="control-group">
-        <div class="label-row">
-          <label>2. Colors: <span id="colVal">512</span></label>
-          <button class="btn-reset" onclick="resetSlider('colorSlider', 512)">Reset</button>
-        </div>
-        <div class="slider-row">
+      <div class="section">
+        <span class="section-title">Auto Paint Controls</span>
+        <div class="control-group">
+          <div class="label-row">
+            <label>Colors <span id="colVal">512</span></label>
+            <button class="btn-reset" onclick="resetSlider('colorSlider', 512)">Reset</button>
+          </div>
           <input type="range" id="colorSlider" min="2" max="1024" value="512">
         </div>
-      </div>
 
-      <div class="control-group">
-        <label style="display: block; margin-bottom: 8px;">3. Palette Style</label>
-        <select id="paletteMode">
-          <option value="realistic" selected>Realistic (Averaged)</option>
-          <option value="poster">Poster (High Contrast)</option>
-        </select>
-      </div>
-
-      <div class="control-group">
-        <div class="label-row">
-          <label>4. Bristle Length: <span id="lenVal">1.0</span>x</label>
-          <button class="btn-reset" onclick="resetSlider('lengthSlider', 1.0)">Reset</button>
+        <div class="control-group">
+          <label>Palette Style</label>
+          <select id="paletteMode">
+            <option value="realistic" selected>Realistic (Averaged)</option>
+            <option value="poster">Poster (High Contrast)</option>
+          </select>
         </div>
-        <div class="slider-row">
+
+        <div class="control-group">
+          <div class="label-row">
+            <label>Bristle Length <span id="lenVal">1.0</span>x</label>
+            <button class="btn-reset" onclick="resetSlider('lengthSlider', 1.0)">Reset</button>
+          </div>
           <input type="range" id="lengthSlider" min="0.1" max="5.0" step="0.1" value="1.0">
         </div>
-      </div>
 
-      <div class="control-group">
-        <div class="label-row">
-          <label>5. Paint Thickness: <span id="alphaVal">40%</span></label>
-          <button class="btn-reset" onclick="resetSlider('alphaSlider', 40)">Reset</button>
-        </div>
-        <div class="slider-row">
+        <div class="control-group">
+          <div class="label-row">
+            <label>Paint Thickness <span id="alphaVal">40%</span></label>
+            <button class="btn-reset" onclick="resetSlider('alphaSlider', 40)">Reset</button>
+          </div>
           <input type="range" id="alphaSlider" min="0" max="100" value="40">
+          <div class="slider-marker"><div class="marker-mid"></div></div>
         </div>
-        <div class="slider-marker">
-          <div class="marker-mid"></div>
-        </div>
-      </div>
 
-      <div class="control-group">
-        <div class="label-row">
-          <label>6. Angle Offset: <span id="angleVal">0&deg;</span></label>
-          <button class="btn-reset" onclick="resetSlider('angleSlider', 0)">Reset</button>
-        </div>
-        <div class="slider-row">
-          <input type="range" id="angleSlider" min="-180" max="180" value="0">
-          <div id="angleWheel"
-            style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid #aaa; position: relative; display: flex; justify-content: center; transform: rotate(0deg); flex-shrink: 0;">
-            <div style="width: 2px; height: 8px; background: #4caf50; border-radius: 2px;"></div>
+        <div class="control-group">
+          <div class="label-row">
+            <label>Angle Offset <span id="angleVal">0&deg;</span></label>
+            <button class="btn-reset" onclick="resetSlider('angleSlider', 0)">Reset</button>
+          </div>
+          <div class="slider-row">
+            <input type="range" id="angleSlider" min="-180" max="180" value="0">
+            <div id="angleWheel" style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid #aaa; position: relative; display: flex; justify-content: center; transform: rotate(0deg); flex-shrink: 0;">
+              <div style="width: 2px; height: 8px; background: #4caf50; border-radius: 2px;"></div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="control-group">
-
-        <div class="label-row">
-          <label>8. Add Light Details: <span id="detailLightVal">10%</span></label>
-          <button class="btn-reset" onclick="resetSlider('detailLightSlider',10)">Reset</button>
-        </div>
-
-        <div class="slider-row">
+      <div class="section">
+        <span class="section-title">Detail Enhancement</span>
+        <div class="control-group">
+          <div class="label-row">
+            <label>Add Light Details <span id="detailLightVal">10%</span></label>
+            <button class="btn-reset" onclick="resetSlider('detailLightSlider',10)">Reset</button>
+          </div>
           <input type="range" id="detailLightSlider" min="0" max="100" value="10">
         </div>
 
-        <div class="label-row" style="margin-top:10px;">
-          <label>Add Shadow Details: <span id="detailShadowVal">10%</span></label>
-          <button class="btn-reset" onclick="resetSlider('detailShadowSlider',10)">Reset</button>
-        </div>
-
-        <div class="slider-row">
+        <div class="control-group">
+          <div class="label-row">
+            <label>Add Shadow Details <span id="detailShadowVal">10%</span></label>
+            <button class="btn-reset" onclick="resetSlider('detailShadowSlider',10)">Reset</button>
+          </div>
           <input type="range" id="detailShadowSlider" min="0" max="100" value="10">
         </div>
 
-        <div class="label-row" style="margin-top:10px;">
-          <label>Detail Brush Size: <span id="detailSizeVal">1.0</span></label>
-          <button class="btn-reset" onclick="resetSlider('detailSizeSlider',1.0)">Reset</button>
-        </div>
-
-        <div class="slider-row">
+        <div class="control-group">
+          <div class="label-row">
+            <label>Detail Brush Size <span id="detailSizeVal">1.0</span></label>
+            <button class="btn-reset" onclick="resetSlider('detailSizeSlider',1.0)">Reset</button>
+          </div>
           <input type="range" id="detailSizeSlider" min="0.5" max="10" step="0.1" value="1.0">
         </div>
-
       </div>
 
-      <button class="btn-paint" onclick="startProcessing()">AutoPaint Canvas</button>
+      <div class="section">
+        <button class="btn-paint primary" onclick="startProcessing()">AutoPaint Canvas</button>
+      </div>
     </div> <!-- End Auto UI -->
 
     <button id="btn-toggle-manual" class="btn-toggle" onclick="toggleManualMode()">🖌️ Switch to Manual Paint</button>
 
     <div id="manual-ui">
-      <h3 class="manual-header">🖌️ Manual Tools</h3>
-      <div id="brush-preview-box">
-        <canvas id="brush-preview-canvas"></canvas>
-      </div>
-      <div class="control-group" style="background: #222;">
-        <div class="label-row"><label>Brush Color</label></div>
-        <input type="color" id="manualColor" value="#ffeb3b">
-      </div>
-      <div class="control-group" style="background: #222;">
-        <div class="label-row"><label>Brush Size: <span id="manSizeVal">40</span></label></div>
-        <input type="range" id="manualSize" min="5" max="150" value="40">
-      </div>
-      <div class="control-group" style="background: #222;">
-        <div class="label-row"><label>Transparency: <span id="manAlphaVal">100%</span></label></div>
-        <input type="range" id="manualAlpha" min="1" max="100" value="100">
-      </div>
-      <div class="control-group" style="background: #222;">
-        <div class="label-row"><label>Wet Paint Mix: <span id="manBlendVal">0%</span></label></div>
-        <input type="range" id="manualBlend" min="0" max="100" value="0">
-      </div>
-      <div class="control-group" style="background: #222;">
-        <div class="label-row"><label>Bristles: <span id="manBristleVal">30</span></label></div>
-        <input type="range" id="manualBristles" min="5" max="100" value="30">
-      </div>
-      <div class="control-group" style="background: #222;">
-        <div class="label-row"><label>Damping: <span id="manDampingVal">0.15</span></label></div>
-        <input type="range" id="manualDamping" min="1" max="50" value="15">
+      <div class="section">
+        <span class="section-title">Manual Tools</span>
+        <div id="brush-preview-box" style="margin-bottom: 10px;">
+          <canvas id="brush-preview-canvas"></canvas>
+        </div>
+        <div class="control-group">
+          <label>Brush Color</label>
+          <input type="color" id="manualColor" value="#ffeb3b">
+        </div>
+        <div class="control-group">
+          <label>Brush Size <span id="manSizeVal">40</span></label>
+          <input type="range" id="manualSize" min="5" max="150" value="40">
+        </div>
+        <div class="control-group">
+          <label>Transparency <span id="manAlphaVal">100%</span></label>
+          <input type="range" id="manualAlpha" min="1" max="100" value="100">
+        </div>
+        <div class="control-group">
+          <label>Wet Paint Mix <span id="manBlendVal">0%</span></label>
+          <input type="range" id="manualBlend" min="0" max="100" value="0">
+        </div>
+        <div class="control-group">
+          <label>Bristles <span id="manBristleVal">30</span></label>
+          <input type="range" id="manualBristles" min="5" max="100" value="30">
+        </div>
+        <div class="control-group">
+          <label>Damping <span id="manDampingVal">0.15</span></label>
+          <input type="range" id="manualDamping" min="1" max="50" value="15">
+        </div>
       </div>
     </div>
 
-    <button class="btn-save" onclick="saveArtwork()">💾 Save Image</button>
+    <div class="section">
+      <button class="btn-save" onclick="saveArtwork()">💾 Save Image</button>
+    </div>
 
     <label style="margin-top:10px; display: block;">Source Preview:</label>
     <div id="preview-container">
