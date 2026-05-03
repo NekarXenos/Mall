@@ -12,10 +12,10 @@
     color: #fff; 
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
     display: flex;
-    flex-direction: row-reverse; 
+    flex-direction: row-reverse; /* Toolbar on the right side */
     height: 100vh;
     overflow: hidden;
-    touch-action: none;
+    touch-action: none; /* Prevent pinch zoom globally for better drawing experience */
   }
   
   #ui {
@@ -33,6 +33,7 @@
     flex-shrink: 0;
   }
 
+  /* Scrollbar styling for UI panel */
   #ui::-webkit-scrollbar { width: 8px; }
   #ui::-webkit-scrollbar-track { background: #1a1a1a; }
   #ui::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
@@ -45,6 +46,7 @@
     overflow: auto;
   }
   
+  /* Centers the canvas when zoomed out, allows scrolling without cutoffs when zoomed in */
   #p5-holder canvas {
     margin: auto;
     box-shadow: 0 4px 15px rgba(0,0,0,0.6);
@@ -89,22 +91,10 @@
     margin: 0;
     font-weight: normal;
   }
-  .btn-reset:hover { background: #555; color: #fff; }
-
-  /* Small toggle style for UI */
-  .btn-mini-toggle {
-    background: #444;
+  .btn-reset:hover {
+    background: #555;
     color: #fff;
-    padding: 2px 6px;
-    font-size: 0.65rem;
-    border-radius: 4px;
-    border: 1px solid #666;
-    cursor: pointer;
-    width: auto;
-    margin: 0;
   }
-  .btn-mini-toggle.active { background: #4caf50; border-color: #45a049; }
-  .btn-mini-toggle.disabled { background: #600; border-color: #800; color: #ccc; }
 
   select {
     width: 100%;
@@ -148,7 +138,12 @@
     overflow: hidden;
   }
 
-  #imgPreview { max-width: 100%; max-height: 200px; display: none; }
+  #imgPreview {
+    max-width: 100%;
+    max-height: 200px;
+    display: none;
+  }
+
   .placeholder-text { color: #555; font-size: 0.8rem; text-align: center; }
 
   #loading-overlay {
@@ -165,30 +160,82 @@
     font-weight: bold;
   }
   .spinner {
-    width: 40px; height: 40px;
-    border: 4px solid #333; border-top: 4px solid #4caf50;
+    width: 40px;
+    height: 40px;
+    border: 4px solid #333;
+    border-top: 4px solid #4caf50;
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin-bottom: 10px;
   }
   @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-  .slider-marker { width: 100%; height: 4px; background: #444; margin-top: 2px; position: relative; }
-  .marker-mid { position: absolute; left: 50%; top: -2px; width: 2px; height: 8px; background: #888; transform: translateX(-50%); }
+  .slider-marker {
+    width: 100%;
+    height: 4px;
+    background: #444;
+    margin-top: 2px;
+    position: relative;
+    grid-column: span 2;
+  }
+  .marker-mid {
+    position: absolute;
+    left: 50%;
+    top: -2px;
+    width: 2px;
+    height: 8px;
+    background: #888;
+    transform: translateX(-50%);
+  }
 
-  #manual-ui { display: none; background: #2b2b2b; border: 1px solid #ff9800; border-radius: 6px; padding: 12px; flex-direction: column; gap: 12px; }
+  /* Manual UI styles */
+  #manual-ui {
+    display: none;
+    background: #2b2b2b;
+    border: 1px solid #ff9800;
+    border-radius: 6px;
+    padding: 12px;
+    flex-direction: column;
+    gap: 12px;
+  }
   .manual-header { color: #ff9800; font-size: 1rem; margin: 0; display: flex; align-items: center; gap: 8px; }
 
+  /* Brush Size Preview Indicator */
   #brush-preview-box {
-    width: 100%; height: 150px; background: #111; border: 1px solid #444; border-radius: 4px;
-    display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;
+    width: 100%;
+    height: 150px;
+    background: #111;
+    border: 1px solid #444;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
   }
-  #brush-preview-canvas { width: 100%; height: 100%; }
+  #brush-preview-canvas {
+    width: 100%;
+    height: 100%;
+  }
 
+  /* Mobile Responsive Layout - Toolbar moves to bottom */
   @media (max-width: 768px) {
-    body { flex-direction: column-reverse; }
-    #ui { width: 100%; height: 45vh; border-left: none; border-top: 1px solid #333; padding: 15px; box-sizing: border-box; }
-    .canvas-container { height: 55vh; flex-grow: 0; }
+    body {
+      flex-direction: column-reverse;
+    }
+    #ui {
+      width: 100%;
+      height: 45vh;
+      border-left: none;
+      border-top: 1px solid #333;
+      padding: 15px;
+      box-sizing: border-box;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.5);
+    }
+    .canvas-container {
+      height: 55vh;
+      flex-grow: 0;
+    }
   }
 </style>
 </head>
@@ -260,23 +307,9 @@
       </div>
     </div>
 
-    <!-- New Default Brush Angle Control -->
-    <div class="control-group" id="defaultAngleGroup">
-      <div class="label-row">
-        <label title="Applied to uniform shapes (<10% aspect diff)">7. Default Angle: <span id="defAngleVal">45&deg;</span></label>
-        <button id="toggleDefAngle" class="btn-mini-toggle active" onclick="toggleDefaultAngle()">Enabled</button>
-      </div>
-      <div class="slider-row">
-        <input type="range" id="defAngleSlider" min="0" max="360" value="45">
-        <div id="defAngleWheel" style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid #aaa; position: relative; display: flex; justify-content: center; transform: rotate(45deg); flex-shrink: 0;">
-          <div style="width: 2px; height: 8px; background: #2196f3; border-radius: 2px;"></div>
-        </div>
-      </div>
-    </div>
-
     <div class="control-group">
       <div class="label-row">
-        <label>8. Add Detail: <span id="detailVal">10%</span></label>
+        <label>7. Add Detail: <span id="detailVal">10%</span></label>
         <button class="btn-reset" onclick="resetSlider('detailSlider', 10)">Reset</button>
       </div>
       <div class="slider-row">
@@ -287,27 +320,42 @@
     <button class="btn-paint" onclick="startProcessing()">AutoPaint Canvas</button>
   </div> <!-- End Auto UI -->
 
+  <!-- Manual Mode Toggle & UI -->
   <button id="btn-toggle-manual" class="btn-toggle" onclick="toggleManualMode()">🖌️ Switch to Manual Paint</button>
 
   <div id="manual-ui">
     <h3 class="manual-header">🖌️ Manual Tools</h3>
+    
+    <!-- Brush Size Preview -->
     <div id="brush-preview-box">
       <canvas id="brush-preview-canvas"></canvas>
     </div>
+
     <div class="control-group" style="background: #222;">
-      <div class="label-row"><label>Brush Color</label></div>
+      <div class="label-row">
+        <label>Brush Color</label>
+      </div>
       <input type="color" id="manualColor" value="#ffeb3b">
     </div>
+
     <div class="control-group" style="background: #222;">
-      <div class="label-row"><label>Brush Size: <span id="manSizeVal">40</span></label></div>
+      <div class="label-row">
+        <label>Brush Size: <span id="manSizeVal">40</span></label>
+      </div>
       <input type="range" id="manualSize" min="5" max="150" value="40">
     </div>
+
     <div class="control-group" style="background: #222;">
-      <div class="label-row"><label>Bristles: <span id="manBristleVal">30</span></label></div>
+      <div class="label-row">
+        <label>Bristles: <span id="manBristleVal">30</span></label>
+      </div>
       <input type="range" id="manualBristles" min="5" max="100" value="30">
     </div>
+
     <div class="control-group" style="background: #222;">
-      <div class="label-row"><label>Damping: <span id="manDampingVal">0.15</span></label></div>
+      <div class="label-row">
+        <label>Damping: <span id="manDampingVal">0.15</span></label>
+      </div>
       <input type="range" id="manualDamping" min="1" max="50" value="15">
     </div>
   </div>
@@ -333,8 +381,10 @@ let painted = false;
 let ready = false;
 let p5CanvasElt;
 
+// Zoom State
 let currentScale = 1;
 
+// Settings captured at the time of "Start Painting"
 let activeBristleAngleOffset = 0;
 let activeBristleLengthScale = 1.0;
 let activeBristleAlpha = 255;
@@ -343,10 +393,7 @@ let activeBristleSkip = 1;
 let activeDetailLevel = 0; 
 let avgColor = [20, 20, 20];
 
-// Default Angle Logic State
-let isDefaultAngleEnabled = true;
-let activeDefaultAngleValue = 45;
-
+// UI Elements
 const uploadInput = document.getElementById("upload");
 const colorSlider = document.getElementById("colorSlider");
 const colValLabel = document.getElementById("colVal");
@@ -355,12 +402,6 @@ const previewLabel = document.getElementById("previewLabel");
 const angleSlider = document.getElementById("angleSlider");
 const angleValLabel = document.getElementById("angleVal");
 const angleWheel = document.getElementById("angleWheel");
-
-const defAngleSlider = document.getElementById("defAngleSlider");
-const defAngleValLabel = document.getElementById("defAngleVal");
-const defAngleWheel = document.getElementById("defAngleWheel");
-const toggleDefAngleBtn = document.getElementById("toggleDefAngle");
-
 const loadingOverlay = document.getElementById("loading-overlay");
 const paletteModeSelect = document.getElementById("paletteMode");
 const lengthSlider = document.getElementById("lengthSlider");
@@ -370,44 +411,20 @@ const alphaValLabel = document.getElementById("alphaVal");
 const detailSlider = document.getElementById("detailSlider");
 const detailValLabel = document.getElementById("detailVal");
 
+// DOM Listeners for AutoPaint
 uploadInput.addEventListener("change", handleUpload);
 colorSlider.addEventListener("input", e => colValLabel.innerText = e.target.value);
 lengthSlider.addEventListener("input", e => lenValLabel.innerText = parseFloat(e.target.value).toFixed(1));
 alphaSlider.addEventListener("input", e => alphaValLabel.innerText = e.target.value + "%");
 detailSlider.addEventListener("input", e => detailValLabel.innerText = e.target.value + "%");
-
 angleSlider.addEventListener("input", e => {
   const val = parseInt(e.target.value);
   updateAngleUI(val);
 });
 
-defAngleSlider.addEventListener("input", e => {
-  const val = parseInt(e.target.value);
-  activeDefaultAngleValue = val;
-  defAngleValLabel.innerHTML = val + '&deg;';
-  defAngleWheel.style.transform = `rotate(${val}deg)`;
-});
-
 function updateAngleUI(val) {
   angleValLabel.innerHTML = val + '&deg;';
   angleWheel.style.transform = `rotate(${val}deg)`;
-}
-
-function toggleDefaultAngle() {
-  isDefaultAngleEnabled = !isDefaultAngleEnabled;
-  if (isDefaultAngleEnabled) {
-    toggleDefAngleBtn.innerText = "Enabled";
-    toggleDefAngleBtn.classList.add('active');
-    toggleDefAngleBtn.classList.remove('disabled');
-    defAngleSlider.disabled = false;
-    defAngleSlider.style.opacity = "1";
-  } else {
-    toggleDefAngleBtn.innerText = "Disabled";
-    toggleDefAngleBtn.classList.remove('active');
-    toggleDefAngleBtn.classList.add('disabled');
-    defAngleSlider.disabled = true;
-    defAngleSlider.style.opacity = "0.4";
-  }
 }
 
 function resetSlider(id, val) {
@@ -422,6 +439,8 @@ function resetSlider(id, val) {
 
 function applyScale() {
   if (!p5CanvasElt) return;
+  // Use logical width/height from p5 to set CSS styling
+  // This guarantees scale perfectly matches logical pixels
   p5CanvasElt.style.width = (width * currentScale) + 'px';
   p5CanvasElt.style.height = (height * currentScale) + 'px';
 }
@@ -429,21 +448,28 @@ function applyScale() {
 function handleUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
+
   const reader = new FileReader();
   reader.onload = function(e) {
     imgPreview.src = e.target.result;
     imgPreview.style.display = "block";
     previewLabel.style.display = "none";
+
     loadImage(e.target.result, loaded => {
       img = loaded;
       resizeCanvas(img.width, img.height);
-      pixelDensity(1);
+      pixelDensity(1); // Ensure density is clamped at 1 again after resizing
+      
+      // Calculate fit-to-screen scale
       const container = document.getElementById('p5-holder');
       const padding = 40; 
       const scaleX = (container.clientWidth - padding) / img.width;
       const scaleY = (container.clientHeight - padding) / img.height;
+      
+      // Shrink if too big, max scale 1 (100%)
       currentScale = Math.min(1, Math.min(scaleX, scaleY));
       applyScale();
+      
       ready = true;
       painted = false;
       background(20);
@@ -454,51 +480,72 @@ function handleUpload(event) {
 
 function setup() {
   let p5Canvas = createCanvas(300, 300);
-  pixelDensity(1);
+  pixelDensity(1); // CRITICAL: Stop retina screens from doubling backing store size and messing up manual math
   p5Canvas.parent('p5-holder');
   background(20);
   p5CanvasElt = p5Canvas.elt;
+  
   applyScale();
 
+  // Bind Native Event Listeners for Manual Painting
   p5CanvasElt.addEventListener('mousedown', startManualPainting);
   window.addEventListener('mouseup', stopManualPainting);
   window.addEventListener('mousemove', doManualPaint);
+
   p5CanvasElt.addEventListener('touchstart', startManualPainting, { passive: false });
   window.addEventListener('touchend', stopManualPainting);
   window.addEventListener('touchcancel', stopManualPainting);
   window.addEventListener('touchmove', doManualPaint, { passive: false });
 
+  // Setup Zoom Events
   const container = document.getElementById('p5-holder');
+
+  // Mouse wheel Zoom
   container.addEventListener('wheel', (e) => {
     if (!p5CanvasElt) return;
     e.preventDefault();
+
     const zoomFactor = 1.1;
     const scaleMultiplier = e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
     const newScale = Math.max(0.05, Math.min(currentScale * scaleMultiplier, 20));
+    
     if (newScale === currentScale) return;
+
     const rect = p5CanvasElt.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
+
     currentScale = newScale;
     applyScale();
+
+    // Adjust container scroll to zoom towards mouse cursor
     container.scrollLeft += (mouseX * scaleMultiplier) - mouseX;
     container.scrollTop += (mouseY * scaleMultiplier) - mouseY;
   }, { passive: false });
 
+  // Pinch Zoom
   let initialPinchDist = null;
   let initialPinchScale = 1;
+
   container.addEventListener('touchstart', (e) => {
     if (e.touches.length >= 2) {
       e.preventDefault();
-      isManualPainting = false;
-      initialPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      isManualPainting = false; // Instantly abort painting
+      initialPinchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+      );
       initialPinchScale = currentScale;
     }
   }, { passive: false });
+
   container.addEventListener('touchmove', (e) => {
     if (e.touches.length >= 2) {
       e.preventDefault();
-      const currentDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      const currentDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+      );
       const newScale = initialPinchScale * (currentDist / initialPinchDist);
       currentScale = Math.max(0.05, Math.min(newScale, 20));
       applyScale();
@@ -508,6 +555,7 @@ function setup() {
 
 function startProcessing() {
   if (!img) return;
+  
   const thicknessPercent = parseInt(alphaSlider.value);
   if (thicknessPercent <= 50) {
     activeBristleAlpha = map(thicknessPercent, 0, 50, 0, 255);
@@ -518,9 +566,11 @@ function startProcessing() {
     activeBristleStrokeWeight = map(thicknessPercent, 50, 100, 1, 5);
     activeBristleSkip = max(1, floor(activeBristleStrokeWeight));
   }
+  
   activeBristleLengthScale = parseFloat(lengthSlider.value);
   activeBristleAngleOffset = parseInt(angleSlider.value);
   activeDetailLevel = parseInt(detailSlider.value);
+
   loadingOverlay.style.display = "flex";
   setTimeout(() => {
     processImage();
@@ -533,10 +583,11 @@ function processImage() {
   pieces = [];
   avgColor = getAverageColor(img);
   background(avgColor[0], avgColor[1], avgColor[2]);
+
   let quantized = quantizeImage(img, parseInt(colorSlider.value));
   let blobs = extractBlobs(quantized);
   let isRealistic = paletteModeSelect.value === 'realistic';
-  
+
   for (let blob of blobs) {
     let hull = convexHull(blob.pixels);
     let angle = findBestAngle(hull);
@@ -549,313 +600,437 @@ function processImage() {
       let step = 256 / levels;
       finalColor = blob.colorKey.split(",").map(v => v * step);
     }
+
     pieces.push({ pixels: blob.pixels, color: finalColor, angle: angle, size: blob.pixels.length });
   }
+
   pieces.sort((a, b) => b.size - a.size);
-  painted = false;
+  painted = false; // Trigger p5 drawing loop
 }
 
-function saveArtwork() { saveCanvas('PainterGO_Artwork', 'png'); }
+function saveArtwork() {
+  saveCanvas('PainterGO_Artwork', 'png');
+}
 
 function draw() {
   if (!ready || painted || pieces.length === 0) return;
-  for (let piece of pieces) { drawBrushStroke(piece); }
-  if (activeDetailLevel > 0) { drawDetails(activeDetailLevel); }
-  painted = true;
-}
 
-function findBestAngle(hull) {
-  if (hull.length < 3) return 0;
-  
-  // Calculate bounding box for square-ish check
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (let p of hull) {
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  }
-  
-  const w = maxX - minX;
-  const h = maxY - minY;
-  const diff = Math.abs(w - h);
-  const maxDim = Math.max(w, h);
-  
-  // If it's effectively a square (less than 10% diff) and feature is enabled
-  if (isDefaultAngleEnabled && maxDim > 0 && (diff / maxDim) < 0.1) {
-    // Return Default Brush Angle in Radians (DO NOT add offset as per request)
-    return radians(activeDefaultAngleValue);
+  for (let piece of pieces) {
+    drawBrushStroke(piece);
   }
 
-  // Otherwise, calculate the longest edge for the brush direction
-  let maxDistSq = -1;
-  let bestAngle = 0;
-  for (let i = 0; i < hull.length; i++) {
-    for (let j = i + 1; j < hull.length; j++) {
-      let dSq = pow(hull[i].x - hull[j].x, 2) + pow(hull[i].y - hull[j].y, 2);
-      if (dSq > maxDistSq) {
-        maxDistSq = dSq;
-        bestAngle = atan2(hull[j].y - hull[i].y, hull[j].x - hull[i].x);
-      }
-    }
+  if (activeDetailLevel > 0) {
+    drawDetails(activeDetailLevel);
   }
-  
-  // Apply normal offset for non-square shapes or if feature disabled
-  return bestAngle + radians(activeBristleAngleOffset);
-}
 
-function drawBrushStroke(piece) {
-  push();
-  let r = piece.color[0], g = piece.color[1], b = piece.color[2];
-  stroke(r, g, b, activeBristleAlpha);
-  strokeWeight(activeBristleStrokeWeight);
-  
-  let angle = piece.angle;
-  let cosA = cos(angle);
-  let sinA = sin(angle);
-  
-  for (let i = 0; i < piece.pixels.length; i += activeBristleSkip) {
-    let p = piece.pixels[i];
-    let len = (5 + random(15)) * activeBristleLengthScale;
-    line(p.x, p.y, p.x + cosA * len, p.y + sinA * len);
-  }
-  pop();
+  painted = true; // Stop loop, canvas stays static
 }
 
 function drawDetails(level) {
   push();
   let attempts = floor((img.width * img.height) * (level / 100) * 2.5);
-  let threshold = map(level, 0, 100, 60, 15);
+  let threshold = map(level, 0, 100, 60, 15); 
   let isImpasto = activeBristleStrokeWeight > 4;
   let detailWeight = isImpasto ? max(1.5, activeBristleStrokeWeight / 2.5) : map(level, 0, 100, 0.5, 1.5);
+  
   strokeWeight(detailWeight);
   strokeCap(ROUND);
+
   for (let i = 0; i < attempts; i++) {
-    let x = floor(random(1, img.width - 1)), y = floor(random(1, img.height - 1));
-    let idxR = (y * img.width + (x + 1)) * 4, idxL = (y * img.width + (x - 1)) * 4;
-    let idxD = ((y + 1) * img.width + x) * 4, idxU = ((y - 1) * img.width + x) * 4;
-    let lumX = (0.299*img.pixels[idxR] + 0.587*img.pixels[idxR+1] + 0.114*img.pixels[idxR+2]) - (0.299*img.pixels[idxL] + 0.587*img.pixels[idxL+1] + 0.114*img.pixels[idxL+2]);
-    let lumY = (0.299*img.pixels[idxD] + 0.587*img.pixels[idxD+1] + 0.114*img.pixels[idxD+2]) - (0.299*img.pixels[idxU] + 0.587*img.pixels[idxU+1] + 0.114*img.pixels[idxU+2]);
+    let x = floor(random(1, img.width - 1));
+    let y = floor(random(1, img.height - 1));
+    let idxRight = (y * img.width + (x + 1)) * 4;
+    let idxLeft  = (y * img.width + (x - 1)) * 4;
+    let idxDown  = ((y + 1) * img.width + x) * 4;
+    let idxUp    = ((y - 1) * img.width + x) * 4;
+
+    let lumX = (0.299*img.pixels[idxRight] + 0.587*img.pixels[idxRight+1] + 0.114*img.pixels[idxRight+2]) - 
+               (0.299*img.pixels[idxLeft] + 0.587*img.pixels[idxLeft+1] + 0.114*img.pixels[idxLeft+2]);
+    let lumY = (0.299*img.pixels[idxDown] + 0.587*img.pixels[idxDown+1] + 0.114*img.pixels[idxDown+2]) - 
+               (0.299*img.pixels[idxUp] + 0.587*img.pixels[idxUp+1] + 0.114*img.pixels[idxUp+2]);
+
     let mag = sqrt(lumX*lumX + lumY*lumY);
+
     if (mag > threshold) {
       let angle = atan2(lumY, lumX) + HALF_PI;
-      let idxC = (y * img.width + x) * 4;
-      let r = img.pixels[idxC], g = img.pixels[idxC+1], b = img.pixels[idxC+2];
-      stroke(r, g, b, 200);
-      let len = 3 + random(7);
-      line(x, y, x + cos(angle) * len, y + sin(angle) * len);
+      let idxCenter = (y * img.width + x) * 4;
+      let r = img.pixels[idxCenter];
+      let g = img.pixels[idxCenter+1];
+      let b = img.pixels[idxCenter+2];
+      let lum = 0.299*r + 0.587*g + 0.114*b;
+
+      let strokeLen = random(3, 8) * activeBristleLengthScale;
+
+      if (lum > 128) stroke(min(r + 80, 255), min(g + 80, 255), min(b + 80, 255), 210);
+      else stroke(max(r - 80, 0), max(g - 80, 0), max(b - 80, 0), 210);
+
+      let dx = cos(angle) * strokeLen / 2;
+      let dy = sin(angle) * strokeLen / 2;
+
+      if (isImpasto) {
+        push();
+        strokeWeight(detailWeight);
+        stroke(max(r-100,0), max(g-100,0), max(b-100,0), 100);
+        line(x - dx, (y - dy) + detailWeight/1.5, x + dx, (y + dy) + detailWeight/1.5);
+        pop();
+      }
+      line(x - dx, y - dy, x + dx, y + dy);
     }
   }
   pop();
 }
 
 function getAverageColor(img) {
-  let r = 0, g = 0, b = 0, count = 0;
-  for (let i = 0; i < img.pixels.length; i += 40) {
-    r += img.pixels[i]; g += img.pixels[i+1]; b += img.pixels[i+2]; count++;
-  }
-  return [r/count, g/count, b/count];
+  let r=0,g=0,b=0; let total = img.pixels.length / 4;
+  for (let i = 0; i < img.pixels.length; i += 4) { r += img.pixels[i]; g += img.pixels[i+1]; b += img.pixels[i+2]; }
+  return [r/total, g/total, b/total];
 }
 
 function getBlobAverageColor(img, pixels) {
-  let r = 0, g = 0, b = 0;
+  let r=0, g=0, b=0;
   for (let p of pixels) {
-    let idx = (p.y * img.width + p.x) * 4;
-    r += img.pixels[idx]; g += img.pixels[idx+1]; b += img.pixels[idx+2];
+    let i = (floor(p.x) + floor(p.y) * img.width) * 4;
+    r += img.pixels[i]; g += img.pixels[i+1]; b += img.pixels[i+2];
   }
-  return [r/pixels.length, g/pixels.length, b/pixels.length];
+  let count = pixels.length; return [r/count, g/count, b/count];
 }
 
-function quantizeImage(img, numColors) {
-  let result = new Int32Array(img.width * img.height);
-  let levels = max(2, floor(pow(numColors, 1/3)));
+function quantizeImage(img, count) {
+  let levels = max(2, floor(pow(count, 1/3)));
   let step = 256 / levels;
-  for (let i = 0; i < img.pixels.length; i += 4) {
-    let r = floor(img.pixels[i] / step);
-    let g = floor(img.pixels[i+1] / step);
-    let b = floor(img.pixels[i+2] / step);
-    result[i/4] = (r << 16) | (g << 8) | b;
+  let mapData = [];
+  for (let y = 0; y < img.height; y++) {
+    mapData[y] = [];
+    for (let x = 0; x < img.width; x++) {
+      let i = (x + y * img.width) * 4;
+      mapData[y][x] = `${floor(img.pixels[i] / step)},${floor(img.pixels[i+1] / step)},${floor(img.pixels[i+2] / step)}`;
+    }
   }
-  return result;
+  return { map: mapData, levels, step };
 }
 
-function extractBlobs(quantized) {
-  let blobs = [];
-  let visited = new Uint8Array(quantized.length);
-  for (let i = 0; i < quantized.length; i++) {
-    if (visited[i]) continue;
-    let colorKey = quantized[i];
-    let pixels = [];
-    let stack = [i];
-    visited[i] = 1;
-    while (stack.length > 0) {
-      let curr = stack.pop();
-      let x = curr % width, y = floor(curr / width);
-      pixels.push({x, y});
-      let neighbors = [curr-1, curr+1, curr-width, curr+width];
-      for (let n of neighbors) {
-        if (n >= 0 && n < quantized.length && !visited[n] && quantized[n] === colorKey) {
-          visited[n] = 1;
-          stack.push(n);
-        }
+function extractBlobs(data) {
+  let map = data.map;
+  let visited = Array.from({length: map.length}, () => Array(map[0].length).fill(false));
+  let blobs = []; let dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+
+  for (let y = 0; y < map.length; y++) {
+    for (let x = 0; x < map[0].length; x++) {
+      if (visited[y][x]) continue;
+      let colorKey = map[y][x]; let stack = [[x,y]]; let pixels = [];
+      while (stack.length) {
+        let [cx, cy] = stack.pop();
+        if (cx < 0 || cy < 0 || cx >= map[0].length || cy >= map.length) continue;
+        if (visited[cy][cx] || map[cy][cx] !== colorKey) continue;
+        visited[cy][cx] = true;
+        pixels.push(createVector(cx, cy));
+        for (let d of dirs) stack.push([cx + d[0], cy + d[1]]);
       }
-    }
-    if (pixels.length > 5) {
-      let r = (colorKey >> 16) & 0xFF, g = (colorKey >> 8) & 0xFF, b = colorKey & 0xFF;
-      blobs.push({ colorKey: `${r},${g},${b}`, pixels: pixels });
+      if (pixels.length > 20) blobs.push({ pixels, colorKey });
     }
   }
   return blobs;
 }
 
 function convexHull(points) {
-  if (points.length <= 3) return points;
-  points.sort((a, b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
-  const upper = [], lower = [];
+  if (points.length < 3) return points;
+  points.sort((a,b)=> a.x === b.x ? a.y - b.y : a.x - b.x);
+  let cross = (o,a,b)=> (a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);
+  let lower = [];
   for (let p of points) {
-    while (upper.length >= 2 && crossProduct(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
-    upper.push(p);
-  }
-  for (let i = points.length - 1; i >= 0; i--) {
-    let p = points[i];
-    while (lower.length >= 2 && crossProduct(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
+    while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
     lower.push(p);
   }
-  upper.pop(); lower.pop();
-  return upper.concat(lower);
+  let upper = [];
+  for (let i = points.length - 1; i >= 0; i--) {
+    let p = points[i];
+    while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop(); lower.pop(); return lower.concat(upper);
 }
 
-function crossProduct(a, b, c) { return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x); }
+function findBestAngle(hull) {
+  let bestAngle = 0; let bestRatio = 0;
+  for (let a = 0; a < 180; a += 15) {
+    let rad = radians(a); let xs = [], ys = [];
+    for (let p of hull) {
+      xs.push(p.x * cos(rad) - p.y * sin(rad));
+      ys.push(p.x * sin(rad) + p.y * cos(rad));
+    }
+    let w = max(xs) - min(xs); let h = max(ys) - min(ys); let ratio = w / (h + 0.0001);
+    if (ratio > bestRatio) { bestRatio = ratio; bestAngle = a; }
+  }
+  return bestAngle;
+}
+
+function drawBrushStroke(piece) {
+  push();
+  let rad = radians((piece.angle !== undefined ? piece.angle : 0) + activeBristleAngleOffset);
+  let cosA = cos(rad); let sinA = sin(rad);
+  let baseLen = sqrt(piece.size) * 1.5;
+  let isImpasto = activeBristleStrokeWeight > 4;
+
+  if (!isImpasto) {
+    stroke(piece.color[0], piece.color[1], piece.color[2], activeBristleAlpha);
+    strokeWeight(activeBristleStrokeWeight);
+  }
+
+  for (let i = 0; i < piece.pixels.length; i += activeBristleSkip) {
+    let p = piece.pixels[i];
+    let len = baseLen * activeBristleLengthScale * random(0.8, 1.2);
+    let spread = random(-1, 1); let startX = random(-0.5, 0.5); let startY = spread;
+    let endX = len + random(-1, 1); let endY = spread + random(-0.3, 0.3);
+
+    let x1 = p.x + startX * cosA - startY * sinA;
+    let y1 = p.y + startX * sinA + startY * cosA;
+    let x2 = p.x + endX * cosA - endY * sinA;
+    let y2 = p.y + endX * sinA + endY * cosA;
+
+    if (isImpasto) {
+      let offset = activeBristleStrokeWeight / 2;
+      strokeWeight(2); stroke(piece.color[0] * 0.5, piece.color[1] * 0.5, piece.color[2] * 0.5, 32);
+      line(x1, y1 + offset, x2, y2 + offset);
+      strokeWeight(activeBristleStrokeWeight); stroke(piece.color[0], piece.color[1], piece.color[2], activeBristleAlpha);
+      line(x1, y1, x2, y2);
+      strokeWeight(2); stroke( piece.color[0] +10, piece.color[1] +10, piece.color[2] +10, 128);
+      line(x1, y1 - (offset/2), x2, y2 - (offset/2));
+    } else { line(x1, y1, x2, y2); }
+  }
+  pop();
+}
 
 // ==========================================
 // MANUAL PAINTING LOGIC
 // ==========================================
-let isManualMode = false;
+let isManualModeActive = false;
 let isManualPainting = false;
-const autoUI = document.getElementById('auto-ui');
-const manualUI = document.getElementById('manual-ui');
-const btnToggleManual = document.getElementById('btn-toggle-manual');
+
+// Configuration for Touch Pressure
+const MIN_PRESSURE_RADIUS = 5; 
+const MAX_PRESSURE_RADIUS = 35; 
+const MIN_LINE_WIDTH_FACTOR = 0.1; 
+const MAX_LINE_WIDTH_FACTOR = 0.4; 
+const DEFAULT_PRESSURE = 0.75; 
+
+// Manual Tools Elements
 const manualColorInput = document.getElementById('manualColor');
 const manualSizeInput = document.getElementById('manualSize');
 const manualBristlesInput = document.getElementById('manualBristles');
 const manualDampingInput = document.getElementById('manualDamping');
 const brushPreviewCanvas = document.getElementById('brush-preview-canvas');
 
-let brush = { x: 0, y: 0, px: 0, py: 0, color: '#ffeb3b', size: 40, bristleCount: 30, bristles: [], dampingFactor: 0.15, currentPressure: 0.5 };
+let brush = {
+    x: 0, y: 0, px: 0, py: 0,
+    size: parseInt(manualSizeInput.value, 10),
+    color: manualColorInput.value,
+    bristleCount: parseInt(manualBristlesInput.value, 10),
+    dampingFactor: parseFloat(manualDampingInput.value) / 100,
+    currentPressure: DEFAULT_PRESSURE,
+    bristles: []
+};
 
-function toggleManualMode() {
-  isManualMode = !isManualMode;
-  if (isManualMode) {
-    autoUI.style.display = 'none';
-    manualUI.style.display = 'flex';
-    btnToggleManual.innerText = '🖼️ Switch to Auto Paint';
-    btnToggleManual.style.background = '#4caf50';
-    initializeBristles();
-    updateBrushPreview();
-  } else {
-    autoUI.style.display = 'block';
-    manualUI.style.display = 'none';
-    btnToggleManual.innerText = '🖌️ Switch to Manual Paint';
-    btnToggleManual.style.background = '#ff9800';
-  }
+class Bristle {
+    constructor(parentX, parentY, offsetAngle, offsetLength) {
+        this.angle = offsetAngle; this.length = offsetLength;
+        this.x = parentX + Math.cos(this.angle) * this.length;
+        this.y = parentY + Math.sin(this.angle) * this.length;
+        this.px = this.x; this.py = this.y;
+    }
+    update(targetX, targetY, damping) {
+        const targetBristleX = targetX + Math.cos(this.angle) * this.length;
+        const targetBristleY = targetY + Math.sin(this.angle) * this.length;
+        this.px = this.x; this.py = this.y;
+        this.x = lerp(this.x, targetBristleX, damping);
+        this.y = lerp(this.y, targetBristleY, damping);
+    }
 }
 
+function lerp(start, end, amount) { return start + (end - start) * amount; }
+function distance(x1, y1, x2, y2) { return Math.sqrt((x1-x2)*(x1-x2) + (y1-y2)*(y1-y2)); }
+function clamp(value, min, max) { return Math.max(min, Math.min(value, max)); }
+function normalize(value, min, max) { if(max-min===0) return 0; return clamp((value-min)/(max-min), 0, 1); }
+
 function initializeBristles() {
-  brush.bristles = [];
-  for (let i = 0; i < brush.bristleCount; i++) {
-    let angle = Math.random() * Math.PI * 2;
-    let radius = Math.random() * brush.size;
-    brush.bristles.push({
-      ox: Math.cos(angle) * radius, oy: Math.sin(angle) * radius,
-      x: 0, y: 0, px: 0, py: 0
-    });
-  }
+    brush.bristles = [];
+    const baseLength = brush.size / 2;
+    for (let i = 0; i < brush.bristleCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const length = baseLength * (0.5 + Math.random() * 0.75);
+        brush.bristles.push(new Bristle(brush.x, brush.y, angle, length));
+    }
 }
 
 function updateBrushPreview() {
-  const ctx = brushPreviewCanvas.getContext('2d');
-  const w = brushPreviewCanvas.width = brushPreviewCanvas.offsetWidth;
-  const h = brushPreviewCanvas.height = brushPreviewCanvas.offsetHeight;
-  ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = brush.color;
-  ctx.lineWidth = 2;
-  const cx = w/2, cy = h/2;
-  for (let b of brush.bristles) {
-    ctx.beginPath();
-    ctx.arc(cx + b.ox, cy + b.oy, 1.5, 0, Math.PI*2);
-    ctx.stroke();
-  }
-  ctx.beginPath();
-  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-  ctx.arc(cx, cy, brush.size, 0, Math.PI*2);
-  ctx.stroke();
+    if (!brushPreviewCanvas) return;
+    
+    // Match internal resolution to display size
+    const rect = brushPreviewCanvas.parentElement.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+        brushPreviewCanvas.width = rect.width;
+        brushPreviewCanvas.height = rect.height;
+    } else {
+        // Fallback for when the UI is hidden during initial load
+        brushPreviewCanvas.width = 254; 
+        brushPreviewCanvas.height = 150;
+    }
+
+    const ctx = brushPreviewCanvas.getContext('2d');
+    ctx.clearRect(0, 0, brushPreviewCanvas.width, brushPreviewCanvas.height);
+    
+    const centerX = brushPreviewCanvas.width / 2;
+    const centerY = brushPreviewCanvas.height / 2;
+    
+    // Simulate line width based on default pressure
+    const minWidth = brush.size * MIN_LINE_WIDTH_FACTOR;
+    const maxWidth = brush.size * MAX_LINE_WIDTH_FACTOR;
+    const pressureBasedMaxWidth = minWidth + DEFAULT_PRESSURE * (maxWidth - minWidth);
+    const previewWidth = Math.max(0.5, minWidth + 0.5 * (pressureBasedMaxWidth - minWidth));
+
+    ctx.fillStyle = brush.color;
+    
+    brush.bristles.forEach(bristle => {
+        const bx = centerX + Math.cos(bristle.angle) * bristle.length;
+        const by = centerY + Math.sin(bristle.angle) * bristle.length;
+        
+        ctx.beginPath();
+        // Draw each simulated bristle tip
+        ctx.arc(bx, by, previewWidth / 2, 0, Math.PI * 2);
+        ctx.fill();
+    });
 }
 
-function startManualPainting(e) {
-  if (!isManualMode) return;
-  isManualPainting = true;
-  updateManualPosition(e);
-  brush.px = brush.x; brush.py = brush.y;
-  for (let b of brush.bristles) {
-    b.x = b.px = brush.x + b.ox;
-    b.y = b.py = brush.y + b.oy;
-  }
+function toggleManualMode() {
+    isManualModeActive = !isManualModeActive;
+    const btn = document.getElementById("btn-toggle-manual");
+    const autoUI = document.getElementById("auto-ui");
+    const manualUI = document.getElementById("manual-ui");
+
+    if (isManualModeActive) {
+        btn.innerHTML = "🔙 Back to Auto Settings";
+        btn.style.background = "#555";
+        autoUI.style.display = "none";
+        manualUI.style.display = "flex";
+        initializeBristles();
+        updateBrushPreview();
+    } else {
+        btn.innerHTML = "🖌️ Switch to Manual Paint";
+        btn.style.background = "#ff9800";
+        autoUI.style.display = "block";
+        manualUI.style.display = "none";
+    }
 }
 
-function stopManualPainting() { isManualPainting = false; }
+function updateBrushState(event) {
+    if(!p5CanvasElt) return;
+    const rect = p5CanvasElt.getBoundingClientRect();
+    
+    // Ensure we are using logical p5 width/height rather than the CSS pixel measurements
+    const scaleX = width / rect.width;
+    const scaleY = height / rect.height;
+    
+    let clientX, clientY;
+    let pressure = DEFAULT_PRESSURE;
 
-function doManualPaint(e) {
-  if (!isManualMode || !isManualPainting) return;
-  updateManualPosition(e);
-  drawManualStroke();
-  brush.px = brush.x; brush.py = brush.y;
+    if (event.touches && event.touches.length > 0) {
+        const touch = event.touches[0];
+        clientX = touch.clientX; clientY = touch.clientY;
+        if (touch.force !== undefined && touch.force > 0) pressure = clamp(touch.force, 0, 1);
+        else if (touch.radiusX !== undefined && touch.radiusX > 0) {
+            const avgRadius = (touch.radiusX + touch.radiusY) / 2;
+            pressure = normalize(avgRadius, MIN_PRESSURE_RADIUS, MAX_PRESSURE_RADIUS);
+        }
+    } else if (event.clientX !== undefined) {
+        clientX = event.clientX; clientY = event.clientY;
+    } else return;
+
+    brush.px = brush.x; brush.py = brush.y;
+    brush.x = (clientX - rect.left) * scaleX;
+    brush.y = (clientY - rect.top) * scaleY;
+    brush.currentPressure = pressure;
 }
 
-function updateManualPosition(e) {
-  const rect = p5CanvasElt.getBoundingClientRect();
-  let clientX = e.touches ? e.touches[0].clientX : e.clientX;
-  let clientY = e.touches ? e.touches[0].clientY : e.clientY;
-  brush.x = (clientX - rect.left) / currentScale;
-  brush.y = (clientY - rect.top) / currentScale;
-  brush.currentPressure = e.touches ? (e.touches[0].force || 0.5) : 0.5;
+function startManualPainting(event) {
+    if(!isManualModeActive) return;
+    if (event.touches && event.touches.length >= 2) {
+        isManualPainting = false;
+        return; // Prevent paint on pinch zoom
+    }
+    event.preventDefault();
+    isManualPainting = true;
+    updateBrushState(event);
+    brush.px = brush.x; brush.py = brush.y;
+
+    brush.bristles.forEach(bristle => {
+        bristle.x = brush.x + Math.cos(bristle.angle) * bristle.length;
+        bristle.y = brush.y + Math.sin(bristle.angle) * bristle.length;
+        bristle.px = bristle.x; bristle.py = bristle.y;
+    });
 }
 
-function drawManualStroke() {
-  const ctx = p5CanvasElt.getContext('2d');
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = brush.color;
-  for (let b of brush.bristles) {
-    b.px = b.x; b.py = b.y;
-    let targetX = brush.x + b.ox;
-    let targetY = brush.y + b.oy;
-    b.x += (targetX - b.x) * brush.dampingFactor;
-    b.y += (targetY - b.y) * brush.dampingFactor;
-    ctx.beginPath();
-    ctx.moveTo(b.px, b.py);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-  }
+function stopManualPainting() {
+    if (isManualPainting) {
+        isManualPainting = false;
+        brush.currentPressure = DEFAULT_PRESSURE;
+    }
 }
 
-manualColorInput.addEventListener('input', (e) => { brush.color = e.target.value; updateBrushPreview(); });
+function doManualPaint(event) {
+    if (!isManualModeActive || !isManualPainting) return;
+    if (event.touches && event.touches.length >= 2) {
+        isManualPainting = false; // abort immediately when 2nd finger touches
+        return; 
+    }
+    event.preventDefault();
+    updateBrushState(event);
+
+    let ctx = drawingContext; // Grabs Native 2D Context from p5.js
+    
+    brush.bristles.forEach(bristle => {
+        bristle.update(brush.x, brush.y, brush.dampingFactor);
+        
+        ctx.beginPath();
+        ctx.moveTo(bristle.px, bristle.py);
+        ctx.lineTo(bristle.x, bristle.y);
+        ctx.strokeStyle = brush.color;
+
+        const minWidth = brush.size * MIN_LINE_WIDTH_FACTOR;
+        const maxWidth = brush.size * MAX_LINE_WIDTH_FACTOR;
+        const pressureBasedMaxWidth = minWidth + brush.currentPressure * (maxWidth - minWidth);
+        const dist = distance(bristle.px, bristle.py, bristle.x, bristle.y);
+        const speedFactor = clamp(dist / 15, 0, 1);
+        
+        ctx.lineWidth = Math.max(0.5, minWidth + speedFactor * (pressureBasedMaxWidth - minWidth));
+        ctx.stroke();
+    });
+}
+
+// Manual Controls Event Listeners
+manualColorInput.addEventListener('input', (e) => {
+    brush.color = e.target.value;
+    updateBrushPreview();
+});
 manualSizeInput.addEventListener('input', (e) => {
-  brush.size = parseInt(e.target.value, 10);
-  document.getElementById('manSizeVal').textContent = brush.size;
-  initializeBristles(); updateBrushPreview();
+    brush.size = parseInt(e.target.value, 10);
+    document.getElementById('manSizeVal').textContent = brush.size;
+    initializeBristles(); // Regenerate bristle scatter on size change
+    updateBrushPreview();
 });
 manualBristlesInput.addEventListener('input', (e) => {
-  brush.bristleCount = parseInt(e.target.value, 10);
-  document.getElementById('manBristleVal').textContent = brush.bristleCount;
-  initializeBristles(); updateBrushPreview();
+    brush.bristleCount = parseInt(e.target.value, 10);
+    document.getElementById('manBristleVal').textContent = brush.bristleCount;
+    initializeBristles();
+    updateBrushPreview(); // Make sure preview updates when bristle count changes
 });
 manualDampingInput.addEventListener('input', (e) => {
-  brush.dampingFactor = parseFloat(e.target.value) / 100;
-  if (brush.dampingFactor === 0) brush.dampingFactor = 0.01;
-  document.getElementById('manDampingVal').textContent = brush.dampingFactor.toFixed(2);
+    brush.dampingFactor = parseFloat(e.target.value) / 100;
+    if (brush.dampingFactor === 0) brush.dampingFactor = 0.01;
+    document.getElementById('manDampingVal').textContent = brush.dampingFactor.toFixed(2);
 });
 
-window.onload = () => { if (typeof updateBrushPreview === 'function') updateBrushPreview(); };
-
+// Initial Setup for Bristles
+initializeBristles();
+updateBrushPreview();
 </script>
 </body>
 </html>
