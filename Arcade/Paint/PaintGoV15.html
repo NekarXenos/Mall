@@ -1,0 +1,2360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painter - GO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <!-- Layered PDF export (pdf-lib) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <!-- Layered PSD export (ag-psd) -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/ag-psd@15.3.2/dist/bundle.js"></script> -->
+	<script src="https://cdn.jsdelivr.net/npm/ag-psd@28.3.0/dist/bundle.js"></script>
+<script>
+window.addEventListener('load', () => {
+    console.log('agPsd:', window.agPsd);
+    console.log('writePsd:', window.writePsd);
+});
+</script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; overflow: hidden; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1a1a1a; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+        /* Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px; width: 16px;
+            border-radius: 50%;
+            background: #00D2FF;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 2px rgba(0,0,0,0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px;
+            cursor: pointer;
+            background: linear-gradient(to right, #00D2FF var(--range-fill, 50%), #374151 var(--range-fill, 50%));
+            border-radius: 2px;
+        }
+
+        .layer-item.active { border-left: 3px solid #00D2FF; background-color: #252525; }
+        .canvas-container {
+            background-image: url('https://image.qwenlm.ai/public_source/95119911-2821-40dd-bf24-f19df5c7c349/19f721b3e-3d0e-4835-b347-214c6b2db005.png');
+            background-size: cover;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        #brush-preview-canvas { width: 100%; height: 100%; display: block; }
+
+        /* ===== Slide-out side panels (position:fixed = zoom-immune) ===== */
+        .side-panel {
+            position: fixed;
+            top: 48px;    /* header h-12 */
+            bottom: 32px; /* status bar h-8 */
+            width: 320px;
+            z-index: 20;
+            transition: transform 300ms ease-in-out;
+            overflow-y: auto;
+        }
+        .side-panel.left  { left: 0;  transform: translateX(-100%); }
+        .side-panel.right { right: 0; transform: translateX(100%); }
+        .side-panel.left.open,
+        .side-panel.right.open { transform: translateX(0); }
+        .side-panel.left.open  { box-shadow:  4px 0 20px rgba(0,0,0,0.5); }
+        .side-panel.right.open { box-shadow: -4px 0 20px rgba(0,0,0,0.5); }
+ 
+        /*  ===== Toggle click-bar tabs (position:fixed = zoom-immune) ===== */
+        .toggle-bar {
+            position: fixed;
+            top: calc(50vh + 8px); /* midpoint between 48px header and 32px footer */
+            margin-top: -60px;     /* half of 120px height */
+            width: 22px;
+            height: 120px;
+            background-color: #374151;
+            color: #d1d5db;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+            z-index: 30;
+            border: 1px solid #4b5563;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            transition: left 300ms ease-in-out, right 300ms ease-in-out, background-color 150ms, color 150ms;
+        }
+        .toggle-bar:hover { background-color: #4b5563; color: #00D2FF; }
+        .hover-cyan:hover { color: #00D2FF !important; }
+        .toggle-bar.left  { left: 0;  border-left: none;  border-radius: 0 8px 8px 0; }
+        .toggle-bar.right { right: 0; border-right: none; border-radius: 8px 0 0 8px; }
+        .toggle-bar.left.open  { left: 320px; }
+        .toggle-bar.right.open { right: 320px; }
+        .toggle-bar svg { flex-shrink: 0; transition: transform 300ms ease-in-out; }
+        .toggle-bar.left.open  svg,
+        .toggle-bar.right.open svg { transform: rotate(180deg); }
+        .toggle-label {
+            writing-mode: vertical-rl;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            line-height: 1;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="text-gray-100 h-screen flex flex-col" style="background-color:#171717;">
+
+    <!-- Header -->
+    <header class="h-12 border-b border-gray-700 flex items-center px-4 justify-between shrink-0 z-20" style="background-color:#252525;">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-black" style="background-color:#00D2FF;">PG</div>
+            <h1 class="font-bold tracking-wide" style="color:#00D2FF;">Painter GO <span class="text-xs font-normal ml-2" style="color:#00D2FF;">v2.9.0 • Layers + GO Brushes</span></h1>
+        </div>
+        <div class="flex items-center gap-2 text-sm">
+            <button id="saveBtn" class="flex items-center gap-2 bg-orange-600 text-white px-3 py-1.5 rounded-md transition-colors shadow-lg" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export PNG
+            </button>
+            <button id="exportPdfBtn" class="flex items-center gap-2 bg-red-800 text-white px-3 py-1.5 rounded-md transition-colors shadow-lg text-xs font-semibold" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Export PDF
+            </button>
+            <button id="exportPsdBtn" class="flex items-center gap-2 bg-blue-800 text-white px-3 py-1.5 rounded-md transition-colors shadow-lg text-xs font-semibold" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                Export PSD
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex overflow-hidden relative">
+
+        <!-- Left Toggle Bar -->
+        <div id="leftToggleBar" class="toggle-bar left" title="Toggle Auto Paint panel">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <span class="toggle-label">Auto Paint</span>
+        </div>
+
+        <!-- Left Sidebar: Auto Paint (slide-out) -->
+        <aside id="leftSidebar" class="side-panel left border-r border-gray-700 flex flex-col overflow-y-auto custom-scrollbar" style="background-color:#252525;">
+            <div class="p-4 border-b border-gray-700">
+                <h2 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Source Image</h2>
+                <label class="flex flex-col items-center justify-center w-full h-24 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer transition-colors" style="background-color:#686868;" onmouseover="this.style.backgroundColor='#777'" onmouseout="this.style.backgroundColor='#686868'">
+                    <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                        <svg class="w-6 h-6 mb-2 text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
+                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
+                        </svg>
+                        <p class="text-xs text-gray-400">Upload Source</p>
+                    </div>
+                    <input type="file" id="imageUpload" class="hidden" accept="image/*" />
+                </label>
+                <img id="previewThumb" class="w-full h-16 object-cover rounded mt-2 hidden border border-gray-600" />
+            </div>
+
+            <div class="p-4 space-y-4">
+                <h2 class="text-sm font-bold text-gray-400 uppercase tracking-wider">Auto Paint Controls</h2>
+
+                <div>
+                    <label class="text-xs text-gray-300 block mb-1">Paint Style</label>
+                    <select id="paintStyle" class="w-full border border-gray-600 text-white text-sm rounded px-2 py-1.5 focus:outline-none" style="background-color:#686868;">
+                        <option value="realistic" selected>Realistic (Averaged)</option>
+                        <option value="poster">Poster (High Contrast)</option>
+                        <option value="impressionist">Impressionist</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-300 block mb-1">Colors <span id="val-colors" class="float-right text-cyan-400">512</span></label>
+                    <input type="range" id="colorCount" min="2" max="1024" step="1" value="512" class="w-full">
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-300 block mb-1">Bristle Length <span id="val-bristle-len" class="float-right text-cyan-400">2.0</span>x</label>
+                    <input type="range" id="bristleLen" min="0.1" max="5.0" step="0.1" value="2.0" class="w-full">
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-300 block mb-1">Bristle Dryness <span id="val-auto-dryness" class="float-right text-cyan-400">0%</span></label>
+                    <input type="range" id="autoDryness" min="0" max="100" step="1" value="0" class="w-full">
+                    <div class="flex justify-between text-[10px] text-gray-500 mt-0.5 px-0.5">
+                        <span>Wet</span>
+                        <span>Dry</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-300 block mb-1">Paint Thickness <span id="val-thick" class="float-right text-cyan-400">15%</span></label>
+                    <input type="range" id="paintThick" min="0" max="100" step="1" value="15" class="w-full">
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-300 block mb-1">Angle Offset <span id="val-angle" class="float-right text-cyan-400">0°</span></label>
+                    <input type="range" id="angleOffset" min="-180" max="180" step="1" value="0" class="w-full">
+                </div>
+
+                <div class="pt-2 border-t border-gray-700">
+                    <label class="text-xs text-gray-300 block mb-2 font-semibold">Detail Enhancement</label>
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs">Add Light Details</span>
+                        <span id="val-light" class="text-xs text-cyan-400">10%</span>
+                    </div>
+                    <input type="range" id="lightDetail" min="0" max="100" step="1" value="10" class="w-full mb-2">
+
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs">Add Shadow Details</span>
+                        <span id="val-shadow" class="text-xs text-cyan-400">10%</span>
+                    </div>
+                    <input type="range" id="shadowDetail" min="0" max="100" step="1" value="10" class="w-full mb-2">
+
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs">Detail Brush Size</span>
+                        <span id="val-detail-size" class="text-xs text-cyan-400">1.0</span>
+                    </div>
+                    <input type="range" id="detailSize" min="0.5" max="10" step="0.1" value="1.0" class="w-full mb-2">
+                </div>
+
+                <button id="autoPaintBtn" class="w-full text-black font-bold py-2 px-4 rounded transition-colors shadow-lg mt-2 flex items-center justify-center gap-2" style="background-color:#00D2FF;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></svg>
+                    Auto Paint Layer
+                </button>
+                <button id="resetAutoBtn" class="w-full text-gray-100 text-sm py-1 px-4 rounded transition-colors" style="background-color:#686868;" onmouseover="this.style.backgroundColor='#777'" onmouseout="this.style.backgroundColor='#686868'">
+                    Reset Auto Settings
+                </button>
+            </div>
+        </aside>
+
+        <!-- Center: Canvas Area -->
+        <div class="flex-1 flex flex-col relative overflow-hidden" style="background-color:#171717;">
+            <!-- Mode Switcher -->
+            <div class="absolute top-4 left-1/2 transform -translate-x-1/2 rounded-full p-1 flex gap-1 shadow-xl z-10 border border-gray-600 items-center" style="background-color:#252525;">
+                <button id="modeManual" class="px-5 py-1.5 rounded-full text-sm font-medium transition-all text-black shadow-md" style="background-color:#00D2FF;">Manual</button>
+                <button id="modeAuto" class="px-5 py-1.5 rounded-full text-sm font-medium transition-all text-gray-400 hover-cyan">Auto</button>
+                <div class="w-px h-6 bg-gray-600 mx-0.5"></div>
+                <button id="modeMove" class="w-9 h-9 rounded-full transition-all text-gray-400 hover-cyan flex items-center justify-center" title="Move layer">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+                </button>
+                <button id="modeRotate" class="w-9 h-9 rounded-full transition-all text-gray-400 hover-cyan flex items-center justify-center" title="Rotate layer">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                </button>
+                <button id="modeScale" class="w-9 h-9 rounded-full transition-all text-gray-400 hover-cyan flex items-center justify-center" title="Scale layer">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                </button>
+                <button id="resetTransformBtn" class="w-9 h-9 rounded-full transition-all text-gray-400 hover-cyan flex items-center justify-center" title="Reset transform on active layer">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+
+            <!-- Canvas Container -->
+            <div class="flex-1 flex items-center justify-center p-8 overflow-hidden relative">
+                <div class="canvas-container rounded-lg shadow-2xl overflow-hidden relative border border-gray-700" style="max-width: 100%; max-height: 100%;">
+                    <div id="p5-canvas-container"></div>
+                </div>
+            </div>
+
+            <!-- Status Bar -->
+            <div class="h-8 border-t border-gray-700 flex items-center px-4 text-xs text-gray-400 justify-between" style="background-color:#252525;">
+                <span id="status-text">Ready</span>
+                <span id="coords-display">X: 0, Y: 0</span>
+            </div>
+        </div>
+
+        <!-- Right Toggle Bar -->
+        <div id="rightToggleBar" class="toggle-bar right" title="Toggle Manual Paint panel">
+            <span class="toggle-label">Manual Paint</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </div>
+
+        <!-- Right Sidebar: Manual Tools & Layers (slide-out) -->
+        <aside id="rightSidebar" class="side-panel right border-l border-gray-700 flex flex-col overflow-y-auto custom-scrollbar" style="background-color:#252525;">
+
+            <!-- Manual Tools -->
+            <div class="p-4 border-b border-gray-700">
+                <h2 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Manual Tools</h2>
+
+                <!-- Brush Preview -->
+                <div class="bg-black rounded h-32 mb-3 flex items-center justify-center overflow-hidden border border-gray-700">
+                    <canvas id="brush-preview-canvas"></canvas>
+                </div>
+
+                <div class="flex items-center gap-2 mb-3">
+                    <label class="text-xs w-16">Brush Color</label>
+                    <input type="color" id="brushColor" value="#00d2ff" class="w-8 h-8 rounded cursor-pointer border-none bg-transparent">
+                    <span id="colorHex" class="text-xs text-gray-400 ml-1">#00D2FF</span>
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-300 block mb-1">Brush Size <span id="val-size" class="float-right text-cyan-400">40</span></label>
+                    <input type="range" id="brushSize" min="1" max="150" step="1" value="20" class="w-full">
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-300 block mb-1">Paint Thickness <span id="val-man-thick" class="float-right text-cyan-400">50%</span></label>
+                    <input type="range" id="manThick" min="1" max="100" step="1" value="50" class="w-full">
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-300 block mb-1">Wet Paint Mix <span id="val-wet" class="float-right text-cyan-400">90%</span></label>
+                    <input type="range" id="wetMix" min="0" max="100" step="1" value="90" class="w-full">
+                    <div class="flex justify-between text-[10px] text-gray-500 mt-0.5 px-0.5">
+                        <span>Dry</span>
+                        <span>Wet</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-300 block mb-1">Bristle Density <span id="val-bristles" class="float-right text-cyan-400">50%</span></label>
+                    <input type="range" id="bristles" min="10" max="100" step="1" value="50" class="w-full">
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-300 block mb-1">Damping <span id="val-damping" class="float-right text-cyan-400">0.15</span></label>
+                    <input type="range" id="damping" min="1" max="50" step="1" value="15" class="w-full">
+                </div>
+            </div>
+
+            <!-- Layer Controls -->
+            <div class="p-4 flex-1 flex flex-col">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-bold text-gray-400 uppercase tracking-wider">Layers</h2>
+                    <button id="addLayerBtn" class="text-xs text-black px-2 py-1 rounded transition-colors" style="background-color:#00D2FF;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+                        + New
+                    </button>
+                </div>
+
+                <!-- Layer List -->
+                <div id="layerList" class="flex-1 space-y-1 overflow-y-auto pr-1 mb-3">
+                    <!-- Layers will be injected here -->
+                </div>
+
+                <!-- Layer Properties -->
+                <div class="border-t border-gray-700 pt-3 space-y-3 bg-gray-750 rounded p-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-gray-400">Active Layer</span>
+                        <span id="activeLayerName" class="text-xs font-bold text-white">Layer 1</span>
+                    </div>
+
+                    <div>
+                        <label class="text-xs text-gray-300 block mb-1">Opacity <span id="val-layer-op" class="float-right text-cyan-400">100%</span></label>
+                        <input type="range" id="layerOpacity" min="0" max="100" step="1" value="100" class="w-full">
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button id="mergeDownBtn" class="flex-1 text-xs text-gray-100 py-1 rounded transition-colors" style="background-color:#686868;" onmouseover="this.style.backgroundColor='#777'" onmouseout="this.style.backgroundColor='#686868'">Merge Down</button>
+                        <button id="deleteLayerBtn" class="flex-1 bg-red-900 hover:bg-red-800 text-xs text-red-200 py-1 rounded transition-colors">Delete Layer</button>
+                    </div>
+
+                    <button id="clearLayerBtn" class="w-full text-xs text-gray-100 py-1 rounded transition-colors" style="background-color:#686868;" onmouseover="this.style.backgroundColor='#777'" onmouseout="this.style.backgroundColor='#686868'">Clear Active Layer</button>
+                </div>
+            </div>
+
+            <!-- Export Controls removed — buttons moved to header -->
+        </aside>
+
+    </main>
+
+    <script>
+        // ==========================================
+        // Side panel toggle bars (slide-out menus)
+        // ==========================================
+        (function() {
+            const leftBar    = document.getElementById('leftToggleBar');
+            const rightBar   = document.getElementById('rightToggleBar');
+            const leftPanel  = document.getElementById('leftSidebar');
+            const rightPanel = document.getElementById('rightSidebar');
+
+            leftBar.addEventListener('click', () => {
+                leftBar.classList.toggle('open');
+                leftPanel.classList.toggle('open');
+            });
+            rightBar.addEventListener('click', () => {
+                rightBar.classList.toggle('open');
+                rightPanel.classList.toggle('open');
+            });
+        })();
+    </script>
+
+    <script>
+        // ==========================================
+        // Slider track fill (#00D2FF left of thumb)
+        // ==========================================
+        function updateSliderFill(slider) {
+            const min = parseFloat(slider.min) || 0;
+            const max = parseFloat(slider.max) || 100;
+            const val = parseFloat(slider.value);
+            const pct = ((val - min) / (max - min)) * 100;
+            slider.style.setProperty('--range-fill', pct + '%');
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('input[type=range]').forEach(s => {
+                updateSliderFill(s);
+                s.addEventListener('input', () => updateSliderFill(s));
+            });
+        });
+        // Also run immediately for sliders already in DOM
+        document.querySelectorAll('input[type=range]').forEach(s => {
+            updateSliderFill(s);
+            s.addEventListener('input', () => updateSliderFill(s));
+        });
+    </script>
+
+    <script>
+        // ==========================================
+        // Defaults
+        // ==========================================
+        const DEFAULTS = {
+            auto: {
+                colorCount: 512,
+                paintStyle: 'realistic',
+                bristleLen: 2.0,
+                bristleDryness: 0,
+                paintThick: 15,
+                angleOffset: 0,
+                lightDetail: 10,
+                shadowDetail: 10,
+                detailSize: 1.0
+            },
+            manual: {
+                color: '#00d2ff',
+                size: 20,
+                thickness: 50,    // percent
+                wetMix: 90,       // percent
+                density: 50,      // percent coverage
+                damping: 15       // percent (-> 0.15)
+            }
+        };
+
+        // ==========================================
+        // P5.js Application
+        // ==========================================
+        let sketch = function(p) {
+            let mainCanvas;
+            let sourceImg = null;
+            let layers = [];
+            let activeLayerIndex = 0;
+            let isPainting = false;
+            let canvasContainer;
+            let imageImportCount = 0; // increments with each upload → Image1, Image2…
+
+            // Brush state for manual paint (mirrors AutoPainterGOv8 manual brush)
+            let brush = {
+                x: 0, y: 0, px: 0, py: 0,
+                color: DEFAULTS.manual.color,
+                size: DEFAULTS.manual.size,
+                density: DEFAULTS.manual.density,
+                bristleCount: 0, // calculated in initializeBristles
+                bristles: [],
+                dampingFactor: DEFAULTS.manual.damping / 100,
+                alpha: DEFAULTS.manual.thickness / 100,
+                blend: DEFAULTS.manual.wetMix / 100
+            };
+
+            // Auto paint settings
+            let settings = {
+                mode: 'manual',
+                autoStyle: DEFAULTS.auto.paintStyle,
+                colorCount: DEFAULTS.auto.colorCount,
+                autoBristleLen: DEFAULTS.auto.bristleLen,
+                autoBristleDryness: DEFAULTS.auto.bristleDryness,
+                autoThickness: DEFAULTS.auto.paintThick,
+                angleOffset: DEFAULTS.auto.angleOffset,
+                lightDetail: DEFAULTS.auto.lightDetail,
+                shadowDetail: DEFAULTS.auto.shadowDetail,
+                detailSize: DEFAULTS.auto.detailSize
+            };
+
+            // Computed auto-paint thickness state
+            let activeBristleAlpha = 0.2;
+            let activeBristleStrokeWeight = 1;
+            let activeBristleSkip = 1;
+
+            // ==========================================
+            // SETUP
+            // ==========================================
+            p.setup = function() {
+                canvasContainer = document.getElementById('p5-canvas-container');
+                mainCanvas = p.createCanvas(900, 600);
+                mainCanvas.parent(canvasContainer);
+                p.pixelDensity(1);
+
+                // High-quality bilinear/bicubic resampling for scaled layers
+                p.drawingContext.imageSmoothingEnabled = true;
+                p.drawingContext.imageSmoothingQuality = 'high';
+
+                addLayer("Background");
+                p.background(240);
+
+                setupUI();
+                initializeBristles();
+                updateBrushPreview();
+                setupViewControls();
+            };
+
+            // ==========================================
+            // DRAW LOOP (composites layers)
+            // ==========================================
+            let dashOffset = 0;
+
+            // Helper: bbox center in pg-space (with fallback when empty)
+            function getLayerCenter(layer) {
+                const bbox = getLayerBBox(layer);
+                if (bbox) {
+                    return {
+                        cx: (bbox.minX + bbox.maxX + 1) / 2,
+                        cy: (bbox.minY + bbox.maxY + 1) / 2
+                    };
+                }
+                return { cx: layer.pg.width / 2, cy: layer.pg.height / 2 };
+            }
+
+            // Helper: apply a layer's full transform (translate -> rotate -> scale around center)
+            function applyLayerTransform(target, layer) {
+                const { cx, cy } = getLayerCenter(layer);
+                target.translate(cx + (layer.offsetX || 0), cy + (layer.offsetY || 0));
+                target.rotate(layer.rotation || 0);
+                target.scale(layer.scale || 1);
+                target.translate(-cx, -cy);
+            }
+
+            // Helper: inverse-transform a canvas point into the layer's pg-space (for painting)
+            function canvasToLayer(layer, mx, my) {
+                const { cx, cy } = getLayerCenter(layer);
+                const tx = layer.offsetX || 0;
+                const ty = layer.offsetY || 0;
+                const rot = layer.rotation || 0;
+                const sc = layer.scale || 1;
+                // undo translate
+                let x = mx - (cx + tx);
+                let y = my - (cy + ty);
+                // undo rotation
+                const cos = Math.cos(-rot), sin = Math.sin(-rot);
+                const xr = x * cos - y * sin;
+                const yr = x * sin + y * cos;
+                // undo scale and shift back to pg-space
+                return { x: xr / sc + cx, y: yr / sc + cy };
+            }
+
+            // Helper: transform the 4 bbox corners into canvas-space (for hit testing & handles)
+            function transformedBBoxCorners(layer, bbox) {
+                const { cx, cy } = getLayerCenter(layer);
+                const tx = layer.offsetX || 0;
+                const ty = layer.offsetY || 0;
+                const rot = layer.rotation || 0;
+                const sc = layer.scale || 1;
+                const cos = Math.cos(rot), sin = Math.sin(rot);
+                const map = (px, py) => {
+                    const lx = (px - cx) * sc;
+                    const ly = (py - cy) * sc;
+                    return { x: lx * cos - ly * sin + cx + tx, y: lx * sin + ly * cos + cy + ty };
+                };
+                const w = bbox.maxX - bbox.minX + 1;
+                const h = bbox.maxY - bbox.minY + 1;
+                return {
+                    tl: map(bbox.minX,     bbox.minY),
+                    tr: map(bbox.minX + w, bbox.minY),
+                    br: map(bbox.minX + w, bbox.minY + h),
+                    bl: map(bbox.minX,     bbox.minY + h),
+                    topMid: map(bbox.minX + w / 2, bbox.minY),
+                    center: { x: cx + tx, y: cy + ty }
+                };
+            }
+
+            p.draw = function() {
+                p.clear();
+
+                for (let i = 0; i < layers.length; i++) {
+                    let layer = layers[i];
+                    if (!layer.visible) continue;
+                    const sc = layer.scale || 1;
+                    p.push();
+                    p.tint(255, layer.opacity * 255);
+                    // Subtle blur proportional to scale-up to hide upscale pixelation.
+                    // imageSmoothingQuality:'high' (set in setup) already gives bicubic-ish resampling;
+                    // this extra filter softens harder edges when zoomed in further.
+                    if (sc > 1.05) {
+                        p.drawingContext.filter = `blur(${Math.min((sc - 1) * 0.5, 2)}px)`;
+                    }
+                    applyLayerTransform(p, layer);
+                    p.image(layer.pg, 0, 0);
+                    if (sc > 1.05) p.drawingContext.filter = 'none';
+                    p.pop();
+                }
+
+                // Brush cursor in manual mode (scaled to match the active layer's scale)
+                if (settings.mode === 'manual') {
+                    const cm = getCanvasMouse();
+                    let mx = cm.x, my = cm.y;
+                    if (mx > 0 && my > 0 && mx < p.width && my < p.height) {
+                        const layer = layers[activeLayerIndex];
+                        const sc = (layer && layer.scale) || 1;
+                        p.noFill();
+                        p.stroke(0, 120); p.strokeWeight(1);
+                        p.ellipse(mx, my, brush.size * 2 * sc);
+                        p.stroke(255, 180);
+                        p.ellipse(mx, my, brush.size * 2 * sc + 1);
+                    }
+                }
+
+                // Transform-tool overlay (selection box + handles) for move/rotate/scale modes
+                const isTransformMode = (settings.mode === 'move' || settings.mode === 'rotate' || settings.mode === 'scale');
+                if (isTransformMode && activeLayerIndex >= 0 && activeLayerIndex < layers.length) {
+                    const layer = layers[activeLayerIndex];
+                    const bbox = getLayerBBox(layer);
+                    if (bbox) {
+                        const c = transformedBBoxCorners(layer, bbox);
+                        const dctx = p.drawingContext;
+                        dctx.save();
+
+                        // Outline path through the 4 (possibly rotated) corners
+                        const drawBoxPath = () => {
+                            dctx.beginPath();
+                            dctx.moveTo(c.tl.x, c.tl.y);
+                            dctx.lineTo(c.tr.x, c.tr.y);
+                            dctx.lineTo(c.br.x, c.br.y);
+                            dctx.lineTo(c.bl.x, c.bl.y);
+                            dctx.closePath();
+                        };
+
+                        // Dark backing
+                        dctx.lineWidth = 2;
+                        dctx.strokeStyle = 'rgba(0,0,0,0.55)';
+                        dctx.setLineDash([]);
+                        drawBoxPath(); dctx.stroke();
+
+                        // Animated dashed marquee
+                        dctx.lineWidth = 1.4;
+                        dctx.strokeStyle = '#60a5fa';
+                        dctx.setLineDash([6, 4]);
+                        dctx.lineDashOffset = -dashOffset;
+                        drawBoxPath(); dctx.stroke();
+                        dashOffset = (dashOffset + 0.4) % 10;
+
+                        // Mode-specific decorations
+                        dctx.setLineDash([]);
+
+                        if (settings.mode === 'rotate') {
+                            // Center pivot + rotation handle stem from topMid
+                            const upX = Math.sin(layer.rotation || 0);
+                            const upY = -Math.cos(layer.rotation || 0);
+                            const handleDist = 28;
+                            const hx = c.topMid.x + upX * handleDist;
+                            const hy = c.topMid.y + upY * handleDist;
+                            dctx.strokeStyle = '#60a5fa';
+                            dctx.lineWidth = 1.4;
+                            dctx.beginPath();
+                            dctx.moveTo(c.topMid.x, c.topMid.y);
+                            dctx.lineTo(hx, hy);
+                            dctx.stroke();
+                            // Rotation handle dot
+                            dctx.fillStyle = '#60a5fa';
+                            dctx.strokeStyle = '#ffffff';
+                            dctx.lineWidth = 1.5;
+                            dctx.beginPath(); dctx.arc(hx, hy, 5, 0, Math.PI * 2);
+                            dctx.fill(); dctx.stroke();
+                            // Center pivot crosshair
+                            dctx.strokeStyle = '#60a5fa'; dctx.lineWidth = 1.2;
+                            dctx.beginPath();
+                            dctx.moveTo(c.center.x - 6, c.center.y); dctx.lineTo(c.center.x + 6, c.center.y);
+                            dctx.moveTo(c.center.x, c.center.y - 6); dctx.lineTo(c.center.x, c.center.y + 6);
+                            dctx.stroke();
+                            dctx.beginPath(); dctx.arc(c.center.x, c.center.y, 3, 0, Math.PI * 2);
+                            dctx.fillStyle = '#60a5fa'; dctx.fill();
+                        }
+                        else if (settings.mode === 'scale') {
+                            // Square handles at the 4 corners
+                            const drawHandle = (pt) => {
+                                dctx.fillStyle = '#60a5fa';
+                                dctx.strokeStyle = '#ffffff';
+                                dctx.lineWidth = 1.5;
+                                dctx.beginPath(); dctx.rect(pt.x - 4, pt.y - 4, 8, 8);
+                                dctx.fill(); dctx.stroke();
+                            };
+                            drawHandle(c.tl); drawHandle(c.tr); drawHandle(c.br); drawHandle(c.bl);
+                        }
+
+                        dctx.restore();
+                    }
+                }
+
+                if (p.frameCount % 10 === 0) {
+                    const cm = getCanvasMouse();
+                    document.getElementById('coords-display').innerText =
+                        `X: ${Math.round(cm.x)}, Y: ${Math.round(cm.y)}  •  Zoom: ${Math.round(viewScale * 100)}%`;
+                }
+            };
+
+            // ==========================================
+            // LAYER BBOX (for selection rect & auto-crop)
+            // Scans non-transparent pixels; cached until invalidated.
+            // ==========================================
+            function getLayerBBox(layer) {
+                if (!layer || !layer.pg) return null;
+                if (layer.bbox && !layer.bboxDirty) return layer.bbox;
+
+                const pg = layer.pg;
+                pg.loadPixels();
+                const w = pg.width, h = pg.height;
+                const data = pg.pixels;
+                if (!data || data.length === 0) {
+                    layer.bbox = null;
+                    layer.bboxDirty = false;
+                    return null;
+                }
+
+                let minX = w, minY = h, maxX = -1, maxY = -1;
+                // Row-major scan; early-skip transparent rows
+                for (let y = 0; y < h; y++) {
+                    const rowStart = y * w * 4;
+                    for (let x = 0; x < w; x++) {
+                        if (data[rowStart + x * 4 + 3] > 0) {
+                            if (x < minX) minX = x;
+                            if (x > maxX) maxX = x;
+                            if (y < minY) minY = y;
+                            if (y > maxY) maxY = y;
+                        }
+                    }
+                }
+
+                layer.bbox = (maxX < 0) ? null : { minX, minY, maxX, maxY };
+                layer.bboxDirty = false;
+                return layer.bbox;
+            }
+
+            // ==========================================
+            // MOUSE EVENTS
+            // ==========================================
+            let isMoving = false;
+            let isRotating = false;
+            let isScaling = false;
+            const moveStart = { mx: 0, my: 0, ox: 0, oy: 0 };
+            const rotStart  = { centerX: 0, centerY: 0, baseAngle: 0, startRot: 0 };
+            const scaleStart = { centerX: 0, centerY: 0, baseDist: 0, startScale: 1 };
+
+            p.mousePressed = function() {
+                // Middle mouse button is reserved for view-panning (see setupViewControls below)
+                if (p.mouseButton === p.CENTER) return;
+                const cm = getCanvasMouse();
+                if (cm.x < 0 || cm.x > p.width || cm.y < 0 || cm.y > p.height) return;
+
+                const layer = layers[activeLayerIndex];
+
+                if (settings.mode === 'move') {
+                    if (!layer) return;
+                    isMoving = true;
+                    moveStart.mx = cm.x; moveStart.my = cm.y;
+                    moveStart.ox = layer.offsetX || 0; moveStart.oy = layer.offsetY || 0;
+                    return;
+                }
+
+                if (settings.mode === 'rotate') {
+                    if (!layer) return;
+                    const { cx, cy } = getLayerCenter(layer);
+                    rotStart.centerX = cx + (layer.offsetX || 0);
+                    rotStart.centerY = cy + (layer.offsetY || 0);
+                    rotStart.baseAngle = Math.atan2(cm.y - rotStart.centerY, cm.x - rotStart.centerX);
+                    rotStart.startRot = layer.rotation || 0;
+                    isRotating = true;
+                    return;
+                }
+
+                if (settings.mode === 'scale') {
+                    if (!layer) return;
+                    const { cx, cy } = getLayerCenter(layer);
+                    scaleStart.centerX = cx + (layer.offsetX || 0);
+                    scaleStart.centerY = cy + (layer.offsetY || 0);
+                    const dx = cm.x - scaleStart.centerX;
+                    const dy = cm.y - scaleStart.centerY;
+                    scaleStart.baseDist = Math.max(Math.hypot(dx, dy), 8); // avoid division by ~0
+                    scaleStart.startScale = layer.scale || 1;
+                    isScaling = true;
+                    return;
+                }
+
+                if (settings.mode !== 'manual') return;
+
+                isPainting = true;
+                const pt = canvasToLayer(layer, cm.x, cm.y);
+                brush.x = pt.x; brush.y = pt.y;
+                brush.px = brush.x; brush.py = brush.y;
+                for (let b of brush.bristles) {
+                    b.x = b.px = brush.x + b.ox;
+                    b.y = b.py = brush.y + b.oy;
+                }
+            };
+
+            p.mouseDragged = function() {
+                const layer = layers[activeLayerIndex];
+                const cm = getCanvasMouse();
+
+                if (settings.mode === 'move' && isMoving) {
+                    if (!layer) return;
+                    layer.offsetX = moveStart.ox + (cm.x - moveStart.mx);
+                    layer.offsetY = moveStart.oy + (cm.y - moveStart.my);
+                    return;
+                }
+
+                if (settings.mode === 'rotate' && isRotating) {
+                    if (!layer) return;
+                    const ang = Math.atan2(cm.y - rotStart.centerY, cm.x - rotStart.centerX);
+                    let next = rotStart.startRot + (ang - rotStart.baseAngle);
+                    // Shift-snap to 15° increments
+                    if (p.keyIsDown && p.keyIsDown(16 /* SHIFT */)) {
+                        const step = Math.PI / 12;
+                        next = Math.round(next / step) * step;
+                    }
+                    layer.rotation = next;
+                    return;
+                }
+
+                if (settings.mode === 'scale' && isScaling) {
+                    if (!layer) return;
+                    const dx = cm.x - scaleStart.centerX;
+                    const dy = cm.y - scaleStart.centerY;
+                    const dist = Math.hypot(dx, dy);
+                    let next = scaleStart.startScale * (dist / scaleStart.baseDist);
+                    next = Math.max(0.05, Math.min(next, 20)); // sane bounds
+                    layer.scale = next;
+                    return;
+                }
+
+                if (!isPainting || settings.mode !== 'manual') return;
+                const pt = canvasToLayer(layer, cm.x, cm.y);
+                brush.x = pt.x; brush.y = pt.y;
+                drawManualStroke(layer.pg);
+                brush.px = brush.x; brush.py = brush.y;
+                layer.bboxDirty = true;
+            };
+
+            p.mouseReleased = function() {
+                isPainting = false;
+                isMoving = false;
+                isRotating = false;
+                isScaling = false;
+                if (settings.mode === 'manual') {
+                    initializeBristles(); // Re-randomize bristles when brush is lifted
+                }
+            };
+
+            // ==========================================
+            // DRY BRISTLE RENDERER
+            // Breaks a bristle line into dashes/dots based on dryness.
+            //   dryness = 0  -> solid continuous line (wet brush)
+            //   dryness ~0.3 -> long dashes with small gaps
+            //   dryness ~0.6 -> shorter dashes mixed with dots, bigger gaps
+            //   dryness = 1  -> mostly dots, large gaps (very dry brush)
+            // drawSeg(x1,y1,x2,y2) is called once per visible piece.
+            // ==========================================
+            function drawDryBristle(drawSeg, x1, y1, x2, y2, dryness) {
+                if (dryness <= 0.02) {
+                    drawSeg(x1, y1, x2, y2);
+                    return;
+                }
+
+                const dx = x2 - x1, dy = y2 - y1;
+                const len = Math.hypot(dx, dy);
+
+                // Degenerate / tiny segments: probabilistically render whole-or-not
+                if (len < 0.4) {
+                    if (Math.random() > dryness * 0.6) drawSeg(x1, y1, x2, y2);
+                    return;
+                }
+
+                // Short segments (typical manual-paint per-frame increment):
+                // randomly skip, draw a tiny dot, or draw the whole thing.
+                // The dash/dot pattern emerges over time as the user drags.
+                if (len < 2.5) {
+                    const skipProb = dryness * 0.7;
+                    if (Math.random() < skipProb) return;
+                    if (Math.random() < dryness * dryness * 0.5) {
+                        // tiny dot near segment midpoint
+                        const mx = (x1 + x2) * 0.5, my = (y1 + y2) * 0.5;
+                        drawSeg(mx - dx * 0.12, my - dy * 0.12, mx + dx * 0.12, my + dy * 0.12);
+                    } else {
+                        drawSeg(x1, y1, x2, y2);
+                    }
+                    return;
+                }
+
+                // Long segments (typical auto-paint bristle line): walk along the
+                // line emitting dash + gap runs whose mean lengths depend on dryness.
+                const wetness = 1 - dryness;
+                const meanDash = 0.6 + wetness * wetness * 14;       // px; long when wet
+                const meanGap  = dryness * dryness * 6 + 0.3;        // px; long when dry
+                const dotProb  = dryness * dryness * 0.75;           // chance an on-run is a dot
+                const dotLen   = 0.7;                                 // px
+
+                let t = 0;
+                let isFirst = true;
+                while (t < len) {
+                    // Optional gap (always between runs; sometimes at the very start when dry)
+                    if (!isFirst || Math.random() < dryness * 0.5) {
+                        t += Math.random() * meanGap * 2;
+                        if (t >= len) break;
+                    }
+                    isFirst = false;
+
+                    // On-run: tiny dot or variable-length dash
+                    let onLen;
+                    if (Math.random() < dotProb) {
+                        onLen = dotLen;
+                    } else {
+                        onLen = Math.random() * meanDash * 2;
+                        if (onLen < 0.3) onLen = 0.3;
+                    }
+
+                    const tEnd = Math.min(t + onLen, len);
+                    if (tEnd > t + 0.05) {
+                        const u1 = t / len, u2 = tEnd / len;
+                        drawSeg(x1 + dx * u1, y1 + dy * u1, x1 + dx * u2, y1 + dy * u2);
+                    }
+                    t = tEnd + 0.001;
+                }
+            }
+
+            // ==========================================
+            // MANUAL PAINT (line-based bristles w/ damping + wet-mix)
+            //   - matches AutoPainterGOv8.drawManualStroke
+            //   - draws to p5.Graphics buffer via its drawingContext
+            // ==========================================
+            function drawManualStroke(pg) {
+                const ctx = pg.drawingContext;
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 2;
+
+                let baseRGB = hexToRgb(brush.color);
+                let bMinX = Infinity, bMaxX = -Infinity, bMinY = Infinity, bMaxY = -Infinity;
+
+                // Move bristles toward target with damping (Euler interp)
+                for (let b of brush.bristles) {
+                    b.px = b.x;
+                    b.py = b.y;
+                    let targetX = brush.x + b.ox;
+                    let targetY = brush.y + b.oy;
+                    b.x += (targetX - b.x) * brush.dampingFactor;
+                    b.y += (targetY - b.y) * brush.dampingFactor;
+
+                    if (brush.blend > 0) {
+                        if (b.px < bMinX) bMinX = b.px;
+                        if (b.x  < bMinX) bMinX = b.x;
+                        if (b.px > bMaxX) bMaxX = b.px;
+                        if (b.x  > bMaxX) bMaxX = b.x;
+                        if (b.py < bMinY) bMinY = b.py;
+                        if (b.y  < bMinY) bMinY = b.y;
+                        if (b.py > bMaxY) bMaxY = b.py;
+                        if (b.y  > bMaxY) bMaxY = b.y;
+                    }
+                }
+
+                // Sample underlying pixels for wet-mix blending
+                let imgData = null;
+                let minX = 0, minY = 0;
+                if (brush.blend > 0 && bMinX !== Infinity) {
+                    minX = Math.floor(Math.max(0, bMinX - 2));
+                    minY = Math.floor(Math.max(0, bMinY - 2));
+                    let maxX = Math.ceil(Math.min(pg.width, bMaxX + 2));
+                    let maxY = Math.ceil(Math.min(pg.height, bMaxY + 2));
+                    let boxW = maxX - minX;
+                    let boxH = maxY - minY;
+                    if (boxW > 0 && boxH > 0) {
+                        try {
+                            imgData = ctx.getImageData(minX, minY, boxW, boxH);
+                        } catch (e) {
+                            imgData = null;
+                        }
+                    }
+                }
+
+                // Manual dryness derives from the Wet Paint Mix slider:
+                //   Wet end (blend=1) => dryness 0 (continuous lines)
+                //   Dry end (blend=0) => dryness 1 (mostly dots)
+                const manualDryness = 1 - brush.blend;
+
+                for (let b of brush.bristles) {
+                    let bristleR = baseRGB.r;
+                    let bristleG = baseRGB.g;
+                    let bristleB = baseRGB.b;
+
+                    if (imgData && brush.blend > 0) {
+                        let lx = Math.floor(b.px) - minX;
+                        let ly = Math.floor(b.py) - minY;
+                        if (lx >= 0 && lx < imgData.width && ly >= 0 && ly < imgData.height) {
+                            let idx = (ly * imgData.width + lx) * 4;
+                            let cA = imgData.data[idx + 3];
+                            // Only blend with existing paint (skip transparent areas)
+                            if (cA > 0) {
+                                let cR = imgData.data[idx];
+                                let cG = imgData.data[idx + 1];
+                                let cB = imgData.data[idx + 2];
+                                bristleR = bristleR * (1 - brush.blend) + cR * brush.blend;
+                                bristleG = bristleG * (1 - brush.blend) + cG * brush.blend;
+                                bristleB = bristleB * (1 - brush.blend) + cB * brush.blend;
+                            }
+                        }
+                    }
+
+                    ctx.strokeStyle = `rgba(${bristleR}, ${bristleG}, ${bristleB}, ${brush.alpha})`;
+                    drawDryBristle((sx, sy, ex, ey) => {
+                        ctx.beginPath();
+                        ctx.moveTo(sx, sy);
+                        ctx.lineTo(ex, ey);
+                        ctx.stroke();
+                    }, b.px, b.py, b.x, b.y, manualDryness);
+                }
+            }
+
+            function initializeBristles() {
+                // Calculate bristle count based on density (coverage %) and brush size.
+                // Coefficient 0.16 roughly gives 100 bristles for size 25 at 100% density.
+                brush.bristleCount = Math.max(5, Math.floor((brush.density / 100) * 0.16 * brush.size * brush.size));
+                brush.bristles = [];
+                for (let i = 0; i < brush.bristleCount; i++) {
+                    let angle = Math.random() * Math.PI * 2;
+                    let radius = Math.random() * brush.size;
+                    brush.bristles.push({
+                        ox: Math.cos(angle) * radius,
+                        oy: Math.sin(angle) * radius,
+                        x: 0, y: 0, px: 0, py: 0
+                    });
+                }
+            }
+
+            function updateBrushPreview() {
+                const canvas = document.getElementById('brush-preview-canvas');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                const w = canvas.width = canvas.offsetWidth;
+                const h = canvas.height = canvas.offsetHeight;
+                ctx.clearRect(0, 0, w, h);
+
+                let rgb = hexToRgb(brush.color);
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+
+                // Fit the brush footprint inside the left portion of the preview
+                const ballR = Math.min(brush.size, h * 0.4, w * 0.18);
+                const fit = brush.size > 0 ? ballR / brush.size : 1;
+                const tipCx = ballR + 8;
+                const tipCy = h / 2;
+
+                // Brush tip footprint (bristle dots) on the left
+                ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${brush.alpha})`;
+                for (let b of brush.bristles) {
+                    ctx.beginPath();
+                    ctx.arc(tipCx + b.ox * fit, tipCy + b.oy * fit, 1.5, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.arc(tipCx, tipCy, ballR, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Sample horizontal stroke on the right showing current dryness/wetness
+                const dryness = 1 - brush.blend;
+                const strokeStart = tipCx + ballR + 10;
+                const strokeEnd   = w - 6;
+                if (strokeEnd > strokeStart + 12) {
+                    ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${brush.alpha})`;
+                    const dragLen = strokeEnd - strokeStart;
+                    for (let b of brush.bristles) {
+                        const sx = strokeStart + b.ox * fit;
+                        const sy = tipCy + b.oy * fit;
+                        drawDryBristle((x1, y1, x2, y2) => {
+                            ctx.beginPath();
+                            ctx.moveTo(x1, y1);
+                            ctx.lineTo(x2, y2);
+                            ctx.stroke();
+                        }, sx, sy, sx + dragLen, sy, dryness);
+                    }
+                }
+            }
+
+            // ==========================================
+            // AUTO PAINT - ported from AutoPainterGOv8
+            // Uses convex-hull longest-edge angle per blob
+            // ==========================================
+            function applyAutoThicknessFromPercent(thicknessPercent) {
+                const percent = parseInt(thicknessPercent, 10);
+                if (percent <= 50) {
+                    return {
+                        alpha: p.map(percent, 0, 50, 0, 255),
+                        strokeWeight: 1,
+                        skip: 1
+                    };
+                }
+                const strokeWeight = p.map(percent, 50, 100, 1, 5);
+                return {
+                    alpha: 255,
+                    strokeWeight,
+                    skip: Math.max(1, Math.floor(strokeWeight))
+                };
+            }
+
+            function runAutoPaint() {
+                // Use the source image belonging to the selected layer.
+                // Fall back to the global sourceImg for layers that were
+                // painted manually (no imported image attached).
+                const layer = layers[activeLayerIndex];
+                if (layer.sourceImg) sourceImg = layer.sourceImg;
+
+                if (!sourceImg) {
+                    alert("Please upload a source image first!");
+                    return;
+                }
+
+                let pg = layer.pg;
+
+                document.getElementById('status-text').innerText = "Auto painting... please wait.";
+
+                // Sync thickness state from UI
+                const thickness = applyAutoThicknessFromPercent(settings.autoThickness);
+                activeBristleAlpha = thickness.alpha;
+                activeBristleStrokeWeight = thickness.strokeWeight;
+                activeBristleSkip = thickness.skip;
+
+                // Defer to let UI repaint
+                setTimeout(() => {
+                    sourceImg.loadPixels();
+
+                    // Offset: where the image sits on the canvas (centred on import).
+                    // Layers without an import offset default to (0, 0).
+                    const imgDrawX = layer.imgDrawX || 0;
+                    const imgDrawY = layer.imgDrawY || 0;
+                    const imgW     = layer.imgW     || sourceImg.width;
+                    const imgH     = layer.imgH     || sourceImg.height;
+
+                    let avgColor = getAverageColor(sourceImg);
+
+                    pg.clear();
+                    // Fill only the image area with the base colour (not the whole canvas).
+                    pg.push();
+                    pg.noStroke();
+                    pg.fill(avgColor[0], avgColor[1], avgColor[2]);
+                    pg.rect(imgDrawX, imgDrawY, imgW, imgH);
+                    pg.pop();
+
+                    const numColors = parseInt(settings.colorCount, 10);
+                    let quantized = quantizeImage(sourceImg, numColors);
+                    let blobs = extractBlobs(quantized, sourceImg.width, sourceImg.height);
+
+                    let pieces = [];
+                    const isRealistic = settings.autoStyle === 'realistic';
+                    const isImpressionist = settings.autoStyle === 'impressionist';
+
+                    for (let blob of blobs) {
+                        // Convex hull mutates order; copy first
+                        let hull = convexHull(blob.pixels.slice());
+                        let angle = findBestAngle(hull);
+
+                        let finalColor;
+                        if (isRealistic || isImpressionist) {
+                            finalColor = getBlobAverageColor(sourceImg, blob.pixels);
+                        } else {
+                            // poster: use quantized representative color
+                            let levels = Math.max(2, Math.floor(Math.pow(numColors, 1 / 3)));
+                            let step = 256 / levels;
+                            finalColor = blob.colorKey.split(",").map(v => parseInt(v) * step);
+                        }
+
+                        pieces.push({
+                            pixels: blob.pixels,
+                            color: finalColor,
+                            angle: angle,
+                            size: blob.pixels.length
+                        });
+                    }
+
+                    pieces.sort((a, b) => b.size - a.size);
+
+                    // Translate pg so all stroke/detail coordinates (which are in
+                    // sourceImg space, 0-based) land in the correct canvas position.
+                    pg.push();
+                    pg.translate(imgDrawX, imgDrawY);
+
+                    for (let piece of pieces) {
+                        drawBrushStroke(pg, piece, isImpressionist);
+                    }
+
+                    if (settings.lightDetail > 0 || settings.shadowDetail > 0) {
+                        drawDetails(pg, settings.lightDetail, settings.shadowDetail);
+                    }
+
+                    pg.pop(); // undo translate
+
+                    layer.bboxDirty = true;
+                    document.getElementById('status-text').innerText = "Auto paint complete.";
+                }, 50);
+            }
+
+            function drawBrushStroke(pg, piece, impressionistVariation) {
+                pg.push();
+
+                let baseAngle = (piece.angle !== undefined ? piece.angle : 0) + settings.angleOffset;
+                let baseRad = p.radians(baseAngle);
+
+                let brushWidth = Math.sqrt(piece.size) * 0.35;
+                let widthScale = p.constrain(brushWidth / 12, 0.2, 1.0);
+                let baseLen = Math.sqrt(piece.size) * 1.5 * widthScale;
+
+                let isImpasto = activeBristleStrokeWeight > 4;
+
+                if (!isImpasto) {
+                    pg.stroke(piece.color[0], piece.color[1], piece.color[2], activeBristleAlpha);
+                    pg.strokeWeight(activeBristleStrokeWeight);
+                }
+
+                // Impressionist mode adds per-stroke angle jitter so the
+                // strokes feel like dabs rather than aligned bristles.
+                const angleJitter = impressionistVariation ? p.radians(35) : 0;
+
+                // Dryness in 0..1 from the Auto Bristle Dryness slider (0..100%)
+                const autoDryness = Math.max(0, Math.min(1, settings.autoBristleDryness / 100));
+
+                // Compute the dry-bristle break pattern once per bristle and reuse
+                // it so all impasto layers (shadow / main / highlight) line up.
+                const dryBristleSegments = (x1, y1, x2, y2) => {
+                    const segs = [];
+                    drawDryBristle((sx, sy, ex, ey) => { segs.push([sx, sy, ex, ey]); },
+                                   x1, y1, x2, y2, autoDryness);
+                    return segs;
+                };
+
+                for (let i = 0; i < piece.pixels.length; i += activeBristleSkip) {
+                    let pt = piece.pixels[i];
+
+                    let rad = baseRad + (angleJitter ? (Math.random() - 0.5) * 2 * angleJitter : 0);
+                    let cosA = Math.cos(rad);
+                    let sinA = Math.sin(rad);
+
+                    let len = baseLen * settings.autoBristleLen * (0.8 + Math.random() * 0.4);
+                    let spreadAmount = Math.max(0.35, brushWidth * 0.08);
+                    let spread = (Math.random() - 0.5) * 2 * spreadAmount;
+
+                    let startX = (Math.random() - 0.5);
+                    let startY = spread;
+                    let endX = len + (Math.random() - 0.5) * 2;
+                    let endY = spread + (Math.random() - 0.5) * 0.6;
+
+                    let x1 = pt.x + startX * cosA - startY * sinA;
+                    let y1 = pt.y + startX * sinA + startY * cosA;
+                    let x2 = pt.x + endX * cosA - endY * sinA;
+                    let y2 = pt.y + endX * sinA + endY * cosA;
+
+                    const segs = dryBristleSegments(x1, y1, x2, y2);
+
+                    if (isImpasto) {
+                        let offset = activeBristleStrokeWeight / 2;
+
+                        pg.strokeWeight(2);
+                        pg.stroke(
+                            piece.color[0] * 0.5,
+                            piece.color[1] * 0.5,
+                            piece.color[2] * 0.5,
+                            32
+                        );
+                        for (const s of segs) pg.line(s[0], s[1] + offset, s[2], s[3] + offset);
+
+                        pg.strokeWeight(activeBristleStrokeWeight);
+                        pg.stroke(
+                            piece.color[0],
+                            piece.color[1],
+                            piece.color[2],
+                            activeBristleAlpha
+                        );
+                        for (const s of segs) pg.line(s[0], s[1], s[2], s[3]);
+
+                        pg.strokeWeight(2);
+                        pg.stroke(
+                            Math.min(piece.color[0] + 10, 255),
+                            Math.min(piece.color[1] + 10, 255),
+                            Math.min(piece.color[2] + 10, 255),
+                            128
+                        );
+                        for (const s of segs) pg.line(s[0], s[1] - (offset / 2), s[2], s[3] - (offset / 2));
+                    } else {
+                        for (const s of segs) pg.line(s[0], s[1], s[2], s[3]);
+                    }
+                }
+
+                pg.pop();
+            }
+
+            function drawDetails(pg, lightLevel, shadowLevel) {
+                pg.push();
+                pg.noStroke();
+
+                let level = Math.max(lightLevel, shadowLevel);
+                let attempts = Math.floor((sourceImg.width * sourceImg.height) * (level / 100) * 2.5);
+                let threshold = p.map(level, 0, 100, 60, 15);
+
+                let isImpasto = activeBristleStrokeWeight > 4;
+                let detailWeight = isImpasto
+                    ? Math.max(1.5, activeBristleStrokeWeight / 2.5)
+                    : p.map(level, 0, 100, 0.5, 1.5);
+                detailWeight *= settings.detailSize;
+
+                // Individual bristle tip: very small circle, size driven by detailWeight
+                // At size 1.0 → ~0.8px tip. At size 5 → ~2.5px tip.
+                const tipDiam   = Math.max(0.5, detailWeight * 0.55);
+                // How many bristle tips fire per edge hit — more tips = denser dry-brush band
+                const tipCount  = Math.max(3, Math.round(4 + detailWeight * 1.5));
+                // Tight cluster radius: bristles stay close together, just like dry brush hairs
+                const clusterR  = Math.max(1.2, detailWeight * 0.9);
+
+                const W = sourceImg.width;
+                const H = sourceImg.height;
+                const px = sourceImg.pixels;
+
+                for (let i = 0; i < attempts; i++) {
+                    let x = Math.floor(Math.random() * (W - 2)) + 1;
+                    let y = Math.floor(Math.random() * (H - 2)) + 1;
+                    let idxRight = (y * W + (x + 1)) * 4;
+                    let idxLeft  = (y * W + (x - 1)) * 4;
+                    let idxDown  = ((y + 1) * W + x) * 4;
+                    let idxUp    = ((y - 1) * W + x) * 4;
+
+                    let lumX = (0.299 * px[idxRight] + 0.587 * px[idxRight + 1] + 0.114 * px[idxRight + 2]) -
+                               (0.299 * px[idxLeft]  + 0.587 * px[idxLeft + 1]  + 0.114 * px[idxLeft + 2]);
+                    let lumY = (0.299 * px[idxDown]  + 0.587 * px[idxDown + 1]  + 0.114 * px[idxDown + 2]) -
+                               (0.299 * px[idxUp]    + 0.587 * px[idxUp + 1]    + 0.114 * px[idxUp + 2]);
+
+                    let mag = Math.sqrt(lumX * lumX + lumY * lumY);
+                    if (mag <= threshold) continue;
+
+                    let idxCenter = (y * W + x) * 4;
+                    let r = px[idxCenter];
+                    let g = px[idxCenter + 1];
+                    let b = px[idxCenter + 2];
+                    let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+                    let fr, fg, fb;
+                    if (lum > 128) {
+                        if (lightLevel <= 0) continue;
+                        let s = lightLevel / 100;
+                        fr = Math.min(r + 80 * s, 255);
+                        fg = Math.min(g + 80 * s, 255);
+                        fb = Math.min(b + 80 * s, 255);
+                    } else {
+                        if (shadowLevel <= 0) continue;
+                        let s = shadowLevel / 100;
+                        fr = Math.max(r - 80 * s, 0);
+                        fg = Math.max(g - 80 * s, 0);
+                        fb = Math.max(b - 80 * s, 0);
+                    }
+
+                    // Draw a tight cluster of tiny bristle-tip dots at this edge point.
+                    // Each tip gets its own tiny random offset within clusterR and a
+                    // slightly varied alpha so not all bristles look identical (dry feel).
+                    for (let t = 0; t < tipCount; t++) {
+                        let ox = (Math.random() - 0.5) * 2 * clusterR;
+                        let oy = (Math.random() - 0.5) * 2 * clusterR;
+                        // Per-bristle alpha variation mimics uneven paint loading on a dry brush
+                        let alpha = 90 + Math.random() * 110;
+                        // Very slight tip-size jitter
+                        let d = tipDiam * (0.7 + Math.random() * 0.6);
+
+                        if (isImpasto) {
+                            pg.fill(Math.max(r - 100, 0), Math.max(g - 100, 0), Math.max(b - 100, 0), alpha * 0.5);
+                            pg.ellipse(x + ox, y + oy + tipDiam, d, d);
+                        }
+
+                        pg.fill(fr, fg, fb, alpha);
+                        pg.ellipse(x + ox, y + oy, d, d);
+                    }
+                }
+                pg.pop();
+            }
+
+            // ==========================================
+            // Color / Blob helpers (from AutoPainterGOv8)
+            // ==========================================
+            function getAverageColor(img) {
+                let r = 0, g = 0, b = 0, count = 0;
+                for (let i = 0; i < img.pixels.length; i += 40) {
+                    r += img.pixels[i];
+                    g += img.pixels[i + 1];
+                    b += img.pixels[i + 2];
+                    count++;
+                }
+                return [r / count, g / count, b / count];
+            }
+
+            function getBlobAverageColor(img, pixels) {
+                let r = 0, g = 0, b = 0;
+                for (let pt of pixels) {
+                    let idx = (pt.y * img.width + pt.x) * 4;
+                    r += img.pixels[idx];
+                    g += img.pixels[idx + 1];
+                    b += img.pixels[idx + 2];
+                }
+                return [r / pixels.length, g / pixels.length, b / pixels.length];
+            }
+
+            function quantizeImage(img, numColors) {
+                let result = new Int32Array(img.width * img.height);
+                let levels = Math.max(2, Math.floor(Math.pow(numColors, 1 / 3)));
+                let step = 256 / levels;
+                for (let i = 0; i < img.pixels.length; i += 4) {
+                    let r = Math.floor(img.pixels[i] / step);
+                    let g = Math.floor(img.pixels[i + 1] / step);
+                    let b = Math.floor(img.pixels[i + 2] / step);
+                    result[i / 4] = (r << 16) | (g << 8) | b;
+                }
+                return result;
+            }
+
+            function extractBlobs(quantized, W, H) {
+                let blobs = [];
+                let visited = new Uint8Array(quantized.length);
+                for (let i = 0; i < quantized.length; i++) {
+                    if (visited[i]) continue;
+                    let colorKey = quantized[i];
+                    let pixels = [];
+                    let stack = [i];
+                    visited[i] = 1;
+                    while (stack.length > 0) {
+                        let curr = stack.pop();
+                        let x = curr % W, y = Math.floor(curr / W);
+                        pixels.push({ x, y });
+                        let neighbors = [];
+                        if (x > 0)     neighbors.push(curr - 1);
+                        if (x < W - 1) neighbors.push(curr + 1);
+                        if (y > 0)     neighbors.push(curr - W);
+                        if (y < H - 1) neighbors.push(curr + W);
+                        for (let n of neighbors) {
+                            if (!visited[n] && quantized[n] === colorKey) {
+                                visited[n] = 1;
+                                stack.push(n);
+                            }
+                        }
+                    }
+                    if (pixels.length > 5) {
+                        let r = (colorKey >> 16) & 0xFF;
+                        let g = (colorKey >> 8)  & 0xFF;
+                        let b =  colorKey        & 0xFF;
+                        blobs.push({ colorKey: `${r},${g},${b}`, pixels: pixels });
+                    }
+                }
+                return blobs;
+            }
+
+            function convexHull(points) {
+                if (points.length <= 3) return points;
+                points.sort((a, b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
+                const upper = [], lower = [];
+                for (let pt of points) {
+                    while (upper.length >= 2 && crossProduct(upper[upper.length - 2], upper[upper.length - 1], pt) <= 0) upper.pop();
+                    upper.push(pt);
+                }
+                for (let i = points.length - 1; i >= 0; i--) {
+                    let pt = points[i];
+                    while (lower.length >= 2 && crossProduct(lower[lower.length - 2], lower[lower.length - 1], pt) <= 0) lower.pop();
+                    lower.push(pt);
+                }
+                upper.pop();
+                lower.pop();
+                return upper.concat(lower);
+            }
+
+            function crossProduct(a, b, c) {
+                return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+            }
+
+            function findBestAngle(hull) {
+                let bestAngle = 0;
+                let bestRatio = 0;
+                for (let a = 0; a < 180; a += 15) {
+                    let rad = p.radians(a);
+                    let cosA = Math.cos(rad);
+                    let sinA = Math.sin(rad);
+                    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                    for (let pt of hull) {
+                        let xr = pt.x * cosA - pt.y * sinA;
+                        let yr = pt.x * sinA + pt.y * cosA;
+                        if (xr < minX) minX = xr;
+                        if (xr > maxX) maxX = xr;
+                        if (yr < minY) minY = yr;
+                        if (yr > maxY) maxY = yr;
+                    }
+                    let w = maxX - minX;
+                    let h = maxY - minY;
+                    let ratio = w / (h + 0.0001);
+                    if (ratio > bestRatio) {
+                        bestRatio = ratio;
+                        bestAngle = a;
+                    }
+                }
+                return bestAngle;
+            }
+
+            function hexToRgb(hex) {
+                let c = hex.substring(1).split('');
+                if (c.length === 3) c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+                c = '0x' + c.join('');
+                return { r: (c >> 16) & 255, g: (c >> 8) & 255, b: c & 255 };
+            }
+
+            // ==========================================
+            // LAYER MANAGEMENT
+            // ==========================================
+            function addLayer(name) {
+                let pg = p.createGraphics(p.width, p.height);
+                pg.pixelDensity(1);
+                pg.clear();
+
+                if (layers.length === 0) {
+                    pg.background(245, 240, 235);
+                }
+
+                layers.push({
+                    id: Date.now() + Math.random(),
+                    name: name,
+                    pg: pg,
+                    visible: true,
+                    opacity: 1.0,
+                    offsetX: 0,
+                    offsetY: 0,
+                    rotation: 0,  // radians, around bbox center
+                    scale: 1,     // uniform, around bbox center
+                    bbox: null,
+                    bboxDirty: true
+                });
+
+                activeLayerIndex = layers.length - 1;
+                updateLayerUI();
+            }
+
+            function removeLayer(index) {
+                if (layers.length <= 1) return;
+                layers.splice(index, 1);
+                if (activeLayerIndex >= layers.length) activeLayerIndex = layers.length - 1;
+                updateLayerUI();
+            }
+
+            function moveLayer(index, direction) {
+                let newIndex = index + direction;
+                if (newIndex < 0 || newIndex >= layers.length) return;
+                let temp = layers[index];
+                layers[index] = layers[newIndex];
+                layers[newIndex] = temp;
+                if (activeLayerIndex === index) activeLayerIndex = newIndex;
+                else if (activeLayerIndex === newIndex) activeLayerIndex = index;
+                updateLayerUI();
+            }
+
+            function mergeDown() {
+                if (activeLayerIndex <= 0) return;
+                let topLayer = layers[activeLayerIndex];
+                let bottomLayer = layers[activeLayerIndex - 1];
+
+                // Bake the top layer (with its full transform) into the bottom layer's pg.
+                // Uses the canvas ctx transform stack so rotation/scale/offset are honored.
+                const ctx = bottomLayer.pg.drawingContext;
+                ctx.save();
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.globalAlpha = topLayer.opacity;
+
+                const bx = bottomLayer.offsetX || 0;
+                const by = bottomLayer.offsetY || 0;
+                const { cx, cy } = getLayerCenter(topLayer);
+                const tx = topLayer.offsetX || 0;
+                const ty = topLayer.offsetY || 0;
+                const sc = topLayer.scale || 1;
+
+                // translate → rotate → scale → translate-back, accounting for bottom layer's offset
+                ctx.translate(cx + tx - bx, cy + ty - by);
+                ctx.rotate(topLayer.rotation || 0);
+                ctx.scale(sc, sc);
+                ctx.translate(-cx, -cy);
+                ctx.drawImage(topLayer.pg.canvas, 0, 0);
+                ctx.restore();
+
+                bottomLayer.bboxDirty = true;
+                removeLayer(activeLayerIndex);
+                activeLayerIndex--;
+                updateLayerUI();
+            }
+
+            function clearActiveLayer() {
+                let layer = layers[activeLayerIndex];
+                layer.pg.clear();
+                layer.bbox = null;
+                layer.bboxDirty = false;
+            }
+
+            // ==========================================
+            // EXPORT HELPERS
+            // ==========================================
+
+            // Render one layer (with its full transform applied) onto a fresh
+            // canvas the size of the main document. Used as input to both the
+            // PDF page-per-layer and the PSD layer canvases.
+            function renderLayerToCanvas(layer) {
+                const c = document.createElement('canvas');
+                c.width  = p.width;
+                c.height = p.height;
+                const ctx = c.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+
+                const { cx, cy } = getLayerCenter(layer);
+                const tx  = layer.offsetX || 0;
+                const ty  = layer.offsetY || 0;
+                const sc  = layer.scale   || 1;
+                const rot = layer.rotation || 0;
+
+                ctx.save();
+                // Mirror the on-screen scale-up softening so exports match preview
+                if (sc > 1.05) {
+                    ctx.filter = `blur(${Math.min((sc - 1) * 0.5, 2)}px)`;
+                }
+                if (rot !== 0 || sc !== 1) {
+                    ctx.translate(cx + tx, cy + ty);
+                    ctx.rotate(rot);
+                    ctx.scale(sc, sc);
+                    ctx.translate(-cx, -cy);
+                    ctx.drawImage(layer.pg.canvas, 0, 0);
+                } else {
+                    ctx.drawImage(layer.pg.canvas, tx, ty);
+                }
+                ctx.restore();
+                return c;
+            }
+
+            // Composite all visible layers (with their opacity) into a single canvas
+            function renderCompositeCanvas() {
+                const c = document.createElement('canvas');
+                c.width  = p.width;
+                c.height = p.height;
+                const ctx = c.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                for (const layer of layers) {
+                    if (!layer.visible) continue;
+                    const lc = renderLayerToCanvas(layer);
+                    ctx.save();
+                    ctx.globalAlpha = (typeof layer.opacity === 'number') ? layer.opacity : 1;
+                    ctx.drawImage(lc, 0, 0);
+                    ctx.restore();
+                }
+                return c;
+            }
+
+            // Trim transparent edges off a canvas, returning {canvas, top, left}.
+            // Lets PSD layers store only their tight bbox (keeps file size sane).
+            function trimToContent(canvas) {
+                const w = canvas.width, h = canvas.height;
+                const ctx = canvas.getContext('2d');
+                let imgData;
+                try { imgData = ctx.getImageData(0, 0, w, h); }
+                catch (e) { return { canvas, top: 0, left: 0 }; }
+                const data = imgData.data;
+                let minX = w, minY = h, maxX = -1, maxY = -1;
+                for (let y = 0; y < h; y++) {
+                    const rowStart = y * w * 4;
+                    for (let x = 0; x < w; x++) {
+                        if (data[rowStart + x * 4 + 3] > 0) {
+                            if (x < minX) minX = x;
+                            if (x > maxX) maxX = x;
+                            if (y < minY) minY = y;
+                            if (y > maxY) maxY = y;
+                        }
+                    }
+                }
+                if (maxX < 0) return { canvas: null, top: 0, left: 0 };
+                const tw = maxX - minX + 1;
+                const th = maxY - minY + 1;
+                const out = document.createElement('canvas');
+                out.width  = tw;
+                out.height = th;
+                out.getContext('2d').drawImage(canvas, -minX, -minY);
+                return { canvas: out, top: minY, left: minX };
+            }
+
+            // Browser file download from a binary buffer
+            function downloadBuffer(bytes, filename, mimeType) {
+                const blob = new Blob([bytes], { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1500);
+            }
+
+            function setExportStatus(msg) {
+                const el = document.getElementById('status-text');
+                if (el) el.innerText = msg;
+            }
+
+            // ==========================================
+            // PDF EXPORT — composite page + one page per layer
+            // (cross-viewer reliable; works in any PDF reader)
+            // ==========================================
+            async function exportLayeredPDF() {
+                if (typeof PDFLib === 'undefined') {
+                    setExportStatus('PDF export library failed to load.');
+                    return;
+                }
+                try {
+                    setExportStatus('Exporting layered PDF…');
+                    // Yield so the status repaints before the heavy work
+                    await new Promise(r => setTimeout(r, 30));
+
+                    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+                    const pdfDoc = await PDFDocument.create();
+                    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                    const w = p.width, h = p.height;
+
+                    async function addPage(canvas, title) {
+                        const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+                        const buf  = await blob.arrayBuffer();
+                        const img  = await pdfDoc.embedPng(buf);
+                        const page = pdfDoc.addPage([w, h]);
+                        page.drawImage(img, { x: 0, y: 0, width: w, height: h });
+                        // Title strip near the top (PDF y origin is bottom-left)
+                        page.drawRectangle({
+                            x: 0, y: h - 24, width: w, height: 24,
+                            color: rgb(0.08, 0.08, 0.12), opacity: 0.78,
+                            borderWidth: 0
+                        });
+                        page.drawText(title, {
+                            x: 10, y: h - 17, size: 11,
+                            font, color: rgb(1, 1, 1)
+                        });
+                    }
+
+                    // Page 1 — composite
+                    await addPage(renderCompositeCanvas(), 'Composite (all layers)');
+
+                    // Pages 2..N+1 — each layer, bottom to top
+                    for (let i = 0; i < layers.length; i++) {
+                        const layer = layers[i];
+                        const label = `Layer ${i + 1}: ${layer.name || 'Untitled'}${layer.visible ? '' : ' (hidden)'}`;
+                        await addPage(renderLayerToCanvas(layer), label);
+                    }
+
+                    const pdfBytes = await pdfDoc.save();
+                    downloadBuffer(new Uint8Array(pdfBytes), 'painter-go-art.pdf', 'application/pdf');
+                    setExportStatus(`Layered PDF exported (${layers.length + 1} pages).`);
+                } catch (e) {
+                    console.error('[PDF export]', e);
+                    setExportStatus('PDF export failed: ' + (e.message || e));
+                }
+            }
+
+            // ==========================================
+            // PSD EXPORT — true layered PSD via ag-psd
+            // Each layer is a real PSD layer (trimmed to content bbox),
+            // with the layer's transform baked in and its opacity preserved.
+            // ==========================================
+            async function exportLayeredPSD() {
+                /*if (typeof agPsd === 'undefined' || typeof agPsd.writePsd !== 'function') {
+                    setExportStatus('PSD export library failed to load.');
+                    return;
+                }*/
+				console.log('agPsd:', window.agPsd);
+                try {
+                    setExportStatus('Exporting layered PSD…');
+                    await new Promise(r => setTimeout(r, 30));
+
+                    // Build children bottom-to-top (matches PSD file convention)
+                    const children = [];
+                    for (const layer of layers) {
+                        const full = renderLayerToCanvas(layer);
+                        const trimmed = trimToContent(full);
+                        if (!trimmed.canvas) continue; // skip empty layers
+                        children.push({
+                            name: layer.name || 'Layer',
+                            canvas: trimmed.canvas,
+                            left: trimmed.left,
+                            top:  trimmed.top,
+                            opacity: (typeof layer.opacity === 'number') ? layer.opacity : 1,
+                            hidden: !layer.visible
+                        });
+                    }
+
+                    if (children.length === 0) {
+                        setExportStatus('Nothing to export (all layers are empty).');
+                        return;
+                    }
+
+                    const psd = {
+                        width: p.width,
+                        height: p.height,
+                        canvas: renderCompositeCanvas(), // ag-psd uses this as the flat preview
+                        children
+                    };
+
+                    //const buffer = agPsd.writePsd(psd);
+					const buffer = window.agPsd.writePsd(psd);
+                    downloadBuffer(buffer, 'painter-go-art.psd', 'image/vnd.adobe.photoshop');
+                    setExportStatus(`Layered PSD exported (${children.length} layers).`);
+                } catch (e) {
+                    console.error('[PSD export]', e);
+                    setExportStatus('PSD export failed: ' + (e.message || e));
+                }
+            }
+
+            // ==========================================
+            // VIEW CONTROLS — wheel zoom + middle-mouse pan
+            //   • Plain mouse wheel zooms the whole canvas region
+            //     (frame, border, dotted backdrop, and the artwork
+            //     inside it) around the cursor — same visual effect
+            //     as Ctrl+wheel, just isolated to the canvas zone so
+            //     the side panels stay at their real size.
+            //   • Ctrl/Cmd + wheel falls through to the browser's
+            //     native zoom (entire page, including menus).
+            //   • Middle mouse button drags the canvas region around.
+            //   • Press "0" to reset zoom and pan to 100%.
+            //
+            // The transform is applied to .canvas-container so the
+            // frame and its contents move and scale as one unit.
+            // Because p5 v1.9.x's mouseX/mouseY computation does not
+            // account for CSS transforms (it divides by scrollWidth,
+            // not the post-transform bounding rect), we use our own
+            // getCanvasMouse() everywhere a mouse coordinate matters.
+            // ==========================================
+            let viewScale = 1;
+            let viewPanX = 0;
+            let viewPanY = 0;
+            let isViewPanning = false;
+            const viewPanStart = { x: 0, y: 0, panX: 0, panY: 0 };
+            let savedContainerCursor = '';
+
+            // Latest viewport-space cursor coords, updated by capture-phase
+            // listeners installed in setupViewControls so they're always
+            // fresh when p5 callbacks ask for the position.
+            let lastClientX = 0, lastClientY = 0;
+
+            function getZoomTarget() {
+                return document.querySelector('.canvas-container');
+            }
+
+            function applyViewTransform() {
+                const tgt = getZoomTarget();
+                if (!tgt) return;
+                tgt.style.transformOrigin = '0 0';
+                tgt.style.transform =
+                    `translate(${viewPanX}px, ${viewPanY}px) scale(${viewScale})`;
+            }
+
+            // Transform-aware mouse position in canvas-pixel space.
+            // Uses getBoundingClientRect (which reflects ALL ancestor
+            // CSS transforms) so the brush stays exactly under the
+            // cursor at any zoom level.
+            function getCanvasMouse() {
+                if (!mainCanvas || !mainCanvas.elt) return { x: 0, y: 0 };
+                const r = mainCanvas.elt.getBoundingClientRect();
+                if (r.width === 0 || r.height === 0) return { x: 0, y: 0 };
+                return {
+                    x: (lastClientX - r.left) * (mainCanvas.elt.width  / r.width),
+                    y: (lastClientY - r.top ) * (mainCanvas.elt.height / r.height)
+                };
+            }
+
+            function resetView() {
+                viewScale = 1;
+                viewPanX = 0;
+                viewPanY = 0;
+                applyViewTransform();
+                const s = document.getElementById('status-text');
+                if (s) s.innerText = 'View reset (100%).';
+            }
+
+            function setupViewControls() {
+                const tgt = getZoomTarget();
+                if (!tgt) return;
+                // Listen on the flex zone wrapping .canvas-container so wheel
+                // and middle-drag still work when the canvas is zoomed far
+                // out (and its visible footprint is small).
+                const zone = tgt.parentElement;
+                if (!zone) return;
+
+                // ---- Always-on viewport mouse tracking ----
+                // Capture phase + passive so we never miss an event and never
+                // delay any other handler. mousedown/mouseup are added too so
+                // the very first click before any movement still has fresh
+                // coordinates available.
+                const trackOpts = { passive: true, capture: true };
+                ['mousemove', 'mousedown', 'mouseup'].forEach(name => {
+                    window.addEventListener(name, (e) => {
+                        lastClientX = e.clientX;
+                        lastClientY = e.clientY;
+                    }, trackOpts);
+                });
+
+                // ---- Wheel zoom (anchored on cursor) ----
+                zone.addEventListener('wheel', (e) => {
+                    // Ctrl/Cmd-wheel is the user's intentional browser zoom —
+                    // leave it alone so the entire UI can still be scaled.
+                    if (e.ctrlKey || e.metaKey) return;
+                    e.preventDefault();
+
+                    const r = tgt.getBoundingClientRect();
+                    if (r.width === 0) return;
+
+                    const factor = (e.deltaY < 0) ? 1.12 : 1 / 1.12;
+                    const newScale = Math.max(0.1, Math.min(20, viewScale * factor));
+
+                    // Keep the natural-space point under the cursor anchored:
+                    //   newPanX = panX + (cursor_x - rect.left) * (1 - newScale/oldScale)
+                    // (derivation: visual_left = layoutLeft + panX, and we
+                    //  want the same natural point under the cursor after
+                    //  the scale change.)
+                    viewPanX += (e.clientX - r.left) * (1 - newScale / viewScale);
+                    viewPanY += (e.clientY - r.top ) * (1 - newScale / viewScale);
+                    viewScale = newScale;
+
+                    applyViewTransform();
+
+                    const s = document.getElementById('status-text');
+                    if (s) s.innerText = `Zoom: ${Math.round(viewScale * 100)}%`;
+                }, { passive: false });
+
+                // ---- Middle mouse pan: moves .canvas-container as a whole ----
+                zone.addEventListener('mousedown', (e) => {
+                    if (e.button !== 1) return; // 1 = middle
+                    e.preventDefault();
+                    isViewPanning = true;
+                    viewPanStart.x = e.clientX;
+                    viewPanStart.y = e.clientY;
+                    viewPanStart.panX = viewPanX;
+                    viewPanStart.panY = viewPanY;
+                    const cc = document.getElementById('p5-canvas-container');
+                    if (cc) {
+                        savedContainerCursor = cc.style.cursor;
+                        cc.style.cursor = 'grabbing';
+                    }
+                });
+                window.addEventListener('mousemove', (e) => {
+                    if (!isViewPanning) return;
+                    viewPanX = viewPanStart.panX + (e.clientX - viewPanStart.x);
+                    viewPanY = viewPanStart.panY + (e.clientY - viewPanStart.y);
+                    applyViewTransform();
+                });
+                window.addEventListener('mouseup', () => {
+                    if (!isViewPanning) return;
+                    isViewPanning = false;
+                    const cc = document.getElementById('p5-canvas-container');
+                    if (cc) cc.style.cursor = savedContainerCursor;
+                });
+                zone.addEventListener('auxclick', (e) => {
+                    if (e.button === 1) e.preventDefault();
+                });
+
+                // ---- "0" resets the view (skipped while typing) ----
+                window.addEventListener('keydown', (e) => {
+                    if (e.key !== '0' || e.ctrlKey || e.metaKey || e.altKey) return;
+                    const tag = (e.target && e.target.tagName) || '';
+                    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+                    resetView();
+                });
+            }
+
+            function setupUI() {
+            function setActiveMode(mode) {
+                settings.mode = mode;
+
+                // Button styles — preserve each button's geometry while toggling active state
+                const baseTextBtn = "px-5 py-1.5 rounded-full text-sm font-medium transition-all";
+                const baseIconBtn = "w-9 h-9 rounded-full transition-all flex items-center justify-center";
+
+                const buttons = [
+                    { id: 'modeManual', mode: 'manual', base: baseTextBtn },
+                    { id: 'modeAuto',   mode: 'auto',   base: baseTextBtn },
+                    { id: 'modeMove',   mode: 'move',   base: baseIconBtn },
+                    { id: 'modeRotate', mode: 'rotate', base: baseIconBtn },
+                    { id: 'modeScale',  mode: 'scale',  base: baseIconBtn }
+                ];
+                for (const b of buttons) {
+                    const el = document.getElementById(b.id);
+                    if (!el) continue;
+                    if (b.mode === mode) {
+                        el.className = `${b.base} text-black shadow-md`;
+                        el.style.backgroundColor = '#00D2FF';
+                    } else {
+                        el.className = `${b.base} text-gray-400 hover-cyan`;
+                        el.style.backgroundColor = '';
+                    }
+                }
+
+                // Cursor hint on the canvas container
+                const cc = document.getElementById('p5-canvas-container');
+                if (cc) {
+                    const cursors = {
+                        manual: 'crosshair',
+                        auto:   'default',
+                        move:   'move',
+                        rotate: 'crosshair',
+                        scale:  'nwse-resize'
+                    };
+                    cc.style.cursor = cursors[mode] || 'default';
+                }
+
+                // Force a bbox refresh when entering a transform mode
+                if ((mode === 'move' || mode === 'rotate' || mode === 'scale') && layers[activeLayerIndex]) {
+                    layers[activeLayerIndex].bboxDirty = true;
+                }
+
+                // Status hint
+                const statusEl = document.getElementById('status-text');
+                if (statusEl) {
+                    const hints = {
+                        manual: 'Ready',
+                        auto:   'Auto-paint mode',
+                        move:   'Move: drag the active layer',
+                        rotate: 'Rotate: drag around center (Shift snaps to 15°)',
+                        scale:  'Scale: drag outward = bigger, inward = smaller'
+                    };
+                    statusEl.innerText = hints[mode] || '';
+                }
+            }
+
+            // ----- Mode -----
+            document.getElementById('modeManual').addEventListener('click', () => setActiveMode('manual'));
+            document.getElementById('modeAuto').addEventListener('click', () => setActiveMode('auto'));
+            document.getElementById('modeMove').addEventListener('click', () => setActiveMode('move'));
+            document.getElementById('modeRotate').addEventListener('click', () => setActiveMode('rotate'));
+            document.getElementById('modeScale').addEventListener('click', () => setActiveMode('scale'));
+
+            // ----- Reset Transform -----
+            document.getElementById('resetTransformBtn').addEventListener('click', () => {
+                const layer = layers[activeLayerIndex];
+                if (!layer) return;
+                layer.offsetX = 0;
+                layer.offsetY = 0;
+                layer.rotation = 0;
+                layer.scale = 1;
+                const statusEl = document.getElementById('status-text');
+                if (statusEl) statusEl.innerText = 'Layer transform reset.';
+            });
+
+                // ----- Manual Brush Color -----
+                const colorPicker = document.getElementById('brushColor');
+                colorPicker.addEventListener('input', (e) => {
+                    brush.color = e.target.value;
+                    document.getElementById('colorHex').innerText = e.target.value.toUpperCase();
+                    updateBrushPreview();
+                });
+
+                // ----- Manual sliders -----
+                document.getElementById('brushSize').addEventListener('input', (e) => {
+                    brush.size = parseInt(e.target.value, 10);
+                    document.getElementById('val-size').innerText = brush.size;
+                    initializeBristles();
+                    updateBrushPreview();
+                });
+                document.getElementById('manThick').addEventListener('input', (e) => {
+                    brush.alpha = parseInt(e.target.value, 10) / 100;
+                    document.getElementById('val-man-thick').innerText = e.target.value + '%';
+                    updateBrushPreview();
+                });
+                document.getElementById('wetMix').addEventListener('input', (e) => {
+                    brush.blend = parseInt(e.target.value, 10) / 100;
+                    document.getElementById('val-wet').innerText = e.target.value + '%';
+                    updateBrushPreview();
+                });
+                document.getElementById('bristles').addEventListener('input', (e) => {
+                    brush.density = parseInt(e.target.value, 10);
+                    document.getElementById('val-bristles').innerText = brush.density + '%';
+                    initializeBristles();
+                    updateBrushPreview();
+                });
+                document.getElementById('damping').addEventListener('input', (e) => {
+                    let v = parseInt(e.target.value, 10) / 100;
+                    if (v === 0) v = 0.01;
+                    brush.dampingFactor = v;
+                    document.getElementById('val-damping').innerText = v.toFixed(2);
+                });
+
+                // ----- Auto sliders -----
+                document.getElementById('paintStyle').addEventListener('change', (e) => {
+                    settings.autoStyle = e.target.value;
+                });
+                document.getElementById('colorCount').addEventListener('input', (e) => {
+                    settings.colorCount = parseInt(e.target.value, 10);
+                    document.getElementById('val-colors').innerText = e.target.value;
+                });
+                document.getElementById('bristleLen').addEventListener('input', (e) => {
+                    settings.autoBristleLen = parseFloat(e.target.value);
+                    document.getElementById('val-bristle-len').innerText = parseFloat(e.target.value).toFixed(1);
+                });
+                document.getElementById('autoDryness').addEventListener('input', (e) => {
+                    settings.autoBristleDryness = parseInt(e.target.value, 10);
+                    document.getElementById('val-auto-dryness').innerText = e.target.value + '%';
+                });
+                document.getElementById('paintThick').addEventListener('input', (e) => {
+                    settings.autoThickness = parseInt(e.target.value, 10);
+                    document.getElementById('val-thick').innerText = e.target.value + '%';
+                });
+                document.getElementById('angleOffset').addEventListener('input', (e) => {
+                    settings.angleOffset = parseInt(e.target.value, 10);
+                    document.getElementById('val-angle').innerText = e.target.value + '°';
+                });
+                document.getElementById('lightDetail').addEventListener('input', (e) => {
+                    settings.lightDetail = parseInt(e.target.value, 10);
+                    document.getElementById('val-light').innerText = e.target.value + '%';
+                });
+                document.getElementById('shadowDetail').addEventListener('input', (e) => {
+                    settings.shadowDetail = parseInt(e.target.value, 10);
+                    document.getElementById('val-shadow').innerText = e.target.value + '%';
+                });
+                document.getElementById('detailSize').addEventListener('input', (e) => {
+                    settings.detailSize = parseFloat(e.target.value);
+                    document.getElementById('val-detail-size').innerText = parseFloat(e.target.value).toFixed(1);
+                });
+
+                // ----- Auto Paint Button -----
+                document.getElementById('autoPaintBtn').addEventListener('click', runAutoPaint);
+
+                // ----- Reset Auto -----
+                document.getElementById('resetAutoBtn').addEventListener('click', () => {
+                    const d = DEFAULTS.auto;
+                    document.getElementById('paintStyle').value = d.paintStyle;
+                    document.getElementById('colorCount').value = d.colorCount;
+                    document.getElementById('val-colors').innerText = d.colorCount;
+                    document.getElementById('bristleLen').value = d.bristleLen;
+                    document.getElementById('val-bristle-len').innerText = d.bristleLen.toFixed(1);
+                    document.getElementById('autoDryness').value = d.bristleDryness;
+                    document.getElementById('val-auto-dryness').innerText = d.bristleDryness + '%';
+                    document.getElementById('paintThick').value = d.paintThick;
+                    document.getElementById('val-thick').innerText = d.paintThick + '%';
+                    document.getElementById('angleOffset').value = d.angleOffset;
+                    document.getElementById('val-angle').innerText = d.angleOffset + '°';
+                    document.getElementById('lightDetail').value = d.lightDetail;
+                    document.getElementById('val-light').innerText = d.lightDetail + '%';
+                    document.getElementById('shadowDetail').value = d.shadowDetail;
+                    document.getElementById('val-shadow').innerText = d.shadowDetail + '%';
+                    document.getElementById('detailSize').value = d.detailSize;
+                    document.getElementById('val-detail-size').innerText = d.detailSize.toFixed(1);
+                    Object.assign(settings, {
+                        autoStyle: d.paintStyle,
+                        colorCount: d.colorCount,
+                        autoBristleLen: d.bristleLen,
+                        autoBristleDryness: d.bristleDryness,
+                        autoThickness: d.paintThick,
+                        angleOffset: d.angleOffset,
+                        lightDetail: d.lightDetail,
+                        shadowDetail: d.shadowDetail,
+                        detailSize: d.detailSize
+                    });
+                });
+
+                // ----- Image Upload -----
+                document.getElementById('imageUpload').addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        p.loadImage(evt.target.result, (img) => {
+                            const canvasW = p.width;
+                            const canvasH = p.height;
+                            let w = img.width;
+                            let h = img.height;
+
+                            // --- Photoshop-style "fit to canvas" ---
+                            // Scale the image DOWN (never up) so it fits entirely
+                            // within the current canvas, preserving aspect ratio.
+                            if (w > canvasW || h > canvasH) {
+                                const fitScale = Math.min(canvasW / w, canvasH / h);
+                                w = Math.floor(w * fitScale);
+                                h = Math.floor(h * fitScale);
+                            }
+
+                            // Resize image in-place to the fitted dimensions so its
+                            // pixel coords align 1:1 with its layer buffer slot.
+                            img.resize(w, h);
+                            sourceImg = img;
+                            sourceImg.loadPixels();
+
+                            // Each import goes onto its own new layer (Image1, Image2…)
+                            // so successive uploads never overwrite each other.
+                            imageImportCount++;
+                            addLayer("Image" + imageImportCount);
+
+                            const newLayer = layers[activeLayerIndex];
+                            const drawX = Math.floor((canvasW - w) / 2);
+                            const drawY = Math.floor((canvasH - h) / 2);
+                            newLayer.pg.clear();
+                            newLayer.pg.image(sourceImg, drawX, drawY, w, h);
+                            newLayer.bboxDirty = true;
+                            // Store source on the layer so Auto Paint always uses
+                            // the correct image when this layer is selected.
+                            newLayer.sourceImg = sourceImg;
+                            // Store the canvas offset so Auto Paint paints in the
+                            // same position the image was drawn (centred on canvas).
+                            newLayer.imgDrawX = drawX;
+                            newLayer.imgDrawY = drawY;
+                            newLayer.imgW = w;
+                            newLayer.imgH = h;
+
+                            const thumb = document.getElementById('previewThumb');
+                            thumb.src = evt.target.result;
+                            thumb.classList.remove('hidden');
+
+                            document.getElementById('status-text').innerText =
+                                `Loaded: ${file.name} → Image${imageImportCount} — fitted to ${w}×${h} (canvas ${canvasW}×${canvasH})`;
+                        });
+                    };
+                    reader.readAsDataURL(file);
+                });
+
+                // ----- Layer buttons -----
+                document.getElementById('addLayerBtn').addEventListener('click', () => addLayer("Layer " + (layers.length + 1)));
+                document.getElementById('deleteLayerBtn').addEventListener('click', () => removeLayer(activeLayerIndex));
+                document.getElementById('mergeDownBtn').addEventListener('click', mergeDown);
+                document.getElementById('clearLayerBtn').addEventListener('click', clearActiveLayer);
+
+                document.getElementById('layerOpacity').addEventListener('input', (e) => {
+                    let val = parseInt(e.target.value, 10);
+                    layers[activeLayerIndex].opacity = val / 100;
+                    document.getElementById('val-layer-op').innerText = val + '%';
+                });
+
+                // ----- Save -----
+                document.getElementById('saveBtn').addEventListener('click', () => {
+                    p.saveCanvas('painter-go-art', 'png');
+                });
+
+                // ----- Layered Exports -----
+                document.getElementById('exportPdfBtn').addEventListener('click', exportLayeredPDF);
+                document.getElementById('exportPsdBtn').addEventListener('click', exportLayeredPSD);
+
+                // Synchronize UI elements with the DEFAULTS object
+                syncUIFromDefaults();
+            }
+
+            function syncUIFromDefaults() {
+                // Sync Auto Paint UI
+                const a = DEFAULTS.auto;
+                document.getElementById('paintStyle').value = a.paintStyle;
+                document.getElementById('colorCount').value = a.colorCount;
+                document.getElementById('val-colors').innerText = a.colorCount;
+                document.getElementById('bristleLen').value = a.bristleLen;
+                document.getElementById('val-bristle-len').innerText = a.bristleLen.toFixed(1);
+                document.getElementById('autoDryness').value = a.bristleDryness;
+                document.getElementById('val-auto-dryness').innerText = a.bristleDryness + '%';
+                document.getElementById('paintThick').value = a.paintThick;
+                document.getElementById('val-thick').innerText = a.paintThick + '%';
+                document.getElementById('angleOffset').value = a.angleOffset;
+                document.getElementById('val-angle').innerText = a.angleOffset + '°';
+                document.getElementById('lightDetail').value = a.lightDetail;
+                document.getElementById('val-light').innerText = a.lightDetail + '%';
+                document.getElementById('shadowDetail').value = a.shadowDetail;
+                document.getElementById('val-shadow').innerText = a.shadowDetail + '%';
+                document.getElementById('detailSize').value = a.detailSize;
+                document.getElementById('val-detail-size').innerText = a.detailSize.toFixed(1);
+
+                // Sync Manual Paint UI
+                const m = DEFAULTS.manual;
+                document.getElementById('brushColor').value = m.color;
+                document.getElementById('colorHex').innerText = m.color.toUpperCase();
+                document.getElementById('brushSize').value = m.size;
+                document.getElementById('val-size').innerText = m.size;
+                document.getElementById('manThick').value = m.thickness;
+                document.getElementById('val-man-thick').innerText = m.thickness + '%';
+                document.getElementById('wetMix').value = m.wetMix;
+                document.getElementById('val-wet').innerText = m.wetMix + '%';
+                document.getElementById('bristles').value = m.density;
+                document.getElementById('val-bristles').innerText = m.density + '%';
+                document.getElementById('damping').value = m.damping;
+                document.getElementById('val-damping').innerText = (m.damping / 100).toFixed(2);
+
+                // Update visual fill styling for all sliders
+                document.querySelectorAll('input[type=range]').forEach(s => updateSliderFill(s));
+
+                initializeBristles();
+                updateBrushPreview();
+            }
+
+            function updateLayerUI() {
+                const list = document.getElementById('layerList');
+                list.innerHTML = '';
+
+                for (let i = layers.length - 1; i >= 0; i--) {
+                    let layer = layers[i];
+                    let isActive = (i === activeLayerIndex);
+
+                    let el = document.createElement('div');
+                    el.className = `layer-item flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${isActive ? 'active' : 'hover:bg-gray-700'}`;
+
+                    let leftDiv = document.createElement('div');
+                    leftDiv.className = "flex items-center gap-2 overflow-hidden";
+
+                    let eyeBtn = document.createElement('button');
+                    eyeBtn.className = "text-gray-400 hover-cyan flex-shrink-0";
+                    eyeBtn.innerHTML = layer.visible
+                        ? '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>'
+                        : '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7c.78 0 1.53-.09 2.24-.26"/><path d="M2 2l20 20"/></svg>';
+                    eyeBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        layer.visible = !layer.visible;
+                        updateLayerUI();
+                    };
+
+                    let nameSpan = document.createElement('span');
+                    nameSpan.className = "text-xs truncate font-medium";
+                    nameSpan.innerText = layer.name;
+                    nameSpan.onclick = () => {
+                        activeLayerIndex = i;
+                        layer.bboxDirty = true; // refresh selection rect for new active layer
+                        document.getElementById('activeLayerName').innerText = layer.name;
+                        document.getElementById('layerOpacity').value = layer.opacity * 100;
+                        document.getElementById('val-layer-op').innerText = Math.round(layer.opacity * 100) + '%';
+                        updateLayerUI();
+                    };
+
+                    leftDiv.appendChild(eyeBtn);
+                    leftDiv.appendChild(nameSpan);
+
+                    let rightDiv = document.createElement('div');
+                    rightDiv.className = "flex items-center gap-1";
+
+                    if (i > 0) {
+                        let upBtn = document.createElement('button');
+                        upBtn.className = "text-gray-500 hover-cyan p-1";
+                        upBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>';
+                        upBtn.onclick = (e) => { e.stopPropagation(); moveLayer(i, 1); };
+                        rightDiv.appendChild(upBtn);
+                    }
+                    if (i < layers.length - 1) {
+                        let downBtn = document.createElement('button');
+                        downBtn.className = "text-gray-500 hover-cyan p-1";
+                        downBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+                        downBtn.onclick = (e) => { e.stopPropagation(); moveLayer(i, -1); };
+                        rightDiv.appendChild(downBtn);
+                    }
+
+                    el.appendChild(leftDiv);
+                    el.appendChild(rightDiv);
+                    list.appendChild(el);
+                }
+
+                let current = layers[activeLayerIndex];
+                document.getElementById('activeLayerName').innerText = current.name;
+                document.getElementById('layerOpacity').value = current.opacity * 100;
+                document.getElementById('val-layer-op').innerText = Math.round(current.opacity * 100) + '%';
+            }
+
+            // Expose for debugging
+            window.p5Instance = p;
+        };
+
+        new p5(sketch);
+    </script>
+</body>
+</html>
